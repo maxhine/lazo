@@ -40,7 +40,9 @@ namespace Lazo
         public const int TransferPort = 48352;
         private const long MaxFileSize = 20L * 1024 * 1024 * 1024;
         private static readonly Guid DownloadsId = new Guid("374DE290-123F-4565-9164-39C4925E467B");
-        private readonly Guid _id = Guid.NewGuid();
+        private readonly Guid _id = LoadId();
+        public Guid SelfId { get { return _id; } }
+        public event Action<Guid, string, string> ChatReceived;
         private readonly string _receiveDirectory;
         private readonly int _discoveryPort;
         private readonly int _transferPort;
@@ -247,6 +249,11 @@ namespace Lazo
                     {
                         byte[] magic = reader.ReadBytes(5);
                         string magicText = Encoding.ASCII.GetString(magic);
+                        if (magicText == "LAZOC")
+                        {
+                            ReadChat(reader, writer);
+                            return;
+                        }
                         if (magicText != "LAZO2")
                         {
                             if (magicText == "LAZO1") { writer.Write((byte)0); writer.Flush(); }
@@ -323,6 +330,66 @@ namespace Lazo
         }
 
         private static readonly System.Threading.SemaphoreSlim _sendSlots = new System.Threading.SemaphoreSlim(8);
+
+        public List<Peer> Snapshot()
+        {
+            lock (_peerLock) return _peers.Values.OrderBy(item => item.Name).ToList();
+        }
+
+        public async Task SendChatAsync(Peer peer, string text)
+        {
+            if (peer == null || peer.Address == null) throw new InvalidOperationException("El compañero no está conectado.");
+            text = (text ?? "").Trim();
+            if (text.Length == 0) return;
+            if (text.Length > 2000) text = text.Substring(0, 2000);
+            if (!IsLocalSubnet(peer.Address)) throw new InvalidOperationException("El compañero ya no está en la misma subred.");
+            using (TcpClient client = new TcpClient(AddressFamily.InterNetwork))
+            {
+                Task connect = client.ConnectAsync(peer.Address, peer.Port);
+                if (await Task.WhenAny(connect, Task.Delay(7000)) != connect)
+                    throw new TimeoutException("El compañero no respondió.");
+                await connect;
+                using (NetworkStream stream = client.GetStream())
+                using (BinaryReader reader = new BinaryReader(stream, Encoding.UTF8, true))
+                using (BinaryWriter writer = new BinaryWriter(stream, Encoding.UTF8, true))
+                {
+                    writer.Write(Encoding.ASCII.GetBytes("LAZOC"));
+                    WriteText(writer, _id.ToString("D"), 40);
+                    WriteText(writer, Label());
+                    WriteText(writer, text, 4000);
+                    writer.Flush();
+                    if (reader.ReadByte() != 1) throw new IOException("No se pudo entregar el mensaje.");
+                }
+            }
+        }
+
+        private void ReadChat(BinaryReader reader, BinaryWriter writer)
+        {
+            Guid id;
+            if (!Guid.TryParse(ReadText(reader, 40), out id)) return;
+            string name = CleanLabel(ReadText(reader, 80));
+            string body = ReadText(reader, 4000).Trim();
+            if (name.Length == 0 || body.Length == 0 || body.Length > 2000) return;
+            writer.Write((byte)1);
+            writer.Flush();
+            Action<Guid, string, string> handler = ChatReceived;
+            if (handler != null) handler(id, name, body);
+        }
+
+        private static Guid LoadId()
+        {
+            try
+            {
+                string path = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "Lazo", "device.id");
+                Guid parsed;
+                if (File.Exists(path) && Guid.TryParse(File.ReadAllText(path).Trim(), out parsed)) return parsed;
+                parsed = Guid.NewGuid();
+                Directory.CreateDirectory(Path.GetDirectoryName(path));
+                File.WriteAllText(path, parsed.ToString("D"));
+                return parsed;
+            }
+            catch { return Guid.NewGuid(); }
+        }
 
         public async Task SendAsync(Peer peer, string path, Action<double> progress)
         {
@@ -447,8 +514,13 @@ namespace Lazo
 
         private static void WriteText(BinaryWriter writer, string value)
         {
-            byte[] bytes = Encoding.UTF8.GetBytes(value);
-            if (bytes.Length > 255) throw new InvalidOperationException("Nombre demasiado largo.");
+            WriteText(writer, value, 255);
+        }
+
+        private static void WriteText(BinaryWriter writer, string value, int maxBytes)
+        {
+            byte[] bytes = Encoding.UTF8.GetBytes(value ?? "");
+            if (bytes.Length > maxBytes) throw new InvalidOperationException("Texto demasiado largo.");
             writer.Write((ushort)bytes.Length);
             writer.Write(bytes);
         }

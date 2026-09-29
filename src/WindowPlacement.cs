@@ -37,6 +37,15 @@ namespace Lazo
             PlaceBottomRight(window, 0);
         }
 
+        public static void Cover(Window window, System.Windows.Forms.Screen screen, bool activate)
+        {
+            IntPtr hwnd = new WindowInteropHelper(window).Handle;
+            if (hwnd == IntPtr.Zero || screen == null) return;
+            Rectangle bounds = screen.Bounds;
+            uint flags = activate ? 0u : SwpNoActivate;
+            SetWindowPos(hwnd, new IntPtr(-1), bounds.Left, bounds.Top, bounds.Width, bounds.Height, flags);
+        }
+
         public static void PlaceBottomRight(Window window, int stack)
         {
             IntPtr hwnd = new WindowInteropHelper(window).Handle;

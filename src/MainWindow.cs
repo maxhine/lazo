@@ -56,8 +56,11 @@ namespace Lazo
         private Border _historyCard;
         private bool _eyeCareOpen;
         private bool _eyeCareAction;
+        private int _eyeCareFitPass;
         private Border _eyeCareCard;
         private EyeCareCardView _eyeCareView;
+        private Border _chatDot;
+        private ChatWindow _chat;
         private bool _holding;
         private DateTime _shownUtc;
         private System.Windows.Forms.Screen _launcherScreen = System.Windows.Forms.Screen.FromPoint(System.Windows.Forms.Cursor.Position);
@@ -148,6 +151,7 @@ namespace Lazo
                 _network.OfferReceived += OnOfferReceived;
                 _network.ReceiveProgress += OnReceiveProgress;
                 _network.ReceiveFinished += OnReceiveFinished;
+                _network.ChatReceived += OnChatReceived;
                 Updater.CheckInBackground(text => Dispatcher.BeginInvoke((Action)(() => SetStatus(text))),
                     () => Dispatcher.BeginInvoke((Action)(() => { _exiting = true; Application.Current.Shutdown(); })));
                 try { _network.Start(); }
@@ -245,6 +249,27 @@ namespace Lazo
             history.VerticalAlignment = VerticalAlignment.Top;
             history.Margin = new Thickness(0, 6, 72, 0);
             history.ToolTip = "Historial";
+            Button chat = IconButton("\uE8F2", OpenChat, true);
+            chat.HorizontalAlignment = HorizontalAlignment.Right;
+            chat.VerticalAlignment = VerticalAlignment.Top;
+            chat.Margin = new Thickness(0, 6, 104, 0);
+            chat.ToolTip = "Chat";
+            Panel.SetZIndex(chat, 2);
+            overlay.Children.Add(chat);
+            _chatDot = new Border
+            {
+                Width = 7,
+                Height = 7,
+                CornerRadius = new CornerRadius(4),
+                Background = Theme.Ink,
+                HorizontalAlignment = HorizontalAlignment.Right,
+                VerticalAlignment = VerticalAlignment.Top,
+                Margin = new Thickness(0, 8, 104, 0),
+                IsHitTestVisible = false,
+                Visibility = ChatStore.UnreadTotal() > 0 ? Visibility.Visible : Visibility.Collapsed
+            };
+            Panel.SetZIndex(_chatDot, 3);
+            overlay.Children.Add(_chatDot);
             Panel.SetZIndex(gear, 2);
             Panel.SetZIndex(close, 2);
             Panel.SetZIndex(history, 2);
@@ -261,7 +286,7 @@ namespace Lazo
             }, true);
             eyeCare.HorizontalAlignment = HorizontalAlignment.Right;
             eyeCare.VerticalAlignment = VerticalAlignment.Top;
-            eyeCare.Margin = new Thickness(0, 6, 104, 0);
+            eyeCare.Margin = new Thickness(0, 6, 136, 0);
             eyeCare.ToolTip = "Descanso Visual";
             Panel.SetZIndex(eyeCare, 2);
             overlay.Children.Add(eyeCare);
@@ -298,7 +323,7 @@ namespace Lazo
             _resultsRow = new RowDefinition { Height = showResults ? new GridLength(1, GridUnitType.Star) : new GridLength(0) };
             layout.RowDefinitions.Add(_resultsRow);
 
-            Grid heading = new Grid { Margin = new Thickness(16, 7, 140, 0) };
+            Grid heading = new Grid { Margin = new Thickness(16, 7, 172, 0) };
             heading.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(90) });
             heading.ColumnDefinitions.Add(new ColumnDefinition());
             TextBlock wordmark = Theme.Text("L A Z O", 10, Theme.Muted, FontWeights.SemiBold);
@@ -365,7 +390,7 @@ namespace Lazo
             layout.RowDefinitions.Add(new RowDefinition { Height = new GridLength(1, GridUnitType.Star) });
             layout.RowDefinitions.Add(new RowDefinition { Height = new GridLength(36) });
 
-            Grid header = new Grid { Margin = new Thickness(10, 0, 140, 0) };
+            Grid header = new Grid { Margin = new Thickness(10, 0, 172, 0) };
             header.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(32) });
             header.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
             header.ColumnDefinitions.Add(new ColumnDefinition());
@@ -818,7 +843,7 @@ namespace Lazo
                     int rows;
                     DeviceGrid(count, out columns, out rows);
                     MeasureDevices();
-                    width = Math.Max(208, 48 + columns * (_tileWidth + 16));
+                    width = Math.Max(300, 48 + columns * (_tileWidth + 16));
                     height = count == 0 ? 148 : 52 + rows * (116 + _nameLines * 18);
                 }
                 else
@@ -852,6 +877,16 @@ if (_settingsOpen)
                 width = 700;
                 height = 480;
             }
+            if (_eyeCareOpen)
+            {
+                FitEyeCare(ref width, ref height);
+                if (_eyeCareFitPass < 1)
+                {
+                    _eyeCareFitPass++;
+                    Dispatcher.BeginInvoke((Action)(() => { if (_eyeCareOpen) ApplySize(false); }), DispatcherPriority.Loaded);
+                }
+            }
+            else _eyeCareFitPass = 0;
             if (!IsVisible)
             {
                 BeginAnimation(WidthProperty, null);
@@ -864,6 +899,28 @@ if (_settingsOpen)
                 BeginAnimation(WidthProperty, Theme.Animation(Width, width, 180));
             if (Math.Abs(Height - height) > 1)
                 BeginAnimation(HeightProperty, Theme.Animation(Height, height, 180));
+        }
+
+        private void FitEyeCare(ref double width, ref double height)
+        {
+            const double cardWidth = 320;
+            double content = 480;
+            if (_eyeCareView != null)
+            {
+                _eyeCareView.Measure(new Size(cardWidth - 24, double.PositiveInfinity));
+                if (_eyeCareView.DesiredSize.Height > 1) content = _eyeCareView.DesiredSize.Height;
+            }
+            double scale = 1;
+            PresentationSource source = PresentationSource.FromVisual(this);
+            if (source != null && source.CompositionTarget != null)
+                scale = source.CompositionTarget.TransformToDevice.M22;
+            if (scale < 0.5) scale = 1;
+            double maxHeight = Math.Min(MaxHeight, (_launcherScreen.WorkingArea.Height / scale) - 28);
+            double chrome = 78;
+            height = Math.Min(maxHeight, Math.Max(280, chrome + content));
+            width = 380;
+            ScrollViewer scroll = _eyeCareCard == null ? null : _eyeCareCard.Child as ScrollViewer;
+            if (scroll != null) scroll.MaxHeight = Math.Max(160, height - chrome);
         }
 
         private void RunSearch()
@@ -1241,6 +1298,7 @@ if (_settingsOpen)
         private Border EyeCareCard()
         {
             _eyeCareView = new EyeCareCardView();
+            _eyeCareView.ContentChanged += () => { if (_eyeCareOpen) ApplySize(false); };
             ScrollViewer scroll = new ScrollViewer
             {
                 Content = _eyeCareView,
@@ -1399,6 +1457,35 @@ if (_settingsOpen)
             int unit = 0;
             while (number >= 1024 && unit < units.Length - 1) { number /= 1024; unit++; }
             return number.ToString(number < 10 ? "0.0" : "0") + " " + units[unit];
+        }
+
+        private void OpenChat()
+        {
+            if (_preview) return;
+            if (_chat != null && _chat.IsVisible)
+            {
+                _chat.Activate();
+                return;
+            }
+            _chat = new ChatWindow(_network, RefreshChatDot);
+            _chat.Closed += (s, e) => { _chat = null; RefreshChatDot(); };
+            _chat.Show();
+            RefreshChatDot();
+        }
+
+        private void RefreshChatDot()
+        {
+            if (_chatDot != null) _chatDot.Visibility = ChatStore.UnreadTotal() > 0 ? Visibility.Visible : Visibility.Collapsed;
+        }
+
+        private void OnChatReceived(Guid id, string name, string text)
+        {
+            Dispatcher.BeginInvoke((Action)(() =>
+            {
+                ChatStore.Append(id, name, false, text);
+                if (_chat != null) _chat.Incoming(id, name, text);
+                RefreshChatDot();
+            }));
         }
 
         private void OnPeersChanged(List<Peer> peers)

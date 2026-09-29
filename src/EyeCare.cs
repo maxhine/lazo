@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.Globalization;
 using System.IO;
 using System.Windows;
@@ -12,6 +13,7 @@ namespace Lazo
 {
     internal enum EyeCareClockMode { Digital, Analog }
     internal enum EyeCareBreakType { MicroBreak, ActivePause }
+    internal enum EyeCareRestStyle { Notice, Eyes }
 
     internal sealed class EyeCareService
     {
@@ -23,7 +25,7 @@ namespace Lazo
         public const int ActivePauseDuration = 5 * 60;  // 5 minutos (300 seg)
 
         private readonly DispatcherTimer _timer;
-        private EyeCareAlertWindow _currentAlert;
+        private Window _currentAlert;
         private DateTime _microDueUtc;
         private DateTime _activeDueUtc;
         private string _statsDate;
@@ -36,6 +38,7 @@ namespace Lazo
         public bool IsPaused { get; private set; }
         public bool SoundEnabled { get; private set; }
         public EyeCareClockMode ClockMode { get; private set; }
+        public EyeCareRestStyle RestStyle { get; private set; }
 
         public event Action Ticked;
         public event Action StateChanged;
@@ -44,6 +47,7 @@ namespace Lazo
         {
             SoundEnabled = true;
             ClockMode = EyeCareClockMode.Digital;
+            RestStyle = EyeCareRestStyle.Notice;
             _statsDate = DateTime.Now.ToString("yyyy-MM-dd");
             Arm(EyeCareBreakType.MicroBreak, MicroBreakInterval);
             Arm(EyeCareBreakType.ActivePause, ActivePauseInterval);
@@ -88,6 +92,14 @@ namespace Lazo
             if (StateChanged != null) StateChanged();
         }
 
+        public void SetRestStyle(EyeCareRestStyle style)
+        {
+            if (RestStyle == style) return;
+            RestStyle = style;
+            SaveSettings();
+            if (StateChanged != null) StateChanged();
+        }
+
         public void TriggerMicroBreak()
         {
             ShowAlert(EyeCareBreakType.MicroBreak, MicroBreakDuration);
@@ -126,9 +138,20 @@ namespace Lazo
         {
             if (_currentAlert != null)
             {
-                try { _currentAlert.CloseAnimated(); }
-                catch { }
+                Window alert = _currentAlert;
                 _currentAlert = null;
+                try
+                {
+                    EyeCareAlertWindow toast = alert as EyeCareAlertWindow;
+                    if (toast != null) toast.CloseAnimated();
+                    else
+                    {
+                        EyeCareEyesWindow eyes = alert as EyeCareEyesWindow;
+                        if (eyes != null) eyes.CloseAnimated();
+                        else alert.Close();
+                    }
+                }
+                catch { }
             }
         }
 
@@ -222,7 +245,9 @@ namespace Lazo
                 catch { }
             }
 
-            EyeCareAlertWindow alert = new EyeCareAlertWindow(type, durationSeconds);
+            Window alert = type == EyeCareBreakType.MicroBreak && RestStyle == EyeCareRestStyle.Eyes
+                ? (Window)new EyeCareEyesWindow(durationSeconds)
+                : new EyeCareAlertWindow(type, durationSeconds);
             _currentAlert = alert;
             alert.Closed += (s, e) =>
             {
@@ -230,7 +255,8 @@ namespace Lazo
                 if (!IsPaused) TryShowDue();
             };
             alert.Show();
-            WindowPlacement.PlaceBottomRight(alert, 0);
+            EyeCareAlertWindow toast = alert as EyeCareAlertWindow;
+            if (toast != null) WindowPlacement.PlaceBottomRight(toast, 0);
         }
 
         private static string SettingsPath()
@@ -307,6 +333,9 @@ namespace Lazo
                                 hasActiveLeft = true;
                             }
                             break;
+                        case "rest":
+                            RestStyle = val == "eyes" ? EyeCareRestStyle.Eyes : EyeCareRestStyle.Notice;
+                            break;
                         case "savedutc":
                             DateTime parsed;
                             if (DateTime.TryParse(val, CultureInfo.InvariantCulture, DateTimeStyles.RoundtripKind, out parsed))
@@ -346,7 +375,7 @@ namespace Lazo
                 Directory.CreateDirectory(Path.GetDirectoryName(path));
                 string content = string.Format(
                     CultureInfo.InvariantCulture,
-                    "clock={0}\nsound={1}\npaused={2}\ndate={3}\nmicro={4}\nactive={5}\nwork={6}\nmicroleft={7}\nactiveleft={8}\nsavedutc={9}\n",
+                    "clock={0}\nsound={1}\npaused={2}\ndate={3}\nmicro={4}\nactive={5}\nwork={6}\nmicroleft={7}\nactiveleft={8}\nsavedutc={9}\nrest={10}\n",
                     ClockMode == EyeCareClockMode.Analog ? "analog" : "digital",
                     SoundEnabled,
                     IsPaused,
@@ -356,7 +385,8 @@ namespace Lazo
                     TotalWorkSecondsToday,
                     SecondsToMicroBreak,
                     SecondsToActivePause,
-                    DateTime.UtcNow.ToString("o", CultureInfo.InvariantCulture));
+                    DateTime.UtcNow.ToString("o", CultureInfo.InvariantCulture),
+                    RestStyle == EyeCareRestStyle.Eyes ? "eyes" : "notice");
                 File.WriteAllText(path, content);
             }
             catch { }
@@ -737,6 +767,9 @@ namespace Lazo
         private readonly CheckBox _soundCheck;
         private readonly CheckBox _pauseCheck;
         private readonly Border _segmentContainer;
+        private readonly Border _restStyleHost;
+
+        public event Action ContentChanged;
 
         public EyeCareCardView()
         {
@@ -842,6 +875,13 @@ namespace Lazo
             workCard.Child = workPanel;
             Children.Add(workCard);
 
+            TextBlock restLabel = Theme.Text("Al cumplirse los 20 min", 11, Theme.Ink, FontWeights.SemiBold);
+            restLabel.Margin = new Thickness(0, 2, 0, 4);
+            Children.Add(restLabel);
+            _restStyleHost = new Border { Margin = new Thickness(0, 0, 0, 8) };
+            RebuildRestStyle();
+            Children.Add(_restStyleHost);
+
             // 7. Checkboxes de Preferencias
             _soundCheck = new CheckBox
             {
@@ -930,6 +970,33 @@ namespace Lazo
             return card;
         }
 
+        public void RebuildRestStyle()
+        {
+            bool eyes = EyeCareService.Instance.RestStyle == EyeCareRestStyle.Eyes;
+            Grid grid = new Grid();
+            grid.ColumnDefinitions.Add(new ColumnDefinition());
+            grid.ColumnDefinitions.Add(new ColumnDefinition());
+            Button notice = CreateSegmentBtn("Notificación", !eyes, () =>
+            {
+                EyeCareService.Instance.SetRestStyle(EyeCareRestStyle.Notice);
+                RebuildRestStyle();
+            });
+            Button gaze = CreateSegmentBtn("Ojos", eyes, () =>
+            {
+                EyeCareService.Instance.SetRestStyle(EyeCareRestStyle.Eyes);
+                RebuildRestStyle();
+            });
+            Grid.SetColumn(notice, 0);
+            Grid.SetColumn(gaze, 1);
+            grid.Children.Add(notice);
+            grid.Children.Add(gaze);
+            _restStyleHost.Background = Theme.SegmentTrack;
+            _restStyleHost.CornerRadius = new CornerRadius(16);
+            _restStyleHost.Padding = new Thickness(3);
+            _restStyleHost.Child = grid;
+            if (ContentChanged != null) ContentChanged();
+        }
+
         public void RebuildSegment()
         {
             bool isDigital = EyeCareService.Instance.ClockMode == EyeCareClockMode.Digital;
@@ -1011,6 +1078,7 @@ namespace Lazo
                 p.Children.Add(sub);
                 _clockHost.Child = p;
             }
+            if (ContentChanged != null) ContentChanged();
         }
 
         public void UpdateUi()
@@ -1064,6 +1132,252 @@ namespace Lazo
             int m = seconds / 60;
             int s = seconds % 60;
             return string.Format("{0:00}:{1:00}", m, s);
+        }
+    }
+
+    internal sealed class EyeGaze : FrameworkElement
+    {
+        private double _lid;
+        private double _look;
+
+        public double Lid
+        {
+            get { return _lid; }
+            set { _lid = value; InvalidateVisual(); }
+        }
+
+        public double Look
+        {
+            get { return _look; }
+            set { _look = value; InvalidateVisual(); }
+        }
+
+        protected override void OnRender(DrawingContext dc)
+        {
+            double w = ActualWidth;
+            double h = ActualHeight;
+            if (w < 20 || h < 20) return;
+            dc.DrawRectangle(Theme.Color("#101010"), null, new Rect(0, 0, w, h));
+            double eye = Math.Min(w * 0.28, h * 0.34);
+            double gap = eye * 0.55;
+            double cy = h * 0.42;
+            DrawEye(dc, new Point(w / 2 - gap, cy), eye, -1);
+            DrawEye(dc, new Point(w / 2 + gap, cy), eye, 1);
+        }
+
+        private void DrawEye(DrawingContext dc, Point center, double size, int side)
+        {
+            double open = Math.Max(0.045, 1 - _lid);
+            double rx = size;
+            double ry = size * 0.72 * open;
+            dc.DrawEllipse(Theme.Color("#F2F2F2"), new Pen(Theme.Color("#D0D0D0"), 2), center, rx, ry);
+            double look = _look * size * 0.08 + side * size * 0.04;
+            Point iris = new Point(center.X + look, center.Y);
+            double ir = size * 0.46;
+            dc.DrawEllipse(Theme.Color("#3A3A3A"), null, iris, ir, ir * open);
+            dc.DrawEllipse(Theme.Color("#111111"), null, iris, ir * 0.42, ir * 0.42 * open);
+            if (open > 0.35)
+            {
+                dc.DrawEllipse(Theme.Color("#F7F7F7"), null,
+                    new Point(iris.X - ir * 0.28, iris.Y - ir * 0.32 * open), ir * 0.14, ir * 0.14 * open);
+            }
+        }
+    }
+
+    internal sealed class EyeCareEyesWindow : Window
+    {
+        private readonly bool _host;
+        private readonly List<EyeCareEyesWindow> _covers = new List<EyeCareEyesWindow>();
+        private readonly EyeGaze _gaze = new EyeGaze();
+        private readonly TextBlock _count;
+        private readonly DispatcherTimer _timer;
+        private readonly DispatcherTimer _motion;
+        private int _remaining;
+        private bool _closing;
+        private bool _coversOpened;
+        private double _lid;
+        private double _lidTarget;
+        private int _blinkIn;
+        private DateTime _started;
+
+        public EyeCareEyesWindow(int seconds)
+            : this(seconds, true)
+        {
+        }
+
+        private EyeCareEyesWindow(int seconds, bool host)
+        {
+            _host = host;
+            _remaining = seconds;
+            _started = DateTime.UtcNow;
+            Title = "Lazo · Descanso Visual";
+            WindowStyle = WindowStyle.None;
+            ResizeMode = ResizeMode.NoResize;
+            WindowStartupLocation = WindowStartupLocation.Manual;
+            Background = Theme.Color("#101010");
+            Topmost = true;
+            ShowInTaskbar = false;
+            ShowActivated = host;
+            Width = 800;
+            Height = 600;
+            FontFamily = Theme.Font;
+            Cursor = Cursors.Arrow;
+
+            Grid root = new Grid();
+            root.RowDefinitions.Add(new RowDefinition { Height = new GridLength(1, GridUnitType.Star) });
+            root.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
+            _gaze.IsHitTestVisible = false;
+            root.Children.Add(_gaze);
+            StackPanel foot = new StackPanel
+            {
+                Margin = new Thickness(0, 0, 0, 36),
+                HorizontalAlignment = HorizontalAlignment.Center
+            };
+            if (host)
+            {
+                foot.Children.Add(Theme.Text("Mira lejos de la pantalla", 18, Theme.Color("#D8D8D8"), FontWeights.SemiBold));
+                _count = Theme.Text(Format(seconds), 28, Theme.Color("#F2F2F2"), FontWeights.SemiBold);
+                _count.FontFamily = Theme.Mono;
+                _count.HorizontalAlignment = HorizontalAlignment.Center;
+                _count.Margin = new Thickness(0, 8, 0, 0);
+                foot.Children.Add(_count);
+                Button snooze = new Button
+                {
+                    Content = "Posponer",
+                    FontFamily = Theme.Font,
+                    FontSize = 12,
+                    Foreground = Theme.Color("#8A8A8A"),
+                    Background = Brushes.Transparent,
+                    BorderThickness = new Thickness(0),
+                    Cursor = Cursors.Hand,
+                    Margin = new Thickness(0, 14, 0, 0),
+                    HorizontalAlignment = HorizontalAlignment.Center
+                };
+                snooze.Click += (s, e) => EyeCareService.Instance.Snooze(EyeCareBreakType.MicroBreak, 300);
+                foot.Children.Add(snooze);
+            }
+            else _count = null;
+            Grid.SetRow(foot, 1);
+            root.Children.Add(foot);
+            Content = root;
+
+            SourceInitialized += (s, e) => Place();
+            Loaded += (s, e) =>
+            {
+                if (_host && !_coversOpened)
+                {
+                    _coversOpened = true;
+                    OpenCovers();
+                }
+                Place();
+                BeginAnimation(OpacityProperty, new DoubleAnimation(0, 1, TimeSpan.FromMilliseconds(180)));
+                Dispatcher.BeginInvoke((Action)Place, DispatcherPriority.Loaded);
+            };
+            if (!host) return;
+
+            KeyDown += (s, e) =>
+            {
+                if (e.Key == Key.Escape)
+                {
+                    EyeCareService.Instance.Snooze(EyeCareBreakType.MicroBreak, 300);
+                    e.Handled = true;
+                }
+            };
+            Deactivated += (s, e) => { if (!_closing) Activate(); };
+            _blinkIn = 90;
+            _timer = new DispatcherTimer { Interval = TimeSpan.FromSeconds(1) };
+            _timer.Tick += (s, e) =>
+            {
+                if (_remaining > 0) _remaining--;
+                if (_count != null) _count.Text = Format(_remaining);
+                if (_remaining <= 0)
+                {
+                    _timer.Stop();
+                    EyeCareService.Instance.CompleteBreak(EyeCareBreakType.MicroBreak);
+                }
+            };
+            _motion = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(30) };
+            _motion.Tick += (s, e) => StepMotion();
+            _timer.Start();
+            _motion.Start();
+        }
+
+        private void OpenCovers()
+        {
+            System.Windows.Forms.Screen here = System.Windows.Forms.Screen.FromPoint(System.Windows.Forms.Cursor.Position);
+            foreach (System.Windows.Forms.Screen screen in System.Windows.Forms.Screen.AllScreens)
+            {
+                if (screen.DeviceName == here.DeviceName) continue;
+                EyeCareEyesWindow cover = new EyeCareEyesWindow(_remaining, false);
+                cover.Tag = screen;
+                _covers.Add(cover);
+                cover.Show();
+            }
+            Tag = here;
+        }
+
+        private void Place()
+        {
+            System.Windows.Forms.Screen screen = Tag as System.Windows.Forms.Screen;
+            if (screen == null) screen = System.Windows.Forms.Screen.FromPoint(System.Windows.Forms.Cursor.Position);
+            Tag = screen;
+            PresentationSource source = PresentationSource.FromVisual(this);
+            if (source != null && source.CompositionTarget != null)
+            {
+                Rect px = new Rect(screen.Bounds.Left, screen.Bounds.Top, screen.Bounds.Width, screen.Bounds.Height);
+                Rect dip = new MatrixTransform(source.CompositionTarget.TransformFromDevice).TransformBounds(px);
+                Left = dip.X;
+                Top = dip.Y;
+                Width = Math.Max(1, dip.Width);
+                Height = Math.Max(1, dip.Height);
+            }
+            WindowPlacement.Cover(this, screen, _host);
+        }
+
+        private void StepMotion()
+        {
+            _blinkIn--;
+            if (_blinkIn <= 0 && _lidTarget < 0.5)
+            {
+                _lidTarget = 1;
+                _blinkIn = 8;
+            }
+            else if (_lidTarget > 0.5 && _blinkIn <= 0)
+            {
+                _lidTarget = 0;
+                _blinkIn = 110;
+            }
+            _lid += (_lidTarget - _lid) * 0.45;
+            double look = Math.Sin((DateTime.UtcNow - _started).TotalSeconds * 0.7) * 0.35;
+            ApplyPhase(_lid, look);
+            foreach (EyeCareEyesWindow cover in _covers) cover.ApplyPhase(_lid, look);
+        }
+
+        private void ApplyPhase(double lid, double look)
+        {
+            _gaze.Lid = lid;
+            _gaze.Look = look;
+        }
+
+        public void CloseAnimated()
+        {
+            if (_closing) return;
+            _closing = true;
+            if (_timer != null) _timer.Stop();
+            if (_motion != null) _motion.Stop();
+            foreach (EyeCareEyesWindow cover in _covers)
+            {
+                try { cover.Close(); }
+                catch { }
+            }
+            DoubleAnimation fade = new DoubleAnimation(Opacity, 0, TimeSpan.FromMilliseconds(140));
+            fade.Completed += (s, e) => { try { Close(); } catch { } };
+            BeginAnimation(OpacityProperty, fade);
+        }
+
+        private static string Format(int seconds)
+        {
+            return string.Format("{0:00}:{1:00}", seconds / 60, seconds % 60);
         }
     }
 }

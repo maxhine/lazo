@@ -9,7 +9,7 @@ $csc = if (Test-Path -LiteralPath 'C:\Windows\Microsoft.NET\Framework64\v4.0.303
 } else { 'C:\Windows\Microsoft.NET\Framework\v4.0.30319\csc.exe' }
 $dist = Join-Path $project 'dist'
 New-Item -ItemType Directory -Force -Path $dist | Out-Null
-$name = if ($Preview) { 'Lazo-Setup-Preview.exe' } else { 'Lazo-Setup-0.4.12.exe' }
+$name = if ($Preview) { 'Lazo-Setup-Preview.exe' } else { 'Lazo-Setup-0.4.13.exe' }
 $target = Join-Path $dist $name
 $arguments = @('/nologo','/target:winexe','/platform:anycpu','/utf8output','/optimize+',('/out:' + $target),
     ('/resource:' + (Join-Path $project 'bin\Lazo.exe') + ',Lazo.Payload'))

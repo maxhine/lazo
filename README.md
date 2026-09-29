@@ -14,10 +14,10 @@ La interfaz usa Bahnschrift con respaldo en Segoe UI. El contenido se recorta si
 
 ## Instalar y compartir
 
-Comparte **`dist/Lazo-Setup-0.4.12.exe`**. Es un solo archivo: contiene Lazo, crea accesos directos, registra la desinstalación en Configuración de Windows y configura dos reglas entrantes limitadas al perfil **Privado** y a la **subred local**. Solicita permisos de administrador. Puede iniciar con Windows si se deja marcada la opción del instalador.
+Comparte **`dist/Lazo-Setup-0.4.13.exe`**. Es un solo archivo: contiene Lazo, crea accesos directos, registra la desinstalación en Configuración de Windows y configura dos reglas entrantes limitadas al perfil **Privado** y a la **subred local**. Solicita permisos de administrador. Puede iniciar con Windows si se deja marcada la opción del instalador.
 
 1. Cierra cualquier copia anterior de Lazo desde el icono de la bandeja.
-2. Ejecuta `Lazo-Setup-0.4.12.exe` y acepta el aviso de Windows.
+2. Ejecuta `Lazo-Setup-0.4.13.exe` y acepta el aviso de Windows.
 3. Abre Lazo desde el menú Inicio. Repite la instalación en el otro equipo.
 4. Asegúrate de que ambos equipos estén en una red marcada como **Privada** en Windows.
 
