@@ -17,6 +17,7 @@ Proyecto local de SARCA para transferir archivos entre equipos Windows 10/11 de 
 
 - Versión 0.4.5: corregido el clic de Cambiar foto/Quitar (un manejador vacío marcaba el evento como atendido). El launcher captura el monitor del cursor en cada apertura y lo conserva al redimensionarse. Pruebas de regresión de eventos Click y coordenadas de monitores con orígenes positivos/negativos. Instalador dist/Lazo-Setup-0.4.5.exe.
 - Versión 0.4.6: al completar la recepción aparecen Mostrar en carpeta (selecciona la ruta final real en Explorador) y Abrir (aplicación predeterminada). La alerta permanece hasta elegir o cerrar con ×/Escape; no ofrece abrir en caso de error. La red entrega la ruta final junto con el resultado. Verificadas transferencia/ruta, estados de botones, render e integridad del instalador dist/Lazo-Setup-0.4.6.exe.
+- Versión 0.4.12: Descanso Visual con regla 20-20-20, pausa activa y reloj. El temporizador pendiente no se pierde si hay otra alerta, la jornada se reinicia a medianoche y el tiempo restante continúa al reiniciar. Instalador `dist/Lazo-Setup-0.4.12.exe`.
 - Versión 0.4.11: botón Verificar actualizaciones en ajustes. Instalador `dist/Lazo-Setup-0.4.11.exe`.
 - Versión 0.4.10: la ventana abierta con doble Alt permanece hasta cerrarla a mano; se puede soltar archivos sobre el ícono. Historial sutil de envíos y recepciones. Instalador `dist/Lazo-Setup-0.4.10.exe`.
 - Versión 0.4.9: varios archivos del mismo remitente se agrupan en una alerta con Aceptar todos. Instalador `dist/Lazo-Setup-0.4.9.exe`.
