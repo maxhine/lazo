@@ -24,6 +24,13 @@ namespace Lazo
         [STAThread]
         private static void Main(string[] args)
         {
+            if (Array.IndexOf(args, "--preview-eyecare-alert") >= 0)
+            {
+                Theme.Load();
+                Application alertApp = new Application();
+                alertApp.Run(new EyeCareAlertWindow(EyeCareBreakType.MicroBreak, 20));
+                return;
+            }
             bool previewReceive = Array.IndexOf(args, "--preview-receive") >= 0 ||
                                   Array.IndexOf(args, "--preview-receive-glass") >= 0;
             if (previewReceive)
