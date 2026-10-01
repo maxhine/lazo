@@ -5,6 +5,7 @@ using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Media;
 using System.Windows.Media.Imaging;
+using System.Runtime.Serialization;
 using PathShape = System.Windows.Shapes.Path;
 class VisualSmoke
 {
@@ -26,9 +27,48 @@ class VisualSmoke
         { var found=FindButton(VisualTreeHelper.GetChild(root,i),text); if(found!=null)return found; }
         return null;
     }
+    static void VerifyClockRebuilds(string output)
+    {
+        var clockType=app.GetType("Lazo.EyeCareCardView");
+        var clock=FormatterServices.GetUninitializedObject(clockType);
+        var host=new Border();
+        var digital=new TextBlock { Text="12:34:56", FontSize=24, Foreground=Brushes.White, HorizontalAlignment=HorizontalAlignment.Center };
+        var analog=(FrameworkElement)Activator.CreateInstance(app.GetType("Lazo.EyeCareAnalogClock"),true);
+        Field(clock,"_clockHost",host);
+        Field(clock,"_digitalClockText",digital);
+        Field(clock,"_analogClock",analog);
+        var serviceType=app.GetType("Lazo.EyeCareService");
+        var service=serviceType.GetField("<ClockMode>k__BackingField",BindingFlags.Instance|BindingFlags.NonPublic);
+        var serviceInstance=serviceType.GetField("Instance",BindingFlags.Static|BindingFlags.Public).GetValue(null);
+        var modeType=app.GetType("Lazo.EyeCareClockMode");
+        var rebuild=clockType.GetMethod("RebuildClockHost",flags);
+        foreach(string mode in new[]{"Digital","Analog","Digital","Analog","Digital"})
+        {
+            var oldParent=LogicalTreeHelper.GetParent(digital);
+            service.SetValue(serviceInstance,Enum.Parse(modeType,mode));
+            try { rebuild.Invoke(clock,null); }
+            catch(TargetInvocationException error) { throw new Exception("Clock rebuild failed in "+mode+" mode; parent="+(oldParent==null?"null":oldParent.GetType().FullName),error.InnerException); }
+            var panel=host.Child as StackPanel;
+            if(panel==null) throw new Exception("Clock host is not a StackPanel after "+mode);
+            if(mode=="Digital")
+            {
+                if(!panel.Children.Contains(digital) || !object.ReferenceEquals(VisualTreeHelper.GetParent(digital),panel))
+                    throw new Exception("Digital clock has an invalid WPF parent after rebuild");
+                Save(host,System.IO.Path.Combine(output,"clock-digital.png"),240,72);
+            }
+            else
+            {
+                if(!panel.Children.Contains(analog) || !object.ReferenceEquals(VisualTreeHelper.GetParent(analog),panel))
+                    throw new Exception("Analog clock has an invalid WPF parent after rebuild");
+                Save(host,System.IO.Path.Combine(output,"clock-analog.png"),240,120);
+            }
+        }
+        Console.WriteLine("PASS: repeated digital/analog clock rebuilds preserve WPF parents and render both modes.");
+    }
     [STAThread] static void Main(string[] args)
     {
         app=Assembly.LoadFrom(args[0]); Directory.CreateDirectory(args[1]);
+        VerifyClockRebuilds(args[1]);
         var main=app.GetType("Lazo.MainWindow");
         var window=(Window)Activator.CreateInstance(main, new object[]{true,false,false,false,true,true,false});
         Save((FrameworkElement)window.Content, System.IO.Path.Combine(args[1],"settings.png"),342,402);

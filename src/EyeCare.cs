@@ -1061,6 +1061,7 @@ namespace Lazo
             if (EyeCareService.Instance.ClockMode == EyeCareClockMode.Analog)
             {
                 StackPanel p = new StackPanel { HorizontalAlignment = HorizontalAlignment.Center };
+                DetachClockElement(_analogClock);
                 p.Children.Add(_analogClock);
                 TextBlock sub = Theme.Text(DateTime.Now.ToString("HH:mm:ss"), 11.5, Theme.Muted, FontWeights.SemiBold);
                 sub.FontFamily = Theme.Mono;
@@ -1072,6 +1073,7 @@ namespace Lazo
             else
             {
                 StackPanel p = new StackPanel { HorizontalAlignment = HorizontalAlignment.Center };
+                DetachClockElement(_digitalClockText);
                 p.Children.Add(_digitalClockText);
                 TextBlock sub = Theme.Text("Reloj en tiempo real", 10.5, Theme.Muted);
                 sub.HorizontalAlignment = HorizontalAlignment.Center;
@@ -1079,6 +1081,12 @@ namespace Lazo
                 _clockHost.Child = p;
             }
             if (ContentChanged != null) ContentChanged();
+        }
+
+        private static void DetachClockElement(UIElement element)
+        {
+            Panel previous = LogicalTreeHelper.GetParent(element) as Panel;
+            if (previous != null) previous.Children.Remove(element);
         }
 
         public void UpdateUi()
