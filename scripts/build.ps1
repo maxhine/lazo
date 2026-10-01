@@ -1,9 +1,15 @@
-param([switch]$Release)
+param([switch]$Release,[string]$OutputDirectory = '')
 
 $ErrorActionPreference = 'Stop'
 $project = Split-Path -Parent $PSScriptRoot
 $source = Join-Path $project 'src'
-$output = Join-Path $project 'bin'
+$output = if ([string]::IsNullOrWhiteSpace($OutputDirectory)) {
+    Join-Path $project 'bin'
+} elseif ([IO.Path]::IsPathRooted($OutputDirectory)) {
+    $OutputDirectory
+} else {
+    Join-Path $project $OutputDirectory
+}
 New-Item -ItemType Directory -Force -Path $output | Out-Null
 
 $csc = if (Test-Path -LiteralPath 'C:\Windows\Microsoft.NET\Framework64\v4.0.30319\csc.exe') {

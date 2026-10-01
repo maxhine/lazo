@@ -6,18 +6,18 @@ Tu ícono aparece en la cabecera de Minimal y Standard y abre tu perfil al pulsa
 
 - **Minimal**: al abrir solo se ve la barra de búsqueda, con círculos de iniciales encima para los equipos conectados. No hay textos. Al escribir, la ventana se expande y muestra resultados; las iniciales de cada fila envían el archivo.
 - **Standard**: al abrir se ven los equipos como íconos grandes, en una ventana ajustada a cuántos hay. Al pulsar uno se abre el diálogo para elegir el archivo. También se puede arrastrar un archivo desde el Explorador hasta el ícono: el envío empieza al soltarlo.
-- **Apariencia**: Plano, Vidrio u Oscuro, en el mismo panel.
+- **Apariencia**: Plano, Vidrio, Oscuro o Cálido, en el mismo panel. Cálido combina marfil, concreto, terracota y oliva; sus encabezados usan Georgia con Segoe UI como respaldo.
 
-La interfaz usa Bahnschrift con respaldo en Segoe UI. El contenido se recorta siguiendo las esquinas redondeadas del recuadro; al abrir, una silueta líquida asciende desde la base y se transforma en la ventana. Los ajustes usan controles de selección en forma de pastilla. La sombra de la ventana se eliminó para evitar un parche rectangular translúcido en las esquinas.
+La interfaz usa Bahnschrift con respaldo en Segoe UI; Cálido usa Georgia en encabezados y conserva Segoe UI como respaldo. El contenido se recorta siguiendo las esquinas redondeadas del recuadro; al abrir, una silueta líquida asciende desde la base y se transforma en la ventana. Los ajustes usan controles de selección en forma de pastilla. La sombra de la ventana se eliminó para evitar un parche rectangular translúcido en las esquinas.
 
 ![Lazo Minimal compacto](docs/interfaz-colapsada.png)
 
 ## Instalar y compartir
 
-Comparte **`dist/Lazo-Setup-0.4.14.exe`**. Es un solo archivo: contiene Lazo, crea accesos directos, registra la desinstalación en Configuración de Windows y configura dos reglas entrantes limitadas al perfil **Privado** y a la **subred local**. Solicita permisos de administrador. Puede iniciar con Windows si se deja marcada la opción del instalador.
+Comparte **`dist/Lazo-Setup-0.4.15.exe`**. Es un solo archivo: contiene Lazo, crea accesos directos, registra la desinstalación en Configuración de Windows y configura dos reglas entrantes limitadas al perfil **Privado** y a la **subred local**. Solicita permisos de administrador. Puede iniciar con Windows si se deja marcada la opción del instalador.
 
 1. Cierra cualquier copia anterior de Lazo desde el icono de la bandeja.
-2. Ejecuta `Lazo-Setup-0.4.14.exe` y acepta el aviso de Windows.
+2. Ejecuta `Lazo-Setup-0.4.15.exe` y acepta el aviso de Windows.
 3. Abre Lazo desde el menú Inicio. Repite la instalación en el otro equipo.
 4. Asegúrate de que ambos equipos estén en una red marcada como **Privada** en Windows.
 
