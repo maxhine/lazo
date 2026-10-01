@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Diagnostics;
 using System.IO;
 using System.Linq;
+using System.Threading.Tasks;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Input;
@@ -15,6 +16,7 @@ namespace Lazo
     internal sealed class ChatPanel : Grid
     {
         private readonly NetworkEngine _network;
+        private Func<Peer, string, Task> _sendChatAsync;
         private readonly Action _unreadChanged;
         private readonly Action _requestClose;
         private readonly Action _nudgeFx;
@@ -30,16 +32,19 @@ namespace Lazo
         private readonly DispatcherTimer _pulse;
         private readonly Dictionary<Guid, DateTime> _inChat = new Dictionary<Guid, DateTime>();
         private readonly Dictionary<Guid, DateTime> _typing = new Dictionary<Guid, DateTime>();
+        private readonly Dictionary<Guid, string> _drafts = new Dictionary<Guid, string>();
         private List<Peer> _peers = new List<Peer>();
         private Guid _open;
         private string _openName = "";
         private bool _active;
         private bool _sending;
+        private bool _loadingDraft;
         private DateTime _typingSentUtc = DateTime.MinValue;
 
         public ChatPanel(NetworkEngine network, Action unreadChanged, Action requestClose, Action nudgeFx)
         {
             _network = network;
+            if (network != null) _sendChatAsync = network.SendChatAsync;
             _unreadChanged = unreadChanged;
             _requestClose = requestClose;
             _nudgeFx = nudgeFx;
@@ -268,7 +273,7 @@ namespace Lazo
 
         private void ShowThread(Guid id, string name)
         {
-            _open = id;
+            SelectDraft(id);
             _openName = name;
             _title.Text = name;
             bool reachable = Reachable(id);
@@ -289,6 +294,18 @@ namespace Lazo
             RefreshStatus();
             RenderPeople();
             _messageScroll.ScrollToEnd();
+        }
+
+        private void SelectDraft(Guid id)
+        {
+            if (_open != Guid.Empty && _open != id) _drafts[_open] = _composer.Text;
+            _open = id;
+            string draft;
+            _drafts.TryGetValue(id, out draft);
+            if (string.Equals(_composer.Text, draft ?? "", StringComparison.Ordinal)) return;
+            _loadingDraft = true;
+            try { _composer.Text = draft ?? ""; }
+            finally { _loadingDraft = false; }
         }
 
         private void RefreshStatus()
@@ -365,6 +382,8 @@ namespace Lazo
 
         private void OnComposerChanged()
         {
+            if (_open != Guid.Empty) _drafts[_open] = _composer.Text;
+            if (_loadingDraft) return;
             if (_open == Guid.Empty || _composer.Text.Length == 0)
             {
                 if (_typingStop.IsEnabled) { _typingStop.Stop(); SignalOpen(NetworkEngine.ChatKindTyping, "0"); }
@@ -381,19 +400,30 @@ namespace Lazo
 
         private async void SendCurrent()
         {
-            string text = _composer.Text.Trim();
+            string draft = _composer.Text;
+            string text = draft.Trim();
             if (text.Length == 0 || _open == Guid.Empty || _sending) return;
             Peer peer = _peers.FirstOrDefault(item => item.Id == _open && item.Address != null);
             if (peer == null) { _state.Text = "desconectado"; return; }
             _sending = true;
             _send.IsEnabled = false;
-            _composer.Text = "";
             SignalOpen(NetworkEngine.ChatKindTyping, "0");
             try
             {
-                await _network.SendChatAsync(peer, text);
+                await _sendChatAsync(peer, text);
                 ChatStore.Append(peer.Id, peer.Name, true, text);
-                ShowThread(peer.Id, peer.Name);
+                if (_open == peer.Id && string.Equals(_composer.Text, draft, StringComparison.Ordinal))
+                {
+                    _composer.Text = "";
+                    _drafts.Remove(peer.Id);
+                }
+                else
+                {
+                    string savedDraft;
+                    if (_drafts.TryGetValue(peer.Id, out savedDraft) && string.Equals(savedDraft, draft, StringComparison.Ordinal))
+                        _drafts.Remove(peer.Id);
+                }
+                if (_open == peer.Id) ShowThread(peer.Id, peer.Name);
             }
             catch (Exception ex) { _state.Text = ex.Message; }
             finally { _sending = false; _send.IsEnabled = Reachable(_open); }

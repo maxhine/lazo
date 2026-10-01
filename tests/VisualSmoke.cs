@@ -1,10 +1,14 @@
 using System;
 using System.IO;
+using System.Net;
 using System.Reflection;
+using System.Threading;
+using System.Threading.Tasks;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Media;
 using System.Windows.Media.Imaging;
+using System.Windows.Threading;
 using System.Runtime.Serialization;
 using PathShape = System.Windows.Shapes.Path;
 class VisualSmoke
@@ -65,10 +69,89 @@ class VisualSmoke
         }
         Console.WriteLine("PASS: repeated digital/analog clock rebuilds preserve WPF parents and render both modes.");
     }
+    static Delegate CreateChatSender(Type peerType, Func<object,string,Task> send)
+    {
+        var peer=System.Linq.Expressions.Expression.Parameter(peerType,"peer");
+        var text=System.Linq.Expressions.Expression.Parameter(typeof(string),"text");
+        var invoke=System.Linq.Expressions.Expression.Invoke(System.Linq.Expressions.Expression.Constant(send),System.Linq.Expressions.Expression.Convert(peer,typeof(object)),text);
+        return System.Linq.Expressions.Expression.Lambda(typeof(Func<,,>).MakeGenericType(peerType,typeof(string),typeof(Task)),invoke,peer,text).Compile();
+    }
+    static void PumpUntil(Func<bool> condition)
+    {
+        var frame=new DispatcherFrame();
+        var timer=new DispatcherTimer { Interval=TimeSpan.FromMilliseconds(10) };
+        bool timedOut=false;
+        DateTime deadline=DateTime.UtcNow.AddSeconds(5);
+        timer.Tick += (s,e) =>
+        {
+            if(condition()) frame.Continue=false;
+            else if(DateTime.UtcNow>=deadline) { timedOut=true; frame.Continue=false; }
+        };
+        timer.Start();
+        try { Dispatcher.PushFrame(frame); }
+        finally { timer.Stop(); }
+        if(timedOut) throw new TimeoutException("Timed out waiting for the dispatcher condition");
+    }
+    static void VerifyFailedChatSendKeepsDraft()
+    {
+        var chatType=app.GetType("Lazo.ChatPanel");
+        var engineType=app.GetType("Lazo.NetworkEngine");
+        var network=FormatterServices.GetUninitializedObject(engineType);
+        var chat=(FrameworkElement)Activator.CreateInstance(chatType,new object[]{network,null,null,null});
+        var peerType=app.GetType("Lazo.Peer");
+        var peer=FormatterServices.GetUninitializedObject(peerType);
+        Guid peerId=Guid.NewGuid();
+        peerType.GetField("Id").SetValue(peer,peerId);
+        peerType.GetField("Name").SetValue(peer,"Prueba aislada");
+        peerType.GetField("Address").SetValue(peer,IPAddress.Parse("203.0.113.7"));
+        var peers=(System.Collections.IList)Activator.CreateInstance(typeof(System.Collections.Generic.List<>).MakeGenericType(peerType));
+        peers.Add(peer);
+        Field(chat,"_peers",peers);
+        var composer=(TextBox)chatType.GetField("_composer",flags).GetValue(chat);
+        string original="  borrador con espacios  ";
+        Field(chat,"_open",peerId);
+        composer.Text=original;
+        string submitted=null;
+        var sendCompletion=new TaskCompletionSource<bool>();
+        Field(chat,"_sendChatAsync",CreateChatSender(peerType,(target,text) => { submitted=text; return sendCompletion.Task; }));
+        var previousContext=SynchronizationContext.Current;
+        SynchronizationContext.SetSynchronizationContext(new DispatcherSynchronizationContext(Dispatcher.CurrentDispatcher));
+        try
+        {
+            chatType.GetMethod("SendCurrent",flags).Invoke(chat,null);
+            if(composer.Text!=original) throw new Exception("Starting a chat send cleared the in-flight draft");
+            if(submitted!=original.Trim()) throw new Exception("Chat send did not preserve its existing trimmed payload");
+            if(!(bool)chatType.GetField("_sending",flags).GetValue(chat)) throw new Exception("Chat send did not remain pending");
+
+            string editedOriginal=original+" edición en curso";
+            composer.Text=editedOriginal;
+            Guid otherPeerId=Guid.NewGuid();
+            chatType.GetMethod("SelectDraft",flags).Invoke(chat,new object[]{otherPeerId});
+            string otherDraft="borrador de otra conversación";
+            composer.Text=otherDraft;
+
+            sendCompletion.SetException(new IOException("Fallo de transporte simulado"));
+            PumpUntil(() => !(bool)chatType.GetField("_sending",flags).GetValue(chat));
+            if(composer.Text!=otherDraft) throw new Exception("Failed send overwrote the selected conversation draft");
+
+            chatType.GetMethod("SelectDraft",flags).Invoke(chat,new object[]{peerId});
+            if(composer.Text!=editedOriginal) throw new Exception("Failed send or conversation switch lost the originating draft or its in-flight edit");
+            chatType.GetMethod("SelectDraft",flags).Invoke(chat,new object[]{otherPeerId});
+            if(composer.Text!=otherDraft) throw new Exception("Switching back lost the other conversation draft");
+            Console.WriteLine("PASS: failed async chat send preserves whitespace, in-flight edits, and per-conversation drafts.");
+        }
+        finally
+        {
+            SynchronizationContext.SetSynchronizationContext(previousContext);
+            foreach(string timerName in new[]{"_presence","_typingStop","_pulse"})
+                ((DispatcherTimer)chatType.GetField(timerName,flags).GetValue(chat)).Stop();
+        }
+    }
     [STAThread] static void Main(string[] args)
     {
         app=Assembly.LoadFrom(args[0]); Directory.CreateDirectory(args[1]);
         VerifyClockRebuilds(args[1]);
+        VerifyFailedChatSendKeepsDraft();
         var main=app.GetType("Lazo.MainWindow");
         var window=(Window)Activator.CreateInstance(main, new object[]{true,false,false,false,true,true,false});
         Save((FrameworkElement)window.Content, System.IO.Path.Combine(args[1],"settings.png"),342,402);
