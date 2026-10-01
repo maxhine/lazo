@@ -31,6 +31,17 @@ class VisualSmoke
         { var found=FindButton(VisualTreeHelper.GetChild(root,i),text); if(found!=null)return found; }
         return null;
     }
+    static Button FindLogicalButton(DependencyObject root, string text)
+    {
+        var button=root as Button;
+        if(button!=null && object.Equals(button.Content,text)) return button;
+        foreach(object child in LogicalTreeHelper.GetChildren(root))
+        {
+            var dependency=child as DependencyObject;
+            if(dependency!=null) { var found=FindLogicalButton(dependency,text); if(found!=null)return found; }
+        }
+        return null;
+    }
     static void VerifyClockRebuilds(string output)
     {
         var clockType=app.GetType("Lazo.EyeCareCardView");
@@ -147,11 +158,79 @@ class VisualSmoke
                 ((DispatcherTimer)chatType.GetField(timerName,flags).GetValue(chat)).Stop();
         }
     }
+    static string ThemeColor(Type themeType, string propertyName)
+    {
+        var brush=(SolidColorBrush)themeType.GetProperty(propertyName,BindingFlags.Public|BindingFlags.Static).GetValue(null,null);
+        return brush.Color.ToString();
+    }
+    static double Luminance(Color color)
+    {
+        Func<byte,double> channel=value =>
+        {
+            double normalized=value/255.0;
+            return normalized<=0.04045 ? normalized/12.92 : Math.Pow((normalized+0.055)/1.055,2.4);
+        };
+        return 0.2126*channel(color.R)+0.7152*channel(color.G)+0.0722*channel(color.B);
+    }
+    static void VerifyWarmTheme(string output)
+    {
+        var themeType=app.GetType("Lazo.Theme");
+        var themeKind=app.GetType("Lazo.ThemeKind");
+        object warm=Enum.Parse(themeKind,"Warm");
+        var serialize=themeType.GetMethod("SerializeTheme",BindingFlags.Static|BindingFlags.NonPublic);
+        var parse=themeType.GetMethod("ParseTheme",BindingFlags.Static|BindingFlags.NonPublic);
+        foreach(string[] item in new[]{new[]{"Raycast","raycast"},new[]{"Glass","glass"},new[]{"Dark","dark"},new[]{"Warm","warm"}})
+        {
+            object kind=Enum.Parse(themeKind,item[0]);
+            string token=(string)serialize.Invoke(null,new[]{kind});
+            if(token!=item[1] || !Enum.Equals(parse.Invoke(null,new object[]{token}),kind))
+                throw new Exception("Theme token did not round-trip for "+item[0]);
+        }
+        themeType.GetMethod("SetForPreview").Invoke(null,new[]{warm});
+        if(ThemeColor(themeType,"Line")!="#FFA7A29D" || ThemeColor(themeType,"Muted")!="#FF6B6763" ||
+           ThemeColor(themeType,"Primary")!="#FFC97F63" || ThemeColor(themeType,"SoftSurface")!="#FF8A8F7A" ||
+           ThemeColor(themeType,"CardSurface")!="#FFF5EFE6" ||
+           ((SolidColorBrush)themeType.GetMethod("ShellSurface").Invoke(null,null)).Color.ToString()!="#FFF5EFE6")
+            throw new Exception("Warm theme palette roles changed");
+        Color primary=((SolidColorBrush)themeType.GetProperty("Primary").GetValue(null,null)).Color;
+        Color primaryText=((SolidColorBrush)themeType.GetProperty("PrimaryText").GetValue(null,null)).Color;
+        Color ivory=((SolidColorBrush)themeType.GetMethod("ShellSurface").Invoke(null,null)).Color;
+        Color muted=((SolidColorBrush)themeType.GetProperty("Muted").GetValue(null,null)).Color;
+        double primaryContrast=(Math.Max(Luminance(primary),Luminance(primaryText))+0.05)/(Math.Min(Luminance(primary),Luminance(primaryText))+0.05);
+        double mutedContrast=(Math.Max(Luminance(ivory),Luminance(muted))+0.05)/(Math.Min(Luminance(ivory),Luminance(muted))+0.05);
+        if(primaryContrast<4.5 || mutedContrast<4.5) throw new Exception("Warm theme text contrast is below 4.5:1");
+        var text=(TextBlock)themeType.GetMethod("Text",new[]{typeof(string),typeof(double),typeof(Brush),typeof(FontWeight)})
+            .Invoke(null,new object[]{"Encabezado",20.0,Brushes.Black,FontWeights.SemiBold});
+        if(!text.FontFamily.Source.Contains("Georgia") || !text.FontFamily.Source.Contains("Segoe UI"))
+            throw new Exception("Warm theme heading font lacks the installed serif fallback");
+
+        var main=app.GetType("Lazo.MainWindow");
+        foreach(bool standard in new[]{false,true})
+        {
+            var window=(Window)Activator.CreateInstance(main,new object[]{true,false,false,standard,false,true,false});
+            app.GetType("Lazo.Identity").GetField("<Current>k__BackingField",BindingFlags.Static|BindingFlags.NonPublic).SetValue(null,"Tema de prueba");
+            app.GetType("Lazo.ProfilePhoto").GetField("Current",BindingFlags.Static|BindingFlags.Public).SetValue(null,"");
+            themeType.GetMethod("SetForPreview").Invoke(null,new[]{warm});
+            var interfaceType=app.GetType("Lazo.InterfaceKind");
+            themeType.GetMethod("SetInterface").Invoke(null,new object[]{Enum.Parse(interfaceType,standard?"Standard":"Minimal"),false});
+            main.GetMethod("BuildUi",flags).Invoke(window,null);
+            var settings=(DependencyObject)main.GetField("_settingsCard",flags).GetValue(window);
+            var warmChoice=FindLogicalButton(settings,"Cálido");
+            if(warmChoice==null) throw new Exception("Warm appearance is missing from the settings selector");
+            warmChoice.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+            if(!Enum.Equals(themeType.GetProperty("Mode").GetValue(null,null),warm))
+                throw new Exception("Warm appearance selector did not activate the new theme");
+            Save((FrameworkElement)window.Content,System.IO.Path.Combine(output,standard?"theme-warm-standard.png":"theme-warm-minimal.png"),standard?760:342,standard?500:402);
+            window.Close();
+        }
+        Console.WriteLine("PASS: warm theme tokens, palette contrast, settings selector, and Minimal/Standard previews.");
+    }
     [STAThread] static void Main(string[] args)
     {
         app=Assembly.LoadFrom(args[0]); Directory.CreateDirectory(args[1]);
         VerifyClockRebuilds(args[1]);
         VerifyFailedChatSendKeepsDraft();
+        VerifyWarmTheme(args[1]);
         var main=app.GetType("Lazo.MainWindow");
         var window=(Window)Activator.CreateInstance(main, new object[]{true,false,false,false,true,true,false});
         Save((FrameworkElement)window.Content, System.IO.Path.Combine(args[1],"settings.png"),342,402);

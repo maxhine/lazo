@@ -7,7 +7,7 @@ using System.Windows.Media.Animation;
 
 namespace Lazo
 {
-    internal enum ThemeKind { Raycast, Glass, Dark }
+    internal enum ThemeKind { Raycast, Glass, Dark, Warm }
     internal enum InterfaceKind { Minimal, Standard }
 
     internal static class Theme
@@ -16,9 +16,11 @@ namespace Lazo
         public static InterfaceKind Interface { get; private set; }
         public static bool IsGlass { get { return Mode == ThemeKind.Glass; } }
         public static bool IsDark { get { return Mode == ThemeKind.Dark; } }
+        public static bool IsWarm { get { return Mode == ThemeKind.Warm; } }
         public static bool IsMinimal { get { return Interface == InterfaceKind.Minimal; } }
         public static readonly FontFamily Mono = new FontFamily("Cascadia Code, Consolas");
         private static readonly FontFamily Sans = new FontFamily("Bahnschrift, Segoe UI");
+        private static readonly FontFamily Serif = new FontFamily("Georgia, Segoe UI");
 
         public static void Load()
         {
@@ -51,7 +53,7 @@ namespace Lazo
             {
                 string path = SettingsPath();
                 Directory.CreateDirectory(Path.GetDirectoryName(path));
-                File.WriteAllText(path, kind == ThemeKind.Glass ? "glass" : kind == ThemeKind.Dark ? "dark" : "raycast");
+                File.WriteAllText(path, SerializeTheme(kind));
             }
             catch { }
         }
@@ -66,12 +68,21 @@ namespace Lazo
             SetGlass(!IsGlass, persist);
         }
 
-        private static ThemeKind ParseTheme(string value)
+        internal static ThemeKind ParseTheme(string value)
         {
             value = value.Trim();
             if (value == "glass") return ThemeKind.Glass;
             if (value == "dark") return ThemeKind.Dark;
+            if (value == "warm") return ThemeKind.Warm;
             return ThemeKind.Raycast;
+        }
+
+        internal static string SerializeTheme(ThemeKind kind)
+        {
+            if (kind == ThemeKind.Glass) return "glass";
+            if (kind == ThemeKind.Dark) return "dark";
+            if (kind == ThemeKind.Warm) return "warm";
+            return "raycast";
         }
 
         private static string SettingsPath()
@@ -89,27 +100,28 @@ namespace Lazo
             return new SolidColorBrush((Color)ColorConverter.ConvertFromString(hex));
         }
 
-        public static Brush Ink { get { return Color(IsDark ? "#E6E6E6" : "#242424"); } }
-        public static Brush Muted { get { return Color(IsDark ? "#8E8E8E" : IsGlass ? "#646464" : "#777777"); } }
-        public static Brush Line { get { return Color(IsDark ? "#3A3A3A" : IsGlass ? "#BFFFFFFF" : "#D3D3D3"); } }
-        public static Brush CardSurface { get { return Color(IsDark ? "#242424" : IsGlass ? "#B8FFFFFF" : "#F4F4F4"); } }
-        public static Brush SoftSurface { get { return Color(IsDark ? "#2E2E2E" : IsGlass ? "#80FFFFFF" : "#DEDEDE"); } }
-        public static Brush AvatarSurface { get { return Color(IsDark ? "#2A2A2A" : IsGlass ? "#B0FFFFFF" : "#ECECEC"); } }
-        public static Brush AvatarHover { get { return Color(IsDark ? "#3C3C3C" : IsGlass ? "#E5FFFFFF" : "#CECECE"); } }
-        public static Brush Primary { get { return Color(IsDark ? "#E6E6E6" : IsGlass ? "#252525" : "#F2F2F2"); } }
-        public static Brush PrimaryText { get { return Color(IsDark ? "#161616" : IsGlass ? "#FFFFFF" : "#19191B"); } }
-        public static Brush SelectionFill { get { return Color(IsDark ? "#E6E6E6" : "#242424"); } }
-        public static Brush SelectionText { get { return IsDark ? Color("#161616") : Brushes.White; } }
-        public static Brush SegmentTrack { get { return Color(IsDark ? "#292929" : IsGlass ? "#B8FFFFFF" : "#EAEAEA"); } }
-        public static Brush SegmentActive { get { return Color(IsDark ? "#F0F0F0" : "#FFFFFF"); } }
-        public static Brush SegmentActiveText { get { return Color("#1B1B1B"); } }
-        public static Brush SegmentMutedText { get { return Color(IsDark ? "#AAAAAA" : "#959595"); } }
+        public static Brush Ink { get { return Color(IsDark ? "#E6E6E6" : IsWarm ? "#211915" : "#242424"); } }
+        public static Brush Muted { get { return Color(IsDark ? "#8E8E8E" : IsWarm ? "#6B6763" : IsGlass ? "#646464" : "#777777"); } }
+        public static Brush Line { get { return Color(IsDark ? "#3A3A3A" : IsWarm ? "#A7A29D" : IsGlass ? "#BFFFFFFF" : "#D3D3D3"); } }
+        public static Brush CardSurface { get { return Color(IsDark ? "#242424" : IsWarm ? "#F5EFE6" : IsGlass ? "#B8FFFFFF" : "#F4F4F4"); } }
+        public static Brush SoftSurface { get { return Color(IsDark ? "#2E2E2E" : IsWarm ? "#8A8F7A" : IsGlass ? "#80FFFFFF" : "#DEDEDE"); } }
+        public static Brush AvatarSurface { get { return Color(IsDark ? "#2A2A2A" : IsWarm ? "#8A8F7A" : IsGlass ? "#B0FFFFFF" : "#ECECEC"); } }
+        public static Brush AvatarHover { get { return Color(IsDark ? "#3C3C3C" : IsWarm ? "#A7A29D" : IsGlass ? "#E5FFFFFF" : "#CECECE"); } }
+        public static Brush Primary { get { return Color(IsDark ? "#E6E6E6" : IsWarm ? "#C97F63" : IsGlass ? "#252525" : "#F2F2F2"); } }
+        public static Brush PrimaryText { get { return Color(IsDark ? "#161616" : IsWarm ? "#211915" : IsGlass ? "#FFFFFF" : "#19191B"); } }
+        public static Brush SelectionFill { get { return Color(IsDark ? "#E6E6E6" : IsWarm ? "#C97F63" : "#242424"); } }
+        public static Brush SelectionText { get { return IsDark || IsWarm ? Color(IsDark ? "#161616" : "#211915") : Brushes.White; } }
+        public static Brush SegmentTrack { get { return Color(IsDark ? "#292929" : IsWarm ? "#F5EFE6" : IsGlass ? "#B8FFFFFF" : "#EAEAEA"); } }
+        public static Brush SegmentActive { get { return Color(IsDark ? "#F0F0F0" : IsWarm ? "#C97F63" : "#FFFFFF"); } }
+        public static Brush SegmentActiveText { get { return Color(IsWarm ? "#211915" : "#1B1B1B"); } }
+        public static Brush SegmentMutedText { get { return Color(IsDark ? "#AAAAAA" : IsWarm ? "#6B6763" : "#959595"); } }
         public static FontFamily Font { get { return Sans; } }
         public static CornerRadius Radius { get { return new CornerRadius(IsGlass ? 20 : 10); } }
 
         public static Brush ShellSurface()
         {
             if (IsDark) return Color("#171717");
+            if (IsWarm) return Color("#F5EFE6");
             if (!IsGlass) return Color("#F1F1F1");
             LinearGradientBrush gradient = new LinearGradientBrush();
             gradient.StartPoint = new Point(0, 0);
@@ -122,7 +134,7 @@ namespace Lazo
 
         public static TextBlock Text(string value, double size, Brush color, FontWeight weight)
         {
-            return new TextBlock { Text = value, FontFamily = Font, FontSize = size,
+            return new TextBlock { Text = value, FontFamily = IsWarm && size >= 18 ? Serif : Font, FontSize = size,
                 FontWeight = weight, Foreground = color, TextWrapping = TextWrapping.Wrap };
         }
 

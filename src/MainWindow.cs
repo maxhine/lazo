@@ -533,9 +533,9 @@ namespace Lazo
             TextBlock look = Theme.Text("Apariencia", 11, Theme.Muted);
             look.Margin = new Thickness(0, 8, 0, 0);
             panel.Children.Add(look);
-            panel.Children.Add(Choices(new[] { "Plano", "Vidrio", "Oscuro" },
-                Theme.IsDark ? 2 : Theme.IsGlass ? 1 : 0,
-                index => ChooseAppearance(index == 2 ? ThemeKind.Dark : index == 1 ? ThemeKind.Glass : ThemeKind.Raycast)));
+            panel.Children.Add(Choices(new[] { "Plano", "Vidrio", "Oscuro", "Cálido" },
+                Theme.IsWarm ? 3 : Theme.IsDark ? 2 : Theme.IsGlass ? 1 : 0,
+                index => ChooseAppearance(index == 3 ? ThemeKind.Warm : index == 2 ? ThemeKind.Dark : index == 1 ? ThemeKind.Glass : ThemeKind.Raycast)));
             TextBlock nameLabel = Theme.Text("Nombre visible", 11, Theme.Muted);
             nameLabel.Margin = new Thickness(0, 10, 0, 4);
             panel.Children.Add(nameLabel);
