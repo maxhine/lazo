@@ -43,6 +43,11 @@ namespace Lazo
         private readonly Guid _id = LoadId();
         public Guid SelfId { get { return _id; } }
         public event Action<Guid, string, string> ChatReceived;
+        public event Action<Guid, string, byte, string> ChatSignal;
+        public const byte ChatKindText = 1;
+        public const byte ChatKindTyping = 2;
+        public const byte ChatKindPresence = 3;
+        public const byte ChatKindNudge = 4;
         private readonly string _receiveDirectory;
         private readonly int _discoveryPort;
         private readonly int _transferPort;
@@ -249,6 +254,11 @@ namespace Lazo
                     {
                         byte[] magic = reader.ReadBytes(5);
                         string magicText = Encoding.ASCII.GetString(magic);
+                        if (magicText == "LAZOD")
+                        {
+                            ReadSignal(reader, writer);
+                            return;
+                        }
                         if (magicText == "LAZOC")
                         {
                             ReadChat(reader, writer);
@@ -346,9 +356,9 @@ namespace Lazo
             using (TcpClient client = new TcpClient(AddressFamily.InterNetwork))
             {
                 Task connect = client.ConnectAsync(peer.Address, peer.Port);
-                if (await Task.WhenAny(connect, Task.Delay(7000)) != connect)
+                if (await Task.WhenAny(connect, Task.Delay(7000)).ConfigureAwait(false) != connect)
                     throw new TimeoutException("El compañero no respondió.");
-                await connect;
+                await connect.ConfigureAwait(false);
                 using (NetworkStream stream = client.GetStream())
                 using (BinaryReader reader = new BinaryReader(stream, Encoding.UTF8, true))
                 using (BinaryWriter writer = new BinaryWriter(stream, Encoding.UTF8, true))
@@ -358,7 +368,7 @@ namespace Lazo
                     WriteText(writer, Label());
                     WriteText(writer, text, 4000);
                     writer.Flush();
-                    if (reader.ReadByte() != 1) throw new IOException("No se pudo entregar el mensaje.");
+                    if (await ReadByteAsync(stream, 7000).ConfigureAwait(false) != 1) throw new IOException("No se pudo entregar el mensaje.");
                 }
             }
         }
@@ -374,6 +384,62 @@ namespace Lazo
             writer.Flush();
             Action<Guid, string, string> handler = ChatReceived;
             if (handler != null) handler(id, name, body);
+        }
+
+        public async Task SendSignalAsync(Peer peer, byte kind, string body)
+        {
+            if (peer == null || peer.Address == null) return;
+            body = body ?? "";
+            if (body.Length > 2000) body = body.Substring(0, 2000);
+            if (!IsLocalSubnet(peer.Address)) return;
+            using (TcpClient client = new TcpClient(AddressFamily.InterNetwork))
+            {
+                Task connect = client.ConnectAsync(peer.Address, peer.Port);
+                if (await Task.WhenAny(connect, Task.Delay(4000)).ConfigureAwait(false) != connect) return;
+                await connect.ConfigureAwait(false);
+                using (NetworkStream stream = client.GetStream())
+                using (BinaryReader reader = new BinaryReader(stream, Encoding.UTF8, true))
+                using (BinaryWriter writer = new BinaryWriter(stream, Encoding.UTF8, true))
+                {
+                    writer.Write(Encoding.ASCII.GetBytes("LAZOD"));
+                    WriteText(writer, _id.ToString("D"), 40);
+                    WriteText(writer, Label());
+                    writer.Write(kind);
+                    WriteText(writer, body, 4000);
+                    writer.Flush();
+                    await ReadByteAsync(stream, 4000).ConfigureAwait(false);
+                }
+            }
+        }
+
+        private void ReadSignal(BinaryReader reader, BinaryWriter writer)
+        {
+            Guid id;
+            if (!Guid.TryParse(ReadText(reader, 40), out id)) return;
+            string name = CleanLabel(ReadText(reader, 80));
+            byte kind = reader.ReadByte();
+            string body = ReadText(reader, 4000);
+            if (name.Length == 0) return;
+            writer.Write((byte)1);
+            writer.Flush();
+            if (kind == ChatKindText)
+            {
+                Action<Guid, string, string> text = ChatReceived;
+                if (text != null && body.Trim().Length > 0) text(id, name, body.Trim());
+                return;
+            }
+            Action<Guid, string, byte, string> signal = ChatSignal;
+            if (signal != null) signal(id, name, kind, body ?? "");
+        }
+
+        private static async Task<byte> ReadByteAsync(Stream stream, int timeoutMs)
+        {
+            byte[] one = new byte[1];
+            Task<int> read = stream.ReadAsync(one, 0, 1);
+            if (await Task.WhenAny(read, Task.Delay(timeoutMs)).ConfigureAwait(false) != read)
+                throw new TimeoutException("El destinatario no respondió.");
+            if (read.Result != 1) throw new EndOfStreamException();
+            return one[0];
         }
 
         private static Guid LoadId()
@@ -407,16 +473,16 @@ namespace Lazo
             using (TcpClient client = new TcpClient(AddressFamily.InterNetwork))
             {
                 Task connect = client.ConnectAsync(peer.Address, peer.Port);
-                if (await Task.WhenAny(connect, Task.Delay(7000)) != connect)
+                if (await Task.WhenAny(connect, Task.Delay(7000)).ConfigureAwait(false) != connect)
                     throw new TimeoutException("El equipo no respondió.");
-                await connect;
+                await connect.ConfigureAwait(false);
                 client.ReceiveTimeout = 120000;
                 client.SendTimeout = 30000;
                 using (NetworkStream stream = client.GetStream())
                 using (BinaryReader reader = new BinaryReader(stream, Encoding.UTF8, true))
                 using (BinaryWriter writer = new BinaryWriter(stream, Encoding.UTF8, true))
                 {
-                    byte[] preview = ImagePreview(path);
+                    byte[] preview = await Task.Run(() => ImagePreview(path)).ConfigureAwait(false);
                     writer.Write(Encoding.ASCII.GetBytes("LAZO2"));
                     WriteText(writer, Label());
                     WriteText(writer, info.Name);
@@ -424,7 +490,7 @@ namespace Lazo
                     writer.Write(preview == null ? 0 : preview.Length);
                     if (preview != null && preview.Length > 0) writer.Write(preview);
                     writer.Flush();
-                    byte reply = reader.ReadByte();
+                    byte reply = await ReadByteAsync(stream, 120000).ConfigureAwait(false);
                     if (reply != 1) throw new InvalidOperationException("El destinatario rechazó la transferencia o está ocupado.");
                     byte[] buffer = new byte[64 * 1024];
                     long sent = 0;
@@ -433,9 +499,9 @@ namespace Lazo
                     using (SHA256 sha = SHA256.Create())
                     {
                         int count;
-                        while ((count = await file.ReadAsync(buffer, 0, buffer.Length)) > 0)
+                        while ((count = await file.ReadAsync(buffer, 0, buffer.Length).ConfigureAwait(false)) > 0)
                         {
-                            await stream.WriteAsync(buffer, 0, count);
+                            await stream.WriteAsync(buffer, 0, count).ConfigureAwait(false);
                             sha.TransformBlock(buffer, 0, count, null, 0);
                             sent += count;
                             if (progress != null) progress(info.Length == 0 ? 1 : (double)sent / info.Length);
@@ -443,9 +509,9 @@ namespace Lazo
                         sha.TransformFinalBlock(new byte[0], 0, 0);
                         hash = sha.Hash;
                     }
-                    await stream.WriteAsync(hash, 0, hash.Length);
-                    await stream.FlushAsync();
-                    if (reader.ReadByte() != 1) throw new IOException("El destinatario no pudo guardar el archivo.");
+                    await stream.WriteAsync(hash, 0, hash.Length).ConfigureAwait(false);
+                    await stream.FlushAsync().ConfigureAwait(false);
+                    if (await ReadByteAsync(stream, 120000).ConfigureAwait(false) != 1) throw new IOException("El destinatario no pudo guardar el archivo.");
                 }
             }
         }

@@ -59,8 +59,10 @@ namespace Lazo
         private int _eyeCareFitPass;
         private Border _eyeCareCard;
         private EyeCareCardView _eyeCareView;
+        private bool _chatOpen;
+        private Border _chatCard;
+        private ChatPanel _chatPanel;
         private Border _chatDot;
-        private ChatWindow _chat;
         private bool _holding;
         private DateTime _shownUtc;
         private System.Windows.Forms.Screen _launcherScreen = System.Windows.Forms.Screen.FromPoint(System.Windows.Forms.Cursor.Position);
@@ -72,6 +74,7 @@ namespace Lazo
             _preview = preview;
             Theme.Load();
             Identity.Load();
+            ChatPrefs.Load();
             ProfilePhoto.Load();
             Updater.Load();
             if (previewGlass) Theme.SetForPreview(ThemeKind.Glass);
@@ -152,6 +155,7 @@ namespace Lazo
                 _network.ReceiveProgress += OnReceiveProgress;
                 _network.ReceiveFinished += OnReceiveFinished;
                 _network.ChatReceived += OnChatReceived;
+                _network.ChatSignal += OnChatSignal;
                 Updater.CheckInBackground(text => Dispatcher.BeginInvoke((Action)(() => SetStatus(text))),
                     () => Dispatcher.BeginInvoke((Action)(() => { _exiting = true; Application.Current.Shutdown(); })));
                 try { _network.Start(); }
@@ -227,7 +231,7 @@ namespace Lazo
             Button gear = IconButton("\uE713", () =>
             {
                 _settingsOpen = !_settingsOpen;
-                if (_settingsOpen) { _historyOpen = false; _eyeCareOpen = false; }
+                if (_settingsOpen) { _historyOpen = false; _eyeCareOpen = false; _chatOpen = false; }
                 SyncChrome();
             }, true);
             gear.HorizontalAlignment = HorizontalAlignment.Right;
@@ -242,14 +246,19 @@ namespace Lazo
             Button history = IconButton("\uE81C", () =>
             {
                 _historyOpen = !_historyOpen;
-                if (_historyOpen) { _settingsOpen = false; _eyeCareOpen = false; }
+                if (_historyOpen) { _settingsOpen = false; _eyeCareOpen = false; _chatOpen = false; }
                 SyncChrome();
             }, true);
             history.HorizontalAlignment = HorizontalAlignment.Right;
             history.VerticalAlignment = VerticalAlignment.Top;
             history.Margin = new Thickness(0, 6, 72, 0);
             history.ToolTip = "Historial";
-            Button chat = IconButton("\uE8F2", OpenChat, true);
+            Button chat = IconButton("\uE8F2", () =>
+            {
+                _chatOpen = !_chatOpen;
+                if (_chatOpen) { _settingsOpen = false; _historyOpen = false; _eyeCareOpen = false; }
+                SyncChrome();
+            }, true);
             chat.HorizontalAlignment = HorizontalAlignment.Right;
             chat.VerticalAlignment = VerticalAlignment.Top;
             chat.Margin = new Thickness(0, 6, 104, 0);
@@ -281,7 +290,7 @@ namespace Lazo
             Button eyeCare = IconButton("\uE7B3", () =>
             {
                 _eyeCareOpen = !_eyeCareOpen;
-                if (_eyeCareOpen) { _settingsOpen = false; _historyOpen = false; }
+                if (_eyeCareOpen) { _settingsOpen = false; _historyOpen = false; _chatOpen = false; }
                 SyncChrome();
             }, true);
             eyeCare.HorizontalAlignment = HorizontalAlignment.Right;
@@ -294,6 +303,10 @@ namespace Lazo
             _eyeCareCard.Visibility = _eyeCareOpen ? Visibility.Visible : Visibility.Collapsed;
             _eyeCareCard.MouseLeftButtonDown += (s, e) => e.Handled = true;
             overlay.Children.Add(_eyeCareCard);
+            _chatCard = ChatCard();
+            _chatCard.Visibility = _chatOpen ? Visibility.Visible : Visibility.Collapsed;
+            _chatCard.MouseLeftButtonDown += (s, e) => e.Handled = true;
+            overlay.Children.Add(_chatCard);
             _progressScale = new ScaleTransform(0, 1);
             Border progress = new Border
             {
@@ -592,6 +605,11 @@ namespace Lazo
             updates.Checked += (s, e) => { Updater.Set(true, !_preview); if (!_preview) Updater.CheckInBackground(text => Dispatcher.BeginInvoke((Action)(() => SetStatus(text))), () => Dispatcher.BeginInvoke((Action)(() => { _exiting = true; Application.Current.Shutdown(); }))); };
             updates.Unchecked += (s, e) => Updater.Set(false, !_preview);
             panel.Children.Add(updates);
+            TextBlock chatAlerts = Theme.Text("Avisos de chat", 11, Theme.Muted);
+            chatAlerts.Margin = new Thickness(0, 10, 0, 0);
+            panel.Children.Add(chatAlerts);
+            panel.Children.Add(Segment("Bandeja", "Notificación", !ChatPrefs.UseBalloon,
+                () => ChatPrefs.Set(false), () => ChatPrefs.Set(true)));
             Button checkUpdates = Theme.Button("Verificar actualizaciones", false);
             checkUpdates.HorizontalAlignment = HorizontalAlignment.Left;
             checkUpdates.Margin = new Thickness(0, 8, 0, 0);
@@ -770,6 +788,7 @@ namespace Lazo
             _eyeCareOpen = true;
             _settingsOpen = false;
             _historyOpen = false;
+            _chatOpen = false;
             SyncChrome();
         }
 
@@ -786,6 +805,7 @@ namespace Lazo
             _settingsOpen = false;
             _historyOpen = false;
             _eyeCareOpen = false;
+            _chatOpen = false;
             _manualFiles.Clear();
             _results.Clear();
             _selectedRow = 0;
@@ -824,6 +844,11 @@ namespace Lazo
             {
                 if (_eyeCareOpen && _eyeCareView != null) _eyeCareView.UpdateUi();
                 _eyeCareCard.Visibility = _eyeCareOpen ? Visibility.Visible : Visibility.Collapsed;
+            }
+            if (_chatCard != null)
+            {
+                _chatCard.Visibility = _chatOpen ? Visibility.Visible : Visibility.Collapsed;
+                if (_chatPanel != null) _chatPanel.SetActive(_chatOpen);
             }
             if (_resultsRow != null && Theme.IsMinimal)
                 _resultsRow.Height = HasResults() ? new GridLength(1, GridUnitType.Star) : new GridLength(0);
@@ -877,7 +902,9 @@ if (_settingsOpen)
                 width = 700;
                 height = 480;
             }
-            if (_eyeCareOpen)
+            if (_chatOpen)
+                FitChat(ref width, ref height);
+            else if (_eyeCareOpen)
             {
                 FitEyeCare(ref width, ref height);
                 if (_eyeCareFitPass < 1)
@@ -899,6 +926,19 @@ if (_settingsOpen)
                 BeginAnimation(WidthProperty, Theme.Animation(Width, width, 180));
             if (Math.Abs(Height - height) > 1)
                 BeginAnimation(HeightProperty, Theme.Animation(Height, height, 180));
+        }
+
+        private void FitChat(ref double width, ref double height)
+        {
+            double scale = 1;
+            PresentationSource source = PresentationSource.FromVisual(this);
+            if (source != null && source.CompositionTarget != null)
+                scale = source.CompositionTarget.TransformToDevice.M22;
+            if (scale < 0.5) scale = 1;
+            double maxHeight = Math.Min(MaxHeight, (_launcherScreen.WorkingArea.Height / scale) - 28);
+            double maxWidth = Math.Min(MaxWidth, (_launcherScreen.WorkingArea.Width / scale) - 28);
+            width = Math.Min(maxWidth, 640);
+            height = Math.Min(maxHeight, 520);
         }
 
         private void FitEyeCare(ref double width, ref double height)
@@ -1462,20 +1502,74 @@ if (_settingsOpen)
         private void OpenChat()
         {
             if (_preview) return;
-            if (_chat != null && _chat.IsVisible)
+            if (!IsVisible) ShowAnimated();
+            _chatOpen = true;
+            _settingsOpen = false;
+            _historyOpen = false;
+            _eyeCareOpen = false;
+            SyncChrome();
+        }
+
+        private void CloseChat()
+        {
+            if (!_chatOpen) return;
+            _chatOpen = false;
+            SyncChrome();
+        }
+
+        private Border ChatCard()
+        {
+            _chatPanel = new ChatPanel(_network, RefreshChatDot, CloseChat, Shake);
+            _chatPanel.SendFiles += SendFilesFromChat;
+            return new Border
             {
-                _chat.Activate();
-                return;
-            }
-            _chat = new ChatWindow(_network, RefreshChatDot);
-            _chat.Closed += (s, e) => { _chat = null; RefreshChatDot(); };
-            _chat.Show();
-            RefreshChatDot();
+                Background = Theme.CardSurface,
+                BorderBrush = Theme.Line,
+                BorderThickness = new Thickness(1),
+                CornerRadius = new CornerRadius(10),
+                Margin = new Thickness(8, 40, 8, 8),
+                HorizontalAlignment = HorizontalAlignment.Stretch,
+                VerticalAlignment = VerticalAlignment.Stretch,
+                Child = _chatPanel
+            };
+        }
+
+        private void SendFilesFromChat(Peer peer, string[] paths)
+        {
+            if (peer == null || paths == null) return;
+            SendFiles(paths, peer);
+        }
+
+        private void Shake()
+        {
+            if (!IsVisible) ShowAnimated();
+            double origin = Left;
+            int step = 0;
+            DispatcherTimer timer = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(28) };
+            timer.Tick += (s, e) =>
+            {
+                step++;
+                Left = origin + (step % 2 == 0 ? -10 : 10);
+                if (step >= 8)
+                {
+                    timer.Stop();
+                    Left = origin;
+                }
+            };
+            try { System.Media.SystemSounds.Exclamation.Play(); } catch { }
+            timer.Start();
         }
 
         private void RefreshChatDot()
         {
-            if (_chatDot != null) _chatDot.Visibility = ChatStore.UnreadTotal() > 0 ? Visibility.Visible : Visibility.Collapsed;
+            int unread = ChatStore.UnreadTotal();
+            if (_chatDot != null) _chatDot.Visibility = unread > 0 ? Visibility.Visible : Visibility.Collapsed;
+            if (_tray != null)
+            {
+                string label = unread > 0 ? "Lazo · " + unread + (unread == 1 ? " mensaje" : " mensajes") : "Lazo · transferencia local";
+                if (label.Length > 63) label = label.Substring(0, 63);
+                try { _tray.Text = label; } catch { }
+            }
         }
 
         private void OnChatReceived(Guid id, string name, string text)
@@ -1483,9 +1577,35 @@ if (_settingsOpen)
             Dispatcher.BeginInvoke((Action)(() =>
             {
                 ChatStore.Append(id, name, false, text);
-                if (_chat != null) _chat.Incoming(id, name, text);
+                if (_chatPanel != null) _chatPanel.Incoming(id, name, text);
+                if (_chatPanel == null || !_chatPanel.Viewing(id)) NotifyChat(name, text);
                 RefreshChatDot();
             }));
+        }
+
+        private void OnChatSignal(Guid id, string name, byte kind, string body)
+        {
+            Dispatcher.BeginInvoke((Action)(() =>
+            {
+                if (kind == NetworkEngine.ChatKindNudge)
+                {
+                    ChatStore.AppendNudge(id, name, false);
+                    if (_chatPanel != null) _chatPanel.Incoming(id, name, "Zumbido");
+                    Shake();
+                    if (_chatPanel == null || !_chatPanel.Viewing(id)) NotifyChat(name, "Zumbido");
+                    RefreshChatDot();
+                    return;
+                }
+                if (_chatPanel != null) _chatPanel.NoteSignal(id, name, kind, body);
+            }));
+        }
+
+        private void NotifyChat(string name, string text)
+        {
+            RefreshChatDot();
+            if (!ChatPrefs.UseBalloon || _tray == null) return;
+            try { _tray.ShowBalloonTip(4000, name, text, System.Windows.Forms.ToolTipIcon.Info); }
+            catch { }
         }
 
         private void OnPeersChanged(List<Peer> peers)
@@ -1515,13 +1635,15 @@ if (_settingsOpen)
             UpdateSendStatus(Path.GetFileName(path), 0);
             try
             {
-                await _network.SendAsync(peer, path, value => Dispatcher.BeginInvoke((Action)(() =>
+                await Task.Run(() => _network.SendAsync(peer, path, value => Dispatcher.BeginInvoke((Action)(() =>
                 {
                     lock (_sendProgress) _sendProgress[key] = value;
                     UpdateSendStatus(Path.GetFileName(path), value);
-                })));
+                }))));
                 UpdateSendStatus(Path.GetFileName(path), 1);
                 TransferLog.Add("out", peer.Name, Path.GetFileName(path));
+                ChatStore.AppendFile(peer.Id, peer.Name, true, path);
+                if (_chatPanel != null) _chatPanel.RefreshOpen();
             }
             catch (Exception ex) { SetStatus(ex.Message); }
             finally
@@ -1592,7 +1714,18 @@ if (_settingsOpen)
             {
                 ReceiveWindow window = Inbox(id);
                 if (window != null) window.FinishFile(id, message, path);
-                if (!string.IsNullOrEmpty(path) && window != null) TransferLog.Add("in", window.PeerName, Path.GetFileName(path));
+                if (!string.IsNullOrEmpty(path) && window != null)
+                {
+                    TransferLog.Add("in", window.PeerName, Path.GetFileName(path));
+                    Peer peer = _peers.FirstOrDefault(item => item.Address != null && window.PeerAddress != null && item.Address.Equals(window.PeerAddress));
+                    if (peer == null) peer = _peers.FirstOrDefault(item => string.Equals(item.Name, window.PeerName, StringComparison.OrdinalIgnoreCase));
+                    if (peer != null)
+                    {
+                        ChatStore.AppendFile(peer.Id, peer.Name, false, path);
+                        if (_chatPanel != null) _chatPanel.RefreshOpen();
+                        if (_chatPanel == null || !_chatPanel.Viewing(peer.Id)) NotifyChat(peer.Name, "Archivo · " + Path.GetFileName(path));
+                    }
+                }
             }));
         }
 
@@ -1600,9 +1733,17 @@ if (_settingsOpen)
         {
             if (e.Key == Key.Escape)
             {
+                if (_chatOpen)
+                {
+                    _chatOpen = false;
+                    SyncChrome();
+                    e.Handled = true;
+                    return;
+                }
                 if (_eyeCareOpen)
                 {
-                    _eyeCareOpen = false;
+            _eyeCareOpen = false;
+            _chatOpen = false;
                     SyncChrome();
                     e.Handled = true;
                     return;
@@ -1710,6 +1851,7 @@ if (_settingsOpen)
             _settingsOpen = false;
             _historyOpen = false;
             _eyeCareOpen = false;
+            _chatOpen = false;
             _picked = null;
             _manualFiles.Clear();
             _results.Clear();
@@ -1739,6 +1881,7 @@ if (_settingsOpen)
             _tray.DoubleClick += (s, e) => Dispatcher.BeginInvoke((Action)ShowAnimated);
             System.Windows.Forms.ContextMenuStrip menu = new System.Windows.Forms.ContextMenuStrip();
             menu.Items.Add("Abrir Lazo", null, (s, e) => Dispatcher.BeginInvoke((Action)ShowAnimated));
+            menu.Items.Add("Chat", null, (s, e) => Dispatcher.BeginInvoke((Action)OpenChat));
             menu.Items.Add("Descanso Visual", null, (s, e) => Dispatcher.BeginInvoke((Action)(() => { ShowAnimated(); OpenEyeCare(); })));
             menu.Items.Add(new System.Windows.Forms.ToolStripSeparator());
             menu.Items.Add("Micro-descanso ahora (20s)", null, (s, e) => Dispatcher.BeginInvoke((Action)(() => EyeCareService.Instance.TriggerMicroBreak())));
@@ -1764,6 +1907,12 @@ if (_settingsOpen)
             if (_eyeCareOpen)
             {
                 _eyeCareOpen = false;
+                SyncChrome();
+                return;
+            }
+            if (_chatOpen)
+            {
+                _chatOpen = false;
                 SyncChrome();
                 return;
             }

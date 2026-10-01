@@ -10,6 +10,8 @@ namespace Lazo
         public DateTime When;
         public bool Mine;
         public string Text;
+        public string FilePath;
+        public bool Nudge;
     }
 
     internal sealed class ChatThread
@@ -41,7 +43,7 @@ namespace Lazo
                 }
                 thread.Name = string.IsNullOrWhiteSpace(name) ? thread.Name : Clean(name);
                 if (string.IsNullOrWhiteSpace(thread.Name)) thread.Name = "Compañero";
-                thread.Preview = text.Length > 42 ? text.Substring(0, 42) + "…" : text;
+                thread.Preview = PreviewOf(text);
                 thread.When = DateTime.Now;
                 if (!mine) thread.Unread++;
                 SaveIndex(threads);
@@ -86,7 +88,8 @@ namespace Lazo
                     string[] parts = row.Split(new[] { '|' }, 3);
                     DateTime when;
                     if (parts.Length < 3 || !DateTime.TryParse(parts[0], out when)) continue;
-                    lines.Add(new ChatLine { When = when, Mine = parts[1] == "out", Text = parts[2] });
+                    ChatLine line = ParseLine(when, parts[1] == "out", parts[2]);
+                    lines.Add(line);
                 }
             }
             catch { }
@@ -118,6 +121,36 @@ namespace Lazo
                 item.Id + "|" + Clean(item.Name) + "|" + Clean(item.Preview) + "|" + item.Unread + "|" + item.When.ToString("yyyy-MM-dd HH:mm")));
         }
 
+        public static void AppendFile(Guid id, string name, bool mine, string path)
+        {
+            if (string.IsNullOrWhiteSpace(path)) return;
+            Append(id, name, mine, "FILE\t" + path.Replace("\t", " "));
+        }
+
+        public static void AppendNudge(Guid id, string name, bool mine)
+        {
+            Append(id, name, mine, "NUDGE");
+        }
+
+        private static string PreviewOf(string text)
+        {
+            if (text.StartsWith("FILE\t")) return "Archivo · " + Path.GetFileName(text.Substring(5));
+            if (text == "NUDGE") return "Zumbido";
+            return text.Length > 42 ? text.Substring(0, 42) + "…" : text;
+        }
+
+        private static ChatLine ParseLine(DateTime when, bool mine, string text)
+        {
+            ChatLine line = new ChatLine { When = when, Mine = mine, Text = text };
+            if (text == "NUDGE") { line.Nudge = true; line.Text = "Zumbido"; return line; }
+            if (text.StartsWith("FILE\t"))
+            {
+                line.FilePath = text.Substring(5);
+                line.Text = Path.GetFileName(line.FilePath);
+            }
+            return line;
+        }
+
         private static string Clean(string value)
         {
             if (string.IsNullOrWhiteSpace(value)) return "";
@@ -137,6 +170,33 @@ namespace Lazo
         private static string Folder()
         {
             return Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "Lazo", "chat");
+        }
+    }
+
+    internal static class ChatPrefs
+    {
+        public static bool UseBalloon { get; private set; }
+
+        public static void Load()
+        {
+            try
+            {
+                string path = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "Lazo", "chat-notify.txt");
+                UseBalloon = File.Exists(path) && File.ReadAllText(path).Trim() == "balloon";
+            }
+            catch { UseBalloon = false; }
+        }
+
+        public static void Set(bool balloon)
+        {
+            UseBalloon = balloon;
+            try
+            {
+                string path = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "Lazo", "chat-notify.txt");
+                Directory.CreateDirectory(Path.GetDirectoryName(path));
+                File.WriteAllText(path, balloon ? "balloon" : "tray");
+            }
+            catch { }
         }
     }
 }

@@ -6,5 +6,5 @@ $csc = if (Test-Path -LiteralPath 'C:\Windows\Microsoft.NET\Framework64\v4.0.303
 $test = Join-Path $project 'bin\InstallerSmoke.exe'
 & $csc /nologo /target:exe /utf8output ("/out:" + $test) (Join-Path $project 'tests\InstallerSmoke.cs')
 if ($LASTEXITCODE -ne 0) { throw 'Falló la compilación de la prueba del instalador.' }
-& $test (Join-Path $project 'dist\Lazo-Setup-0.4.13.exe') (Join-Path $project 'bin\Lazo.exe')
+& $test (Join-Path $project 'dist\Lazo-Setup-0.4.14.exe') (Join-Path $project 'bin\Lazo.exe')
 if ($LASTEXITCODE -ne 0) { throw 'Falló la prueba del instalador.' }

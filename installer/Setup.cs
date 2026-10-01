@@ -10,8 +10,8 @@ using Microsoft.Win32;
 
 [assembly: AssemblyTitle("Lazo Installer")]
 [assembly: AssemblyCompany("Jhon Andrew")]
-[assembly: AssemblyVersion("0.4.13.0")]
-[assembly: AssemblyFileVersion("0.4.13.0")]
+[assembly: AssemblyVersion("0.4.14.0")]
+[assembly: AssemblyFileVersion("0.4.14.0")]
 
 namespace LazoInstaller
 {
@@ -68,7 +68,7 @@ namespace LazoInstaller
                 Text = "TRANSFERENCIA\nLOCAL", ForeColor = Color.FromArgb(175, 175, 175),
                 Font = new Font("Consolas", 8F) });
             rail.Controls.Add(new Label { Left = 25, Top = 300, Width = 120, Height = 20,
-                Text = "VERSIÓN 0.4.13", ForeColor = Color.FromArgb(175, 175, 175),
+                Text = "VERSIÓN 0.4.14", ForeColor = Color.FromArgb(175, 175, 175),
                 Font = new Font("Consolas", 8F) });
 
             Controls.Add(new Label { Left = 193, Top = 31, Width = 355, Height = 35,
@@ -231,7 +231,7 @@ namespace LazoInstaller
                 {
                     entry.SetValue("DisplayName", "Lazo");
                     entry.SetValue("Publisher", "Jhon Andrew");
-                    entry.SetValue("DisplayVersion", "0.4.13");
+                    entry.SetValue("DisplayVersion", "0.4.14");
                     entry.SetValue("InstallLocation", folder);
                     entry.SetValue("DisplayIcon", app);
                     entry.SetValue("UninstallString", "\"" + uninstall + "\" /uninstall");
