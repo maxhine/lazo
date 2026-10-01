@@ -69,4 +69,5 @@ T03/T04 quedan pendientes fuera de esta entrega. Commit T02 real: `3fd9539`; rev
 - Archivos/numstat T05: `src/Theme.cs` +31/-19; `src/MainWindow.cs` +3/-3; `tests/VisualSmoke.cs` +79/-0. No se tocaron `EyeCare.cs` ni la distribución de paneles. `git diff --check`: PASS.
 - Límite de rollback: retirar únicamente el enum, parser/serializador, paleta y tipografía warm de `src/Theme.cs`, la opción Cálido en `src/MainWindow.cs`, `VerifyWarmTheme`/`FindLogicalButton` en `tests/VisualSmoke.cs` y esta evidencia; conservar T01/T02.
 - Spot-check funcional independiente: `test-visual.ps1` PASS (seis comprobaciones); renders Minimal/Standard legibles y parser/serializador usados por persistencia confirmados. Sin escritura de preferencias del usuario ni revisión externa.
-- Commit T05: pendiente del orquestador; sin publicación ni instalación. Comprobaciones locales completas; revisión externa no disponible ni autorizada para esta entrega.
+- Commit T05: `57db4a2` — `feat(theme): add warm concrete and terracotta appearance`. Sin publicación ni instalación. Comprobaciones locales completas; revisión externa no disponible ni autorizada para esta entrega.
+- Entrega local: `bin/Lazo.exe`, con T01/T02 y tema Cálido; activar en Ajustes → Apariencia → Cálido. T03/T04 permanecen pendientes fuera del alcance inmediato.
