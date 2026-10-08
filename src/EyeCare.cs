@@ -465,7 +465,7 @@ namespace Lazo
             DrawHand(dc, center, hourAngle, radius * 0.48, 2.4, Theme.Ink);
             DrawHand(dc, center, minAngle, radius * 0.70, 1.6, Theme.Ink);
 
-            Brush secBrush = Theme.IsDark ? Theme.Color("#D0D0D0") : Theme.Color("#444444");
+            Brush secBrush = Theme.IsDarkSurface ? Theme.Color("#D0D0D0") : Theme.Color("#444444");
             DrawHand(dc, center, secAngle, radius * 0.82, 1.0, secBrush);
 
             dc.DrawEllipse(Theme.Ink, null, center, 3.0, 3.0);
@@ -576,8 +576,8 @@ namespace Lazo
             topRow.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
             topRow.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(24) });
 
-            TextBlock icon = Theme.Text(type == EyeCareBreakType.MicroBreak ? "\uE7B3" : "\uE7BE", 16, Theme.Ink, FontWeights.SemiBold);
-            icon.FontFamily = new FontFamily("Segoe MDL2 Assets");
+            System.Windows.Shapes.Path icon = Icons.Make(type == EyeCareBreakType.MicroBreak ? "eye" : "user", 18, Theme.Ink);
+            icon.HorizontalAlignment = HorizontalAlignment.Left;
             icon.VerticalAlignment = VerticalAlignment.Center;
             topRow.Children.Add(icon);
 
@@ -781,8 +781,7 @@ namespace Lazo
             header.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
 
             StackPanel titleRow = new StackPanel { Orientation = Orientation.Horizontal, VerticalAlignment = VerticalAlignment.Center };
-            TextBlock eyeIcon = Theme.Text("\uE7B3", 14, Theme.Ink, FontWeights.SemiBold);
-            eyeIcon.FontFamily = new FontFamily("Segoe MDL2 Assets");
+            System.Windows.Shapes.Path eyeIcon = Icons.Make("eye", 17, Theme.Ink);
             eyeIcon.Margin = new Thickness(0, 0, 6, 0);
             eyeIcon.VerticalAlignment = VerticalAlignment.Center;
             titleRow.Children.Add(eyeIcon);

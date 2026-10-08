@@ -24,6 +24,13 @@ namespace Lazo
         [STAThread]
         private static void Main(string[] args)
         {
+            if (Array.IndexOf(args, "--preview-wine") >= 0) Theme.Override = ThemeKind.Wine;
+            if (Array.IndexOf(args, "--preview-noglass") >= 0) Theme.NoGlassOverride = true;
+            foreach (string arg in args)
+                if (arg.StartsWith("--preview-theme=")) Theme.Override = Theme.ParseTheme(arg.Substring(16));
+            foreach (string arg in args)
+                if (arg.StartsWith("--preview-panel=")) MainWindow.PreviewPanel = arg.Substring(16);
+            if (Array.IndexOf(args, "--preview-share") >= 0) MainWindow.PreviewPanel = "share";
             if (Array.IndexOf(args, "--preview-eyecare-alert") >= 0)
             {
                 Theme.Load();
@@ -60,6 +67,7 @@ namespace Lazo
                     Array.IndexOf(args, "--preview-empty") >= 0));
                 return;
             }
+            if (Startup.ShouldExitAtLogon(args)) return;
             bool first;
             using (Mutex instance = new Mutex(true, "Local\\Lazo.Transfer.App", out first))
             {

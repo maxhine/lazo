@@ -1,4 +1,4 @@
-param([switch]$Preview,[switch]$SkipBuild,[string]$BinDirectory = '')
+param([switch]$Preview,[switch]$SkipBuild,[string]$BinDirectory = '',[string]$Name = '')
 
 $ErrorActionPreference = 'Stop'
 $project = Split-Path -Parent $PSScriptRoot
@@ -12,7 +12,7 @@ $csc = if (Test-Path -LiteralPath 'C:\Windows\Microsoft.NET\Framework64\v4.0.303
 } else { 'C:\Windows\Microsoft.NET\Framework\v4.0.30319\csc.exe' }
 $dist = Join-Path $project 'dist'
 New-Item -ItemType Directory -Force -Path $dist | Out-Null
-$name = if ($Preview) { 'Lazo-Setup-Preview.exe' } else { 'Lazo-Setup-0.4.15.exe' }
+$name = if ($Name) { $Name } elseif ($Preview) { 'Lazo-Setup-Preview.exe' } else { 'Lazo-Setup-0.4.16.exe' }
 $target = Join-Path $dist $name
 $application = Join-Path $bin 'Lazo.exe'
 if (!(Test-Path -LiteralPath $application)) { throw 'No existe el binario de Lazo; compila antes de crear el instalador.' }

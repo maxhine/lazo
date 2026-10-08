@@ -24,6 +24,20 @@ namespace Lazo
         public override string ToString() { return Name + "  /  " + Address; }
     }
 
+    internal sealed class ScreenInvite
+    {
+        public Guid Id;
+        public string Sender;
+        public string Source;
+        public IPAddress Address;
+    }
+
+    /// <summary>Destino de una transmisión de pantalla aceptada; lee hasta que termina.</summary>
+    internal interface IScreenSink
+    {
+        void Run(Stream stream);
+    }
+
     internal sealed class Offer
     {
         public Guid Id;
@@ -264,6 +278,11 @@ namespace Lazo
                             ReadChat(reader, writer);
                             return;
                         }
+                        if (magicText == "LAZOS")
+                        {
+                            await ReadScreen(client, stream, reader, writer, address).ConfigureAwait(false);
+                            return;
+                        }
                         if (magicText != "LAZO2")
                         {
                             if (magicText == "LAZO1") { writer.Write((byte)0); writer.Flush(); }
@@ -431,6 +450,65 @@ namespace Lazo
             Action<Guid, string, byte, string> signal = ChatSignal;
             if (signal != null) signal(id, name, kind, body ?? "");
         }
+
+        /// <summary>
+        /// Invita a un compañero a ver la pantalla. Devuelve la conexión abierta si acepta;
+        /// a partir de ahí el emisor escribe fotogramas en ella.
+        /// </summary>
+        public async Task<TcpClient> OpenScreenAsync(Peer peer, string source)
+        {
+            if (peer == null || peer.Address == null) throw new InvalidOperationException("El compañero no está conectado.");
+            if (!IsLocalSubnet(peer.Address)) throw new InvalidOperationException("El compañero ya no está en la misma subred.");
+            TcpClient client = new TcpClient(AddressFamily.InterNetwork);
+            try
+            {
+                Task connect = client.ConnectAsync(peer.Address, peer.Port);
+                if (await Task.WhenAny(connect, Task.Delay(7000)).ConfigureAwait(false) != connect)
+                    throw new TimeoutException("El compañero no respondió.");
+                await connect.ConfigureAwait(false);
+                client.NoDelay = true;
+                client.SendBufferSize = 1 << 20;
+                client.SendTimeout = 6000;
+                NetworkStream stream = client.GetStream();
+                using (BinaryWriter writer = new BinaryWriter(stream, Encoding.UTF8, true))
+                {
+                    writer.Write(Encoding.ASCII.GetBytes("LAZOS"));
+                    WriteText(writer, _id.ToString("D"), 40);
+                    WriteText(writer, Label());
+                    WriteText(writer, source ?? "", 400);
+                    writer.Flush();
+                }
+                if (await ReadByteAsync(stream, 65000).ConfigureAwait(false) != 1)
+                    throw new InvalidOperationException(peer.Name + " no aceptó ver la pantalla.");
+                return client;
+            }
+            catch
+            {
+                client.Close();
+                throw;
+            }
+        }
+
+        private async Task ReadScreen(TcpClient client, NetworkStream stream, BinaryReader reader, BinaryWriter writer, IPAddress address)
+        {
+            Guid id;
+            if (!Guid.TryParse(ReadText(reader, 40), out id)) return;
+            string name = CleanLabel(ReadText(reader, 80));
+            string source = CleanLabel(ReadText(reader, 400));
+            if (name.Length == 0) return;
+            Func<ScreenInvite, Task<IScreenSink>> handler = ScreenOffered;
+            IScreenSink viewer = handler == null ? null :
+                await handler(new ScreenInvite { Id = id, Sender = name, Source = source, Address = address }).ConfigureAwait(false);
+            if (viewer == null) { writer.Write((byte)0); writer.Flush(); return; }
+            writer.Write((byte)1);
+            writer.Flush();
+            client.NoDelay = true;
+            client.ReceiveBufferSize = 1 << 20;
+            client.ReceiveTimeout = 15000;
+            viewer.Run(stream);
+        }
+
+        public event Func<ScreenInvite, Task<IScreenSink>> ScreenOffered;
 
         private static async Task<byte> ReadByteAsync(Stream stream, int timeoutMs)
         {
@@ -618,6 +696,11 @@ namespace Lazo
             string result = Path.Combine(folder, name);
             for (int i = 1; File.Exists(result); i++) result = Path.Combine(folder, stem + " (" + i + ")" + ext);
             return result;
+        }
+
+        internal static string DefaultReceiveDirectory()
+        {
+            return Path.Combine(GetDownloadsPath(), "Lazo");
         }
 
         private static string GetDownloadsPath()

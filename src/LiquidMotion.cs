@@ -19,6 +19,7 @@ namespace Lazo
         private Action _completed;
         private double _progress, _from, _target, _duration, _width, _height, _floor;
         public void Enter(Border shell, Path shape) { Start(shell, shape, true, null); }
+        public void Enter(Border shell, Path shape, Action completed) { Start(shell, shape, true, completed); }
         public void Leave(Border shell, Path shape, Action completed) { Start(shell, shape, false, completed); }
 
         private void Start(Border shell, Path shape, bool entering, Action completed)
@@ -51,11 +52,13 @@ namespace Lazo
                 Content = canvas, IsHitTestVisible = false };
             var water = new LinearGradientBrush();
             water.StartPoint = new Point(.15, 0); water.EndPoint = new Point(.8, 1);
-            water.GradientStops.Add(new GradientStop(Color.FromArgb(235, 230, 230, 230), 0));
-            water.GradientStops.Add(new GradientStop(Color.FromArgb(185, 95, 95, 95), .18));
-            water.GradientStops.Add(new GradientStop(Color.FromArgb(205, 30, 30, 30), .48));
-            water.GradientStops.Add(new GradientStop(Color.FromArgb(205, 135, 135, 135), .83));
-            water.GradientStops.Add(new GradientStop(Color.FromArgb(240, 240, 240, 240), 1));
+            // El agua toma los colores del tema y el acento, con reflejos claros en los bordes.
+            Color deep = Theme.Parse(Theme.P.Shell2), mid = Theme.Parse(Theme.P.Shell0), accent = Theme.AccentColor;
+            water.GradientStops.Add(new GradientStop(Color.FromArgb(235, 245, 245, 247), 0));
+            water.GradientStops.Add(new GradientStop(Color.FromArgb(200, mid.R, mid.G, mid.B), .18));
+            water.GradientStops.Add(new GradientStop(Color.FromArgb(215, deep.R, deep.G, deep.B), .48));
+            water.GradientStops.Add(new GradientStop(Color.FromArgb(205, accent.R, accent.G, accent.B), .83));
+            water.GradientStops.Add(new GradientStop(Color.FromArgb(240, 245, 245, 247), 1));
             water.Freeze();
             _neck = new Path { Fill = water };
             _body = new Path { Fill = water, Stroke = new SolidColorBrush(Color.FromArgb(150, 240, 240, 240)), StrokeThickness = .8 };
@@ -146,6 +149,8 @@ namespace Lazo
         { return new Point(cx+rx*Math.Cos(a)*(.85+.15*Math.Sin(a)),cy+ry*Math.Sin(a)); }
         private static Vector Slope(double rx,double ry,double a)
         { return new Vector(rx*(-.85*Math.Sin(a)+.15*Math.Cos(2*a)),ry*Math.Cos(a)); }
+        public bool Active { get { return _render != null; } }
+
         public void Cancel()
         {
             if (_render != null) CompositionTarget.Rendering -= _render;

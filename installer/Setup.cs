@@ -10,8 +10,8 @@ using Microsoft.Win32;
 
 [assembly: AssemblyTitle("Lazo Installer")]
 [assembly: AssemblyCompany("Jhon Andrew")]
-[assembly: AssemblyVersion("0.4.15.0")]
-[assembly: AssemblyFileVersion("0.4.15.0")]
+[assembly: AssemblyVersion("0.4.16.0")]
+[assembly: AssemblyFileVersion("0.4.16.0")]
 
 namespace LazoInstaller
 {
@@ -68,7 +68,7 @@ namespace LazoInstaller
                 Text = "TRANSFERENCIA\nLOCAL", ForeColor = Color.FromArgb(175, 175, 175),
                 Font = new Font("Consolas", 8F) });
             rail.Controls.Add(new Label { Left = 25, Top = 300, Width = 120, Height = 20,
-                Text = "VERSIÓN 0.4.15", ForeColor = Color.FromArgb(175, 175, 175),
+                Text = "VERSIÓN 0.4.16", ForeColor = Color.FromArgb(175, 175, 175),
                 Font = new Font("Consolas", 8F) });
 
             Controls.Add(new Label { Left = 193, Top = 31, Width = 355, Height = 35,
@@ -197,7 +197,7 @@ namespace LazoInstaller
 
         public static string Install(bool startup, bool desktop)
         {
-            return Install(startup, desktop, false);
+            return Install(startup, desktop, true);
         }
 
         public static string Install(bool startup, bool desktop, bool forceClose)
@@ -231,7 +231,7 @@ namespace LazoInstaller
                 {
                     entry.SetValue("DisplayName", "Lazo");
                     entry.SetValue("Publisher", "Jhon Andrew");
-                    entry.SetValue("DisplayVersion", "0.4.15");
+                    entry.SetValue("DisplayVersion", "0.4.16");
                     entry.SetValue("InstallLocation", folder);
                     entry.SetValue("DisplayIcon", app);
                     entry.SetValue("UninstallString", "\"" + uninstall + "\" /uninstall");
@@ -240,7 +240,7 @@ namespace LazoInstaller
                 }
                 using (RegistryKey run = root.CreateSubKey(RunKey))
                 {
-                    if (startup) run.SetValue(AppName, "\"" + app + "\"");
+                    if (startup) run.SetValue(AppName, "\"" + app + "\" --startup");
                     else run.DeleteValue(AppName, false);
                 }
             }
@@ -262,7 +262,7 @@ namespace LazoInstaller
             string folder = InstallDirectory;
             string app = Path.Combine(folder, "Lazo.exe");
             string uninstaller = Path.Combine(folder, "Uninstall.exe");
-            EnsureClosed(false);
+            EnsureClosed(true);
             string warning = "";
             try { DeleteRule(TcpRule); DeleteRule(UdpRule); }
             catch (Exception ex) { warning = "No se pudieron retirar todas las reglas del firewall: " + ex.Message; }
@@ -299,7 +299,7 @@ namespace LazoInstaller
                     {
                         if (process.Id == Process.GetCurrentProcess().Id) continue;
                         busy = true;
-                        if (force && attempt >= 8) process.Kill();
+                        if (force && attempt >= 4) { process.Kill(); process.WaitForExit(3000); }
                     }
                     catch (System.ComponentModel.Win32Exception) { }
                     finally { process.Dispose(); }

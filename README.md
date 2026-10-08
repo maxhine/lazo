@@ -6,18 +6,20 @@ Tu ícono aparece en la cabecera de Minimal y Standard y abre tu perfil al pulsa
 
 - **Minimal**: al abrir solo se ve la barra de búsqueda, con círculos de iniciales encima para los equipos conectados. No hay textos. Al escribir, la ventana se expande y muestra resultados; las iniciales de cada fila envían el archivo.
 - **Standard**: al abrir se ven los equipos como íconos grandes, en una ventana ajustada a cuántos hay. Al pulsar uno se abre el diálogo para elegir el archivo. También se puede arrastrar un archivo desde el Explorador hasta el ícono: el envío empieza al soltarlo.
-- **Apariencia**: Plano, Vidrio, Oscuro o Cálido, en el mismo panel. Cálido combina marfil, concreto, terracota y oliva; sus encabezados usan Georgia con Segoe UI como respaldo.
+- **Apariencia**: Vino (predeterminada en instalaciones nuevas), Plano, Vidrio, Oscuro (grises y negros), Cálido, Meet (inspirado en las llamadas de Google Meet: casi negro, controles gris oscuro, selección azul claro, anillo ámbar y botón de cerrar rojo) e Imagen (usa la foto de inicio desenfocada como fondo de toda la ventana y saca de ella los colores y el acento). Se eligen con miniaturas en Ajustes. Todas comparten el mismo diseño compacto; los equipos se muestran como círculos con un halo al pasar el cursor, sin recuadros. El **acento** se elige aparte. **Liquid Glass** (activado por defecto) vuelve translúcidas, con brillo, las superficies de la ventana sobre el fondo del tema. El **fondo de inicio** se cambia o se restablece desde Ajustes, con clic derecho sobre la tarjeta o con los botones que aparecen al pasar el cursor.
+- **Chat**: al estilo de Discord, con conversaciones a la izquierda, mensajes agrupados por autor y separadores por día, archivos como tarjetas y una barra de escritura en píldora (Mayús+Intro para salto de línea). En la cabecera de cada conversación están Compartir pantalla y Zumbido.
+- **Compartir pantalla**: desde el chat (abre un selector de pantalla o ventana), desde la tarjeta de inicio o desde el ícono de monitor. Cada persona acepta antes de ver nada y la transmisión se abre en su propia ventana (doble clic o F11 para pantalla completa). Mientras compartes, una barra arriba indica quién mira y permite detener; esa barra no aparece en la transmisión.
 
-La interfaz usa Bahnschrift con respaldo en Segoe UI; Cálido usa Georgia en encabezados y conserva Segoe UI como respaldo. El contenido se recorta siguiendo las esquinas redondeadas del recuadro; al abrir, una silueta líquida asciende desde la base y se transforma en la ventana. Los ajustes usan controles de selección en forma de pastilla. La sombra de la ventana se eliminó para evitar un parche rectangular translúcido en las esquinas.
+La interfaz usa Bahnschrift con respaldo en Segoe UI. Paneles, chat y cambios de tamaño se animan con fundidos y desplazamientos cortos; respetan la opción de Windows que desactiva las animaciones.
 
 ![Lazo Minimal compacto](docs/interfaz-colapsada.png)
 
 ## Instalar y compartir
 
-Comparte **`dist/Lazo-Setup-0.4.15.exe`**. Es un solo archivo: contiene Lazo, crea accesos directos, registra la desinstalación en Configuración de Windows y configura dos reglas entrantes limitadas al perfil **Privado** y a la **subred local**. Solicita permisos de administrador. Puede iniciar con Windows si se deja marcada la opción del instalador.
+Comparte **`dist/Lazo-Setup-0.4.16.exe`**. Es un solo archivo: contiene Lazo, crea accesos directos, registra la desinstalación en Configuración de Windows y configura dos reglas entrantes limitadas al perfil **Privado** y a la **subred local**. Solicita permisos de administrador. Puede iniciar con Windows si se deja marcada la opción del instalador.
 
 1. Cierra cualquier copia anterior de Lazo desde el icono de la bandeja.
-2. Ejecuta `Lazo-Setup-0.4.15.exe` y acepta el aviso de Windows.
+2. Ejecuta `Lazo-Setup-0.4.16.exe` y acepta el aviso de Windows.
 3. Abre Lazo desde el menú Inicio. Repite la instalación en el otro equipo.
 4. Asegúrate de que ambos equipos estén en una red marcada como **Privada** en Windows.
 
@@ -37,6 +39,8 @@ Cerrar la ventana principal la oculta en la bandeja. **Salir** en el menú de la
 
 ## Red y requisitos
 
+La pantalla compartida usa el mismo puerto TCP `48352` (protocolo `LAZOS`): captura GDI sincronizada con el refresco de Windows, comparación por bloques de 128 × 64 contra el último fotograma enviado y JPEG solo de lo que cambió, con reenvío nítido cuando una zona se queda quieta. Las fuentes de más de 2560 × 1600 se reducen. Ritmo hasta 60 fps; con la pantalla quieta, el consumo de red es casi nulo. Las ventanas se capturan aunque estén tapadas; si se minimizan, la imagen se congela hasta restaurarlas.
+
 Lazo anuncia su presencia por UDP `48351` y transfiere por TCP `48352`. Los nombres aparecen solo si **ambos equipos tienen Lazo abierto**, están en la misma subred IPv4 privada y el firewall permite la conexión. No usa carpetas compartidas ni permisos SMB. Una red Wi‑Fi con aislamiento entre clientes puede impedir el descubrimiento.
 
 La búsqueda rápida requiere Everything instalado y ejecutándose en el equipo que envía. Lazo no instala Everything ni copia su base de datos; consulta su índice mediante IPC local. Los resultados dependen de las carpetas que Everything tenga indexadas. El receptor no necesita Everything.
@@ -53,6 +57,7 @@ No requiere SDK de .NET ni paquetes NuGet en el equipo de desarrollo; usa el com
 .\scripts\test-network.ps1
 .\scripts\build-installer.ps1
 .\scripts\test-installer.ps1
+.\scripts\test-screen.ps1 -Mode window
 ```
 
 `test-everything.ps1` comprueba la consulta y respuesta Unicode contra un servidor IPC simulado. `test-network.ps1` hace una transferencia real a una IP privada del propio equipo y compara el archivo recibido. `test-installer.ps1` comprueba el ejecutable incluido. La conexión de búsqueda con una instancia activa de Everything aún debe comprobarse en una sesión de escritorio normal: la instancia instalada en este entorno no expone su ventana IPC a la sesión de prueba.

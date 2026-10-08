@@ -7,7 +7,7 @@ namespace Lazo
 {
     internal static class TransferLog
     {
-        public static void Add(string direction, string peer, string file)
+        public static void Add(string direction, string peer, string file, string fullPath)
         {
             if (string.IsNullOrWhiteSpace(file)) return;
             try
@@ -15,7 +15,7 @@ namespace Lazo
                 string path = Path();
                 Directory.CreateDirectory(System.IO.Path.GetDirectoryName(path));
                 List<string> lines = File.Exists(path) ? File.ReadAllLines(path).ToList() : new List<string>();
-                lines.Add(DateTime.Now.ToString("yyyy-MM-dd HH:mm") + "|" + direction + "|" + Clean(peer) + "|" + Clean(file));
+                lines.Add(DateTime.Now.ToString("yyyy-MM-dd HH:mm") + "|" + direction + "|" + Clean(peer) + "|" + Clean(file) + "|" + Clean(fullPath));
                 if (lines.Count > 40) lines = lines.Skip(lines.Count - 40).ToList();
                 File.WriteAllLines(path, lines);
             }
@@ -28,7 +28,7 @@ namespace Lazo
             {
                 string path = Path();
                 if (!File.Exists(path)) return new string[0];
-                return File.ReadAllLines(path).Reverse().Take(12).ToArray();
+                return File.ReadAllLines(path).Reverse().Take(30).ToArray();
             }
             catch { return new string[0]; }
         }

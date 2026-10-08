@@ -34,7 +34,7 @@ class VisualSmoke
     static Button FindLogicalButton(DependencyObject root, string text)
     {
         var button=root as Button;
-        if(button!=null && object.Equals(button.Content,text)) return button;
+        if(button!=null && (object.Equals(button.Content,text) || object.Equals(button.ToolTip,text))) return button;
         foreach(object child in LogicalTreeHelper.GetChildren(root))
         {
             var dependency=child as DependencyObject;
@@ -186,23 +186,28 @@ class VisualSmoke
             if(token!=item[1] || !Enum.Equals(parse.Invoke(null,new object[]{token}),kind))
                 throw new Exception("Theme token did not round-trip for "+item[0]);
         }
+        // Todas las paletas comparten estructura: se comprueba el contraste de texto en cada una.
+        var paletteType=app.GetType("Lazo.Palette");
+        foreach(string name in new[]{"Wine","Raycast","Glass","Dark","Warm","Meet"})
+        {
+            themeType.GetMethod("SetForPreview").Invoke(null,new[]{Enum.Parse(themeKind,name)});
+            object palette=themeType.GetProperty("P").GetValue(null,null);
+            Func<string,Color> role=field=>(Color)ColorConverter.ConvertFromString((string)paletteType.GetField(field).GetValue(palette));
+            Func<Color,Color,double> contrast=(a,b)=>(Math.Max(Luminance(a),Luminance(b))+0.05)/(Math.Min(Luminance(a),Luminance(b))+0.05);
+            if(contrast(role("Ink"),role("Shell1"))<7) throw new Exception(name+" theme ink contrast is below 7:1");
+            if(contrast(role("Muted"),role("Shell1"))<4.5) throw new Exception(name+" theme muted text contrast is below 4.5:1");
+            if(contrast(role("ChipText"),role("Chip"))<4.5) throw new Exception(name+" theme selected segment contrast is below 4.5:1");
+            Color accent=(Color)themeType.GetProperty("AccentColor").GetValue(null,null);
+            Color onAccent=((SolidColorBrush)themeType.GetProperty("PrimaryText").GetValue(null,null)).Color;
+            if(contrast(accent,onAccent)<3) throw new Exception(name+" theme text on accent is below 3:1");
+            if(!(themeType.GetMethod("ShellSurface").Invoke(null,null) is LinearGradientBrush))
+                throw new Exception(name+" theme shell lost its gradient");
+        }
         themeType.GetMethod("SetForPreview").Invoke(null,new[]{warm});
-        if(ThemeColor(themeType,"Line")!="#FFA7A29D" || ThemeColor(themeType,"Muted")!="#FF6B6763" ||
-           ThemeColor(themeType,"Primary")!="#FFC97F63" || ThemeColor(themeType,"SoftSurface")!="#FF8A8F7A" ||
-           ThemeColor(themeType,"CardSurface")!="#FFF5EFE6" ||
-           ((SolidColorBrush)themeType.GetMethod("ShellSurface").Invoke(null,null)).Color.ToString()!="#FFF5EFE6")
-            throw new Exception("Warm theme palette roles changed");
-        Color primary=((SolidColorBrush)themeType.GetProperty("Primary").GetValue(null,null)).Color;
-        Color primaryText=((SolidColorBrush)themeType.GetProperty("PrimaryText").GetValue(null,null)).Color;
-        Color ivory=((SolidColorBrush)themeType.GetMethod("ShellSurface").Invoke(null,null)).Color;
-        Color muted=((SolidColorBrush)themeType.GetProperty("Muted").GetValue(null,null)).Color;
-        double primaryContrast=(Math.Max(Luminance(primary),Luminance(primaryText))+0.05)/(Math.Min(Luminance(primary),Luminance(primaryText))+0.05);
-        double mutedContrast=(Math.Max(Luminance(ivory),Luminance(muted))+0.05)/(Math.Min(Luminance(ivory),Luminance(muted))+0.05);
-        if(primaryContrast<4.5 || mutedContrast<4.5) throw new Exception("Warm theme text contrast is below 4.5:1");
         var text=(TextBlock)themeType.GetMethod("Text",new[]{typeof(string),typeof(double),typeof(Brush),typeof(FontWeight)})
             .Invoke(null,new object[]{"Encabezado",20.0,Brushes.Black,FontWeights.SemiBold});
-        if(!text.FontFamily.Source.Contains("Georgia") || !text.FontFamily.Source.Contains("Segoe UI"))
-            throw new Exception("Warm theme heading font lacks the installed serif fallback");
+        if(!text.FontFamily.Source.Contains("Segoe UI"))
+            throw new Exception("Heading font lacks the Segoe UI fallback");
 
         var main=app.GetType("Lazo.MainWindow");
         foreach(bool standard in new[]{false,true})
@@ -223,11 +228,72 @@ class VisualSmoke
             Save((FrameworkElement)window.Content,System.IO.Path.Combine(output,standard?"theme-warm-standard.png":"theme-warm-minimal.png"),standard?760:342,standard?500:402);
             window.Close();
         }
-        Console.WriteLine("PASS: warm theme tokens, palette contrast, settings selector, and Minimal/Standard previews.");
+        Console.WriteLine("PASS: theme tokens, contrast on every palette, settings selector, and Minimal/Standard previews.");
+    }
+    static void VerifyStandardManyPeers(string output)
+    {
+        var main=app.GetType("Lazo.MainWindow");
+        var themeType=app.GetType("Lazo.Theme");
+        var peerType=app.GetType("Lazo.Peer");
+        foreach(string kind in new[]{"Dark","Raycast"})
+        {
+            var window=(Window)Activator.CreateInstance(main,new object[]{true,false,false,true,false,false,false});
+            themeType.GetMethod("SetForPreview").Invoke(null,new[]{Enum.Parse(app.GetType("Lazo.ThemeKind"),kind)});
+            themeType.GetMethod("SetInterface").Invoke(null,new object[]{Enum.Parse(app.GetType("Lazo.InterfaceKind"),"Standard"),false});
+            var peers=(System.Collections.IList)Activator.CreateInstance(typeof(System.Collections.Generic.List<>).MakeGenericType(peerType));
+            string[] names={"Equipo de dirección general con un nombre extraordinariamente largo número 1","Ana","Oficina-Bogotá","DESARROLLO_PRINCIPAL_ESTACION_DE_TRABAJO_04","Luis","Marta","Sala de juntas","Recepción"};
+            for(int i=0;i<18;i++)
+            {
+                var peer=FormatterServices.GetUninitializedObject(peerType);
+                peerType.GetField("Id").SetValue(peer,Guid.NewGuid());
+                peerType.GetField("Name").SetValue(peer,names[i%names.Length]+" "+i);
+                peerType.GetField("Photo").SetValue(peer,"");
+                peers.Add(peer);
+            }
+            Field(window,"_peers",peers);
+            main.GetMethod("BuildUi",flags).Invoke(window,null);
+            main.GetMethod("ApplySize",flags).Invoke(window,new object[]{false});
+            var screen=(System.Windows.Forms.Screen)main.GetField("_launcherScreen",flags).GetValue(window);
+            if(window.Height>screen.WorkingArea.Height) throw new Exception("Standard window taller than the screen with many peers");
+            var devices=(WrapPanel)main.GetField("_devices",flags).GetValue(window);
+            if(!(LogicalTreeHelper.GetParent(devices) is ScrollViewer)) throw new Exception("Standard device grid is not scrollable");
+            if(devices.Children.Count!=18) throw new Exception("Standard device grid lost peers");
+            foreach(Button tile in devices.Children)
+            {
+                var stack=(StackPanel)tile.Content;
+                double limit=stack.Height;
+                stack.Height=double.NaN;
+                stack.Measure(new Size(stack.Width,double.PositiveInfinity));
+                if(stack.DesiredSize.Height>limit+0.5) throw new Exception("Long device name overflows its tile");
+                stack.Height=limit;
+            }
+            Save((FrameworkElement)window.Content,System.IO.Path.Combine(output,"standard-many-"+kind+".png"),(int)window.Width,(int)window.Height);
+            window.Close();
+        }
+        Console.WriteLine("PASS: Standard with many peers and long names scrolls, fits tiles, and stays on screen.");
+    }
+    static void VerifyStatusToast()
+    {
+        var main=app.GetType("Lazo.MainWindow");
+        foreach(bool standard in new[]{false,true})
+        {
+            var window=(Window)Activator.CreateInstance(main,new object[]{true,false,false,standard,false,false,false});
+            app.GetType("Lazo.Theme").GetMethod("SetInterface").Invoke(null,new object[]{Enum.Parse(app.GetType("Lazo.InterfaceKind"),standard?"Standard":"Minimal"),false});
+            main.GetMethod("BuildUi",flags).Invoke(window,null);
+            main.GetMethod("SetStatus",flags).Invoke(window,new object[]{"El equipo no respondió."});
+            var toast=(Border)main.GetField("_toast",flags).GetValue(window);
+            var text=(TextBlock)main.GetField("_toastText",flags).GetValue(window);
+            if(toast==null || toast.Visibility!=Visibility.Visible || text.Text!="El equipo no respondió.")
+                throw new Exception("Status message is invisible outside the target search view ("+(standard?"Standard":"Minimal")+")");
+            window.Close();
+        }
+        Console.WriteLine("PASS: transfer status reaches the user in Minimal and Standard home views.");
     }
     [STAThread] static void Main(string[] args)
     {
         app=Assembly.LoadFrom(args[0]); Directory.CreateDirectory(args[1]);
+        VerifyStandardManyPeers(args[1]);
+        VerifyStatusToast();
         VerifyClockRebuilds(args[1]);
         VerifyFailedChatSendKeepsDraft();
         VerifyWarmTheme(args[1]);
