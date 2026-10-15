@@ -72,6 +72,8 @@ namespace Lazo
         private double _ownAvatarSize = 24;
         private Button _navHome, _navChat, _navHistory, _navSettings, _navEye, _navShare, _navTools;
         internal static string PreviewPanel;
+        /// <summary>Vista previa de Utilidades con una nube ya cargada (--preview-cloud=ruta).</summary>
+        internal static string PreviewCloud;
         private System.Windows.Shapes.Path _navShareIcon, _navToolsIcon;
         private TextBlock _sectionCount;
         private TextBlock _heroChip;
@@ -140,7 +142,12 @@ namespace Lazo
             ApplySize(false);
             if (previewSettings) { _settingsOpen = true; SyncChrome(); }
             if (PreviewPanel == "share") { _shareOpen = true; SyncChrome(); }
-            if (PreviewPanel == "tools") { _toolsOpen = true; SyncChrome(); }
+            if (PreviewPanel == "tools")
+            {
+                if (PreviewCloud != null) { AddCloudFiles(new[] { PreviewCloud }); _cloudTarget = new CsChoice { Lazo = LazoProjection.ById("on-egm") }; }
+                _toolsOpen = true;
+                SyncChrome();
+            }
             if (PreviewPanel == "chat") { _chatOpen = true; SyncChrome(); ChatThread first = ChatStore.Threads().OrderByDescending(t => t.When).FirstOrDefault(); if (first != null && _chatPanel != null) _chatPanel.Open(first.Id, first.Name); }
             if (PreviewPanel == "settings") { _settingsOpen = true; SyncChrome(); }
             Loaded += (s, e) =>
@@ -491,6 +498,8 @@ namespace Lazo
         }
 
         private static double SidebarWidth { get { return 64; } }
+        /// <summary>Alto mínimo en Standard: márgenes, logo, seis botones de 42 px y el botón de agregar.</summary>
+        private const double SidebarMinHeight = 448;
         private const double HeaderHeight = 58;
 
         /// <summary>Botón circular de navegación con ícono vectorial; el estado activo aparece con un fundido.</summary>
@@ -508,7 +517,7 @@ namespace Lazo
                 Content = face,
                 Width = 38,
                 Height = 38,
-                Margin = new Thickness(0, 3, 0, 3),
+                Margin = new Thickness(0, 2, 0, 2),
                 Background = Brushes.Transparent,
                 BorderThickness = new Thickness(0),
                 Cursor = Cursors.Hand,
@@ -1980,7 +1989,8 @@ namespace Lazo
                     bodyHeight = 340;
                 }
                 width = SidebarWidth + bodyWidth + 14;
-                height = Math.Max(390, HeaderHeight + bodyHeight + 14);
+                // Lo justo para que la barra lateral (logo, seis secciones y el botón de agregar) no se monte.
+                height = Math.Max(SidebarMinHeight, HeaderHeight + bodyHeight + 14);
                 double panel = PanelWidth();
                 if (panel > 0) width += panel + 12;
                 if (_settingsOpen) height = Math.Max(height, 560);

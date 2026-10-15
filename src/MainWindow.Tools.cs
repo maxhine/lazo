@@ -32,6 +32,38 @@ namespace Lazo
         private string _deCap;
         private bool _deCapLooked;
 
+        /// <summary>Un sistema elegible: uno que calcula Lazo, uno de la biblioteca de ReCap, o ambos a la vez.</summary>
+        private sealed class CsChoice
+        {
+            public LazoProjection Lazo;
+            public CoordSystem Recap;
+            public string Label { get { return Lazo != null ? Lazo.Name : Recap.Label; } }
+            public string RecapKey
+            {
+                get
+                {
+                    string key = Recap != null ? Recap.Key : Lazo != null ? Lazo.RecapKey : null;
+                    return key != null && (!CoordinateLibrary.Available || CoordinateLibrary.Find(key) != null) ? key : null;
+                }
+            }
+            public int Epsg { get { return Lazo != null ? Lazo.Epsg : Recap.Epsg; } }
+            public bool Same(CsChoice other)
+            {
+                if (other == null) return false;
+                if (Lazo != null && other.Lazo != null) return Lazo.Id == other.Lazo.Id;
+                return RecapKey != null && RecapKey == other.RecapKey && (Lazo == null || !Lazo.Egm2008) && (other.Lazo == null || !other.Lazo.Egm2008);
+            }
+        }
+
+        // Sistema de coordenadas: el que trae la nube (o el que se elija) y el de salida (null: el mismo).
+        private CloudCrs _cloudDetected;
+        private string _cloudDetectNote;
+        private CsChoice _cloudSource;
+        private CsChoice _cloudTarget;
+        private bool _cloudEllipsoidal;
+        private string _cloudPicker;
+        private readonly string _geoid = GeoidGrid.Find();
+
         private Border ToolsCard()
         {
             return StylePanel(new Border
@@ -189,8 +221,225 @@ namespace Lazo
             decimationRow.Children.Add(decimationHelp);
             tool.Children.Add(decimationRow);
 
+            tool.Children.Add(CloudProjection(running));
             tool.Children.Add(CloudFooter(running));
             return tool;
+        }
+
+        // ── Sistema de coordenadas ─────────────────────────────────────────
+
+        private UIElement CloudProjection(bool running)
+        {
+            StackPanel section = new StackPanel();
+            TextBlock title = Theme.Label("Sistema de coordenadas");
+            title.Margin = new Thickness(0, 14, 0, 4);
+            section.Children.Add(title);
+
+            // Origen: lo que declara el archivo, o lo que se elija.
+            Grid source = new Grid();
+            source.ColumnDefinitions.Add(new ColumnDefinition());
+            source.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+            StackPanel words = new StackPanel { VerticalAlignment = VerticalAlignment.Center };
+            words.Children.Add(Theme.Text("Origen", 10.5, Theme.Muted));
+            TextBlock name = Theme.Text(SourceText(), 12, _cloudSource == null ? Theme.Muted : Theme.Ink, FontWeights.SemiBold);
+            name.TextWrapping = TextWrapping.Wrap;
+            words.Children.Add(name);
+            if (_cloudDetectNote != null)
+            {
+                TextBlock note = Theme.Text(_cloudDetectNote, 10.5, Theme.Muted);
+                note.TextWrapping = TextWrapping.Wrap;
+                words.Children.Add(note);
+            }
+            source.Children.Add(words);
+            Button change = Theme.Button(_cloudPicker == "source" ? "Cerrar" : "Cambiar", false);
+            change.MinHeight = 30;
+            change.Margin = new Thickness(8, 0, 0, 0);
+            change.VerticalAlignment = VerticalAlignment.Top;
+            change.IsEnabled = !running;
+            change.Click += (s, e) => { _cloudPicker = _cloudPicker == "source" ? null : "source"; RefreshToolsCard(); };
+            Grid.SetColumn(change, 1);
+            source.Children.Add(change);
+            section.Children.Add(source);
+            if (_cloudPicker == "source") section.Children.Add(CsPicker(true, choice => { _cloudSource = choice; _cloudPicker = null; RefreshToolsCard(); }));
+
+            // Destino: el mismo, los sistemas del equipo (los .prj de iTwin Capture) u otro.
+            TextBlock target = Theme.Text("Salida", 10.5, Theme.Muted);
+            target.Margin = new Thickness(0, 10, 0, 4);
+            section.Children.Add(target);
+            StackPanel options = new StackPanel();
+            options.Children.Add(CsOption("Igual que el origen", "No se reproyecta", _cloudTarget == null, !running, () => { _cloudTarget = null; RefreshToolsCard(); }));
+            foreach (LazoProjection featured in LazoProjection.All.Where(p => p.Featured))
+            {
+                LazoProjection value = featured;
+                CsChoice choice = new CsChoice { Lazo = value };
+                string how = value.RecapKey != null ? "EPSG " + value.Epsg : "Lo calcula Lazo (ReCap no lo trae) · solo LAS/LAZ";
+                options.Children.Add(CsOption(value.Name, how, _cloudTarget != null && _cloudTarget.Same(choice), !running,
+                    () => { _cloudTarget = choice; RefreshToolsCard(); }));
+            }
+            bool other = _cloudTarget != null && !(_cloudTarget.Lazo != null && _cloudTarget.Lazo.Featured);
+            options.Children.Add(CsOption(other ? _cloudTarget.Label : "Otro sistema…", other ? "Elegido de la lista" : "Buscar por nombre o EPSG",
+                other, !running, () => { _cloudPicker = _cloudPicker == "target" ? null : "target"; RefreshToolsCard(); }));
+            section.Children.Add(options);
+            if (_cloudPicker == "target") section.Children.Add(CsPicker(false, choice => { _cloudTarget = choice; _cloudPicker = null; RefreshToolsCard(); }));
+
+            if (_cloudTarget != null && _cloudTarget.Lazo != null && _cloudTarget.Lazo.Egm2008)
+            {
+                CheckBox ellipsoidal = new CheckBox
+                {
+                    Content = "Las alturas de la nube son elipsoidales: pasarlas a EGM2008",
+                    IsChecked = _cloudEllipsoidal && _geoid != null,
+                    IsEnabled = !running && _geoid != null,
+                    Foreground = Theme.Ink, FontFamily = Theme.Font, FontSize = 11.5,
+                    Margin = new Thickness(0, 8, 0, 0)
+                };
+                ellipsoidal.Checked += (s, e) => _cloudEllipsoidal = true;
+                ellipsoidal.Unchecked += (s, e) => _cloudEllipsoidal = false;
+                section.Children.Add(ellipsoidal);
+                TextBlock heights = Theme.Text(_geoid != null
+                    ? "Si ya son ortométricas (EGM2008), déjalo sin marcar: las alturas no cambian."
+                    : "Para pasar alturas elipsoidales a EGM2008 hace falta egm08_25.gtx (por ejemplo en Documentos\\Bentley\\iTwin Capture Modeler).", 10.5, Theme.Muted);
+                heights.TextWrapping = TextWrapping.Wrap;
+                heights.Margin = new Thickness(20, 0, 0, 0);
+                section.Children.Add(heights);
+            }
+            string problem = ProjectionProblem();
+            if (problem != null)
+            {
+                TextBlock warning = Theme.Text(problem, 11, Theme.Danger);
+                warning.TextWrapping = TextWrapping.Wrap;
+                warning.Margin = new Thickness(0, 8, 0, 0);
+                section.Children.Add(warning);
+            }
+            return section;
+        }
+
+        private string SourceText()
+        {
+            if (_cloudFiles.Count == 0) return "Se lee de los archivos al agregarlos";
+            if (_cloudSource == null)
+                return _cloudDetected != null && _cloudDetected.Epsg > 0
+                    ? "EPSG " + _cloudDetected.Epsg + (_cloudDetected.Name.Length > 0 ? " · " + _cloudDetected.Name : "") + " (ReCap no lo conoce)"
+                    : "El archivo no indica su sistema";
+            bool detected = _cloudDetected != null && (_cloudDetected.Epsg == _cloudSource.Epsg ||
+                (_cloudSource.Lazo != null && LazoProjection.Detect(_cloudDetected.Epsg, _cloudDetected.Name) == _cloudSource.Lazo));
+            return _cloudSource.Label + (_cloudSource.Epsg > 0 ? " · EPSG " + _cloudSource.Epsg : "") + (detected ? " (del archivo)" : " (elegido)");
+        }
+
+        private Button CsOption(string title, string detail, bool selected, bool enabled, Action click)
+        {
+            Grid row = new Grid();
+            row.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+            row.ColumnDefinitions.Add(new ColumnDefinition());
+            Border dot = new Border
+            {
+                Width = 16, Height = 16, CornerRadius = new CornerRadius(8), Margin = new Thickness(0, 2, 10, 0),
+                VerticalAlignment = VerticalAlignment.Top,
+                BorderThickness = new Thickness(selected ? 5 : 1.5),
+                BorderBrush = selected ? Theme.SelectionFill : Theme.Muted
+            };
+            row.Children.Add(dot);
+            StackPanel words = new StackPanel();
+            TextBlock name = Theme.Text(title, 12, Theme.Ink, selected ? FontWeights.SemiBold : FontWeights.Normal);
+            name.TextWrapping = TextWrapping.Wrap;
+            words.Children.Add(name);
+            words.Children.Add(Theme.Text(detail, 10.5, Theme.Muted));
+            Grid.SetColumn(words, 1);
+            row.Children.Add(words);
+            Border face = new Border { Padding = new Thickness(8, 6, 8, 6), CornerRadius = new CornerRadius(10), Background = Brushes.Transparent, Child = row };
+            Button button = Plain(face, click);
+            button.IsEnabled = enabled;
+            button.HorizontalContentAlignment = HorizontalAlignment.Stretch;
+            button.MouseEnter += (s, e) => face.Background = Theme.SoftSurface;
+            button.MouseLeave += (s, e) => face.Background = Brushes.Transparent;
+            return button;
+        }
+
+        /// <summary>Buscador de sistemas: los que calcula Lazo y los de la biblioteca de ReCap, por nombre o EPSG.</summary>
+        private UIElement CsPicker(bool forSource, Action<CsChoice> pick)
+        {
+            StackPanel picker = new StackPanel { Margin = new Thickness(0, 6, 0, 4) };
+            TextBox query = CloudBox("", false);
+            query.ToolTip = "Nombre o EPSG, por ejemplo «Bogota», «UTM 18N» o 3116";
+            picker.Children.Add(query);
+            StackPanel results = new StackPanel { Margin = new Thickness(0, 4, 0, 0) };
+            picker.Children.Add(results);
+            Action fill = () =>
+            {
+                results.Children.Clear();
+                string text = query.Text.Trim();
+                List<CsChoice> found = new List<CsChoice>();
+                foreach (LazoProjection p in LazoProjection.All)
+                {
+                    if (!forSource && p.Geographic) continue;
+                    if (text.Length == 0 || p.Name.IndexOf(text, StringComparison.OrdinalIgnoreCase) >= 0 || p.Epsg.ToString() == text)
+                        found.Add(new CsChoice { Lazo = p });
+                }
+                if (text.Length > 0 && CoordinateLibrary.Available)
+                    foreach (CoordSystem cs in CoordinateLibrary.Search(text, 12))
+                        if (!found.Any(f => f.Lazo != null && f.Lazo.RecapKey == cs.Key)) found.Add(new CsChoice { Recap = cs });
+                if (found.Count == 0)
+                {
+                    results.Children.Add(Theme.Text(CoordinateLibrary.Available ? "Sin resultados." : "No se encontró la biblioteca de sistemas de Autodesk.", 11, Theme.Muted));
+                    return;
+                }
+                foreach (CsChoice choice in found.Take(14))
+                {
+                    CsChoice value = choice;
+                    string detail = (value.Epsg > 0 ? "EPSG " + value.Epsg + " · " : "") + (value.Lazo != null
+                        ? (value.Lazo.RecapKey != null ? "Colombia" : "Lo calcula Lazo")
+                        : value.Recap.Key);
+                    results.Children.Add(CsOption(value.Label, detail, false, true, () => pick(value)));
+                }
+            };
+            query.TextChanged += (s, e) => fill();
+            fill();
+            query.Loaded += (s, e) => query.Focus();
+            return picker;
+        }
+
+        /// <summary>Lo que impide la combinación elegida, o null si se puede.</summary>
+        private string ProjectionProblem()
+        {
+            if (_cloudTarget == null) return null;
+            if (_cloudSource == null) return "Para reproyectar, indica en qué sistema está la nube (Cambiar).";
+            if (_cloudSource.Same(_cloudTarget)) return null;
+            bool lazo = NeedsLazo();
+            if (lazo && _cloudSource.Lazo == null)
+                return "Lazo no sabe calcular desde " + _cloudSource.Label + ". Elige como salida un sistema de ReCap (Otro sistema…).";
+            if (!lazo && (_cloudSource.RecapKey == null || _cloudTarget.RecapKey == null))
+                return "ReCap no conoce " + (_cloudSource.RecapKey == null ? _cloudSource.Label : _cloudTarget.Label) + " para esta conversión.";
+            if (lazo && _cloudFiles.Any(f => string.Equals(Path.GetExtension(f), ".e57", StringComparison.OrdinalIgnoreCase)))
+                return "Lazo reproyecta LAS y LAZ; los E57 solo se pueden llevar a sistemas que ReCap conoce.";
+            return null;
+        }
+
+        /// <summary>La reproyección la hace Lazo (no ReCap): destinos que ReCap no trae, alturas a EGM2008, u origen que ReCap no conoce.</summary>
+        private bool NeedsLazo()
+        {
+            if (_cloudTarget == null || _cloudTarget.Lazo == null) return false;
+            return _cloudTarget.Lazo.RecapKey == null || (_cloudTarget.Lazo.Egm2008 && _cloudEllipsoidal) || _cloudSource == null || _cloudSource.RecapKey == null;
+        }
+
+        /// <summary>Lee el sistema que declaran los archivos y lo propone como origen.</summary>
+        private void DetectCloudCrs()
+        {
+            List<string> files = _cloudFiles.ToList();
+            // Se lee fuera de la interfaz y el resultado vuelve siempre a su hilo.
+            System.Threading.Tasks.Task.Run(() => files.Select(CloudCrsReader.Read).ToList())
+                .ContinueWith(t => Dispatcher.BeginInvoke((Action)(() => ApplyDetectedCrs(files, t.Status == System.Threading.Tasks.TaskStatus.RanToCompletion ? t.Result : new List<CloudCrs>()))));
+        }
+
+        private void ApplyDetectedCrs(List<string> files, List<CloudCrs> found)
+        {
+            if (!files.SequenceEqual(_cloudFiles)) return;
+            CloudCrs first = found.FirstOrDefault(c => c != null);
+            _cloudDetected = first;
+            int kinds = found.Where(c => c != null).Select(c => c.Epsg + "|" + c.Name).Distinct().Count();
+            _cloudDetectNote = kinds > 1 ? "Los archivos declaran sistemas distintos; se usa el del primero." :
+                found.Any(c => c == null) && first != null ? "Algunos archivos no indican sistema; se asume el mismo." : null;
+            LazoProjection lazo = first == null ? null : LazoProjection.Detect(first.Epsg, first.Name);
+            _cloudSource = first == null || (lazo == null && first.Match == null) ? null : new CsChoice { Lazo = lazo, Recap = lazo == null ? first.Match : null };
+            RefreshToolsCard();
         }
 
         private UIElement CloudGlyph()
@@ -267,7 +516,14 @@ namespace Lazo
             weight.Margin = new Thickness(8, 0, 4, 0);
             Grid.SetColumn(weight, 1);
             row.Children.Add(weight);
-            Button remove = IconButton("close", () => { _cloudFiles.Remove(file); _cloudResult = null; RefreshToolsCard(); });
+            Button remove = IconButton("close", () =>
+            {
+                _cloudFiles.Remove(file);
+                _cloudResult = null;
+                if (_cloudFiles.Count == 0) { _cloudDetected = null; _cloudDetectNote = null; _cloudSource = null; }
+                RefreshToolsCard();
+                if (_cloudFiles.Count > 0) DetectCloudCrs();
+            });
             remove.ToolTip = "Quitar";
             remove.IsEnabled = !running;
             Grid.SetColumn(remove, 2);
@@ -381,6 +637,7 @@ namespace Lazo
             _cloudResult = null;
             _cloudStatus = null;
             RefreshToolsCard();
+            DetectCloudCrs();
         }
 
         private void PickCloudFolder()
@@ -417,6 +674,21 @@ namespace Lazo
                 Unit = _cloudUnit,
                 DecimationMm = decimation
             };
+            string projection = ProjectionProblem();
+            if (projection != null) { _cloudResult = new PointCloudResult { Message = projection }; _cloudStatus = projection; RefreshToolsCard(); return; }
+            if (_cloudTarget != null && !_cloudTarget.Same(_cloudSource) && NeedsLazo())
+            {
+                job.LazoFrom = _cloudSource.Lazo;
+                job.LazoTo = _cloudTarget.Lazo;
+                job.Ellipsoidal = _cloudEllipsoidal && _cloudTarget.Lazo.Egm2008;
+                job.GeoidPath = _geoid;
+            }
+            else
+            {
+                // ReCap: el sistema de la nube queda registrado y, si se eligió otro, ReCap reproyecta.
+                job.SourceCs = _cloudSource != null ? _cloudSource.RecapKey : null;
+                job.TargetCs = _cloudTarget != null && !_cloudTarget.Same(_cloudSource) ? _cloudTarget.RecapKey : null;
+            }
             string problem = PointCloudConverter.Validate(job);
             if (problem != null) { _cloudResult = new PointCloudResult { Message = problem }; _cloudStatus = problem; RefreshToolsCard(); return; }
 

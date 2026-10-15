@@ -6,7 +6,7 @@ $csc = if (Test-Path -LiteralPath 'C:\Windows\Microsoft.NET\Framework64\v4.0.303
 $output = Join-Path $project 'bin'
 New-Item -ItemType Directory -Force -Path $output | Out-Null
 $exe = Join-Path $output 'PointCloudSmoke.exe'
-& $csc /nologo /target:exe /utf8output ("/out:" + $exe) (Join-Path $project 'src\PointCloudConverter.cs') (Join-Path $project 'tests\PointCloudSmoke.cs')
+& $csc /nologo /target:exe /utf8output ("/out:" + $exe) (Join-Path $project 'src\PointCloudConverter.cs') (Join-Path $project 'src\CoordinateSystems.cs') (Join-Path $project 'src\Geodesy.cs') (Join-Path $project 'src\CloudReprojector.cs') (Join-Path $project 'tests\PointCloudSmoke.cs')
 if ($LASTEXITCODE -ne 0) { throw 'Falló la compilación de la prueba de nubes de puntos.' }
 & $exe (Join-Path $output 'pointcloud-check')
 if ($LASTEXITCODE -ne 0) { throw 'Falló la prueba de nubes de puntos.' }
