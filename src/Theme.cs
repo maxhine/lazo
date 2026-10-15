@@ -44,7 +44,7 @@ namespace Lazo
         public static void Load()
         {
             try { Mode = ParseTheme(File.ReadAllText(SettingsPath("theme.txt"))); }
-            catch { Mode = ThemeKind.Wine; }
+            catch { Mode = ThemeKind.Dark; }
             if (Override.HasValue) Mode = Override.Value;
             try { Interface = File.ReadAllText(SettingsPath("interface.txt")).Trim() == "standard" ? InterfaceKind.Standard : InterfaceKind.Minimal; }
             catch { Interface = InterfaceKind.Minimal; }

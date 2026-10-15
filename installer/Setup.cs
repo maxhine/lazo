@@ -42,15 +42,17 @@ namespace LazoInstaller
         }
     }
 
-    /// <summary>Colores y letra de Lazo (tema oscuro con el acento coral), para que el instalador se vea igual.</summary>
+    /// <summary>Colores y letra del tema Oscuro de Lazo (el predeterminado), para que el instalador se vea igual.</summary>
     internal static class Look
     {
         public static readonly FontFamily Font = new FontFamily("Bahnschrift, Segoe UI");
-        public static readonly Color Accent = Color.FromRgb(0xEE, 0x5A, 0x45);
-        public static readonly Brush Ink = Solid("#FFF6F1");
-        public static readonly Brush Muted = Solid("#B9A6A6");
-        public static readonly Brush Soft = Solid("#1AFFFFFF");
-        public static readonly Brush Line = Solid("#24FFFFFF");
+        /// <summary>En Oscuro, lo principal va en píldora clara con texto oscuro, como «Enviar archivos».</summary>
+        public static readonly Color Accent = Color.FromRgb(0xE6, 0xE6, 0xE6);
+        public static readonly Brush OnAccent = Solid("#161616");
+        public static readonly Brush Ink = Solid("#E6E6E6");
+        public static readonly Brush Muted = Solid("#8E8E8E");
+        public static readonly Brush Soft = Solid("#14FFFFFF");
+        public static readonly Brush Line = Solid("#3A3A3A");
         public static readonly Brush Danger = Solid("#E5484D");
 
         public static Brush Solid(string hex)
@@ -149,6 +151,7 @@ namespace LazoInstaller
         {
             _on = on;
             _track.Background = on ? new SolidColorBrush(Look.Accent) : Look.Solid("#3DFFFFFF");
+            _knob.Background = on ? Look.OnAccent : Look.Solid("#D0D0D0");
             double to = on ? 18 : 0;
             TranslateTransform move = (TranslateTransform)_knob.RenderTransform;
             if (animate) move.BeginAnimation(TranslateTransform.XProperty, new DoubleAnimation(to, TimeSpan.FromMilliseconds(160)) { EasingFunction = new QuadraticEase() });
@@ -196,8 +199,8 @@ namespace LazoInstaller
             _badge = new Border
             {
                 Width = 52, Height = 52, CornerRadius = new CornerRadius(16),
-                Background = new LinearGradientBrush(Color.FromRgb(0xF2, 0x6B, 0x55), Color.FromRgb(0xC9, 0x3A, 0x2C), 45),
-                Child = Look.Logo(28, Brushes.White)
+                Background = new SolidColorBrush(Look.Accent),
+                Child = Look.Logo(28, Look.OnAccent)
             };
             head.Children.Add(_badge);
             StackPanel name = new StackPanel { VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(14, 0, 0, 0) };
@@ -254,7 +257,7 @@ namespace LazoInstaller
             _cancel = Look.Pill("Cancelar", Look.Soft, Look.Ink, Look.Line);
             _cancel.Click += (s, e) => Close();
             buttons.Children.Add(_cancel);
-            _action = Look.Pill(uninstall ? "Desinstalar" : "Instalar", uninstall ? Look.Danger : new SolidColorBrush(Look.Accent), Brushes.White, null);
+            _action = Look.Pill(uninstall ? "Desinstalar" : "Instalar", uninstall ? Look.Danger : new SolidColorBrush(Look.Accent), uninstall ? Brushes.White : Look.OnAccent, null);
             _action.Margin = new Thickness(10, 0, 0, 0);
             _action.IsDefault = true;
             _action.Click += OnAction;
@@ -269,9 +272,9 @@ namespace LazoInstaller
                 BorderThickness = new Thickness(1),
                 Background = new LinearGradientBrush(new GradientStopCollection
                 {
-                    new GradientStop(Color.FromRgb(0x2A, 0x1B, 0x1D), 0),
-                    new GradientStop(Color.FromRgb(0x17, 0x11, 0x12), 0.55),
-                    new GradientStop(Color.FromRgb(0x10, 0x0D, 0x0E), 1)
+                    new GradientStop(Color.FromRgb(0x26, 0x26, 0x26), 0),
+                    new GradientStop(Color.FromRgb(0x1C, 0x1C, 0x1C), 0.55),
+                    new GradientStop(Color.FromRgb(0x14, 0x14, 0x14), 1)
                 }, new Point(0, 0), new Point(1, 1)),
                 Effect = new System.Windows.Media.Effects.DropShadowEffect { BlurRadius = 28, ShadowDepth = 6, Opacity = 0.45 },
                 Child = body
@@ -330,7 +333,7 @@ namespace LazoInstaller
         /// <summary>Terminado: se dice en la ventana y, al instalar, Lazo se abre solo y el instalador se cierra.</summary>
         private void Done(string warning)
         {
-            _badge.Background = new SolidColorBrush(Color.FromRgb(0x3F, 0xB9, 0x6B));
+            _badge.Background = new SolidColorBrush(Color.FromRgb(0x34, 0xC7, 0x59));
             _badge.Child = new Path
             {
                 Data = Geometry.Parse("M5 12.5l4.5 4.5L19 7"), Stroke = Brushes.White, StrokeThickness = 2.6,
@@ -350,6 +353,7 @@ namespace LazoInstaller
                 _status.Foreground = warning.Length > 0 ? Look.Ink : Look.Muted;
                 _action.Content = "Cerrar";
                 _action.Background = new SolidColorBrush(Look.Accent);
+                _action.Foreground = Look.OnAccent;
                 return;
             }
             _title.Text = "Lazo está listo";
