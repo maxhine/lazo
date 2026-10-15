@@ -324,6 +324,11 @@ namespace Lazo
             }
         }
 
+        private static bool IsLicensing(string message)
+        {
+            return message != null && message.IndexOf("licens", StringComparison.OrdinalIgnoreCase) >= 0;
+        }
+
         /// <summary>Un ReCap por unidad, hasta <see cref="Lanes"/> a la vez. Devuelve los .rcs que generaron.</summary>
         private static async Task<string[]> ConvertUnitsAsync(string decap, List<CloudTile> units, PointCloudJob job, string current, string target,
             string temporary, Action<double, string> progress, CancellationToken cancel)
@@ -332,6 +337,7 @@ namespace Lazo
             double[] parts = new double[units.Count];
             int finished = 0;
             using (SemaphoreSlim lanes = new SemaphoreSlim(Lanes))
+            using (SemaphoreSlim licensing = new SemaphoreSlim(1))
             {
                 await Task.WhenAll(units.Select((unit, index) => Task.Run(async () =>
                 {
@@ -344,14 +350,30 @@ namespace Lazo
                             Inputs = { unit.Output }, OutputFolder = folder, Name = "u" + index,
                             Unit = job.LazoTo != null ? 2 : job.Unit, DecimationMm = job.DecimationMm, SourceCs = current, TargetCs = target
                         };
-                        PointCloudResult result = await RunAsync(decap, one, "u" + index, (value, text) =>
+                        PointCloudResult result = null;
+                        // La licencia de ReCap no aguanta que varios procesos la pidan a la vez: arrancan de uno en uno
+                        // (el siguiente espera a que el anterior ya esté convirtiendo) y, si aun así falla, se reintenta.
+                        for (int attempt = 1; attempt <= 3; attempt++)
                         {
-                            lock (parts)
+                            if (Directory.Exists(folder)) try { Directory.Delete(folder, true); } catch { }
+                            await licensing.WaitAsync(cancel).ConfigureAwait(false);
+                            int released = 0;
+                            Action release = () => { if (Interlocked.Exchange(ref released, 1) == 0) licensing.Release(); };
+                            try
                             {
-                                parts[index] = value;
-                                if (progress != null) progress(parts.Average(), "Convirtiendo " + units.Count + " partes a la vez (" + finished + " listas)…");
+                                result = await RunAsync(decap, one, "u" + index, (value, text) =>
+                                {
+                                    lock (parts)
+                                    {
+                                        parts[index] = value;
+                                        if (progress != null) progress(parts.Average(), "Convirtiendo " + units.Count + " partes a la vez (" + finished + " listas)…");
+                                    }
+                                }, 0, 1, cancel, release).ConfigureAwait(false);
                             }
-                        }, 0, 1, cancel).ConfigureAwait(false);
+                            finally { release(); }
+                            if (result.Ok || !IsLicensing(result.Message) || cancel.IsCancellationRequested) break;
+                            await Task.Delay(2000 * attempt, cancel).ConfigureAwait(false);
+                        }
                         if (!result.Ok) throw new InvalidOperationException(unit.ScanName + ": " + result.Message);
                         string produced = Directory.GetFiles(Path.Combine(folder, "u" + index + " Support"), "*.rcs").FirstOrDefault();
                         if (produced == null) throw new InvalidOperationException("ReCap no generó " + unit.ScanName + ".");
@@ -394,7 +416,20 @@ namespace Lazo
 
         /// <summary>Una ejecución de DeCap; su progreso se lleva al tramo [<paramref name="from"/>, <paramref name="to"/>].</summary>
         private static async Task<PointCloudResult> RunAsync(string decap, PointCloudJob job, string name, Action<double, string> progress,
-            double from, double to, CancellationToken cancel)
+            double from, double to, CancellationToken cancel, Action licensed = null)
+        {
+            // Avisa una sola vez cuando ReCap ya pasó la licencia y empezó a trabajar (o terminó).
+            int signaled = 0;
+            Action passed = () => { if (licensed != null && Interlocked.Exchange(ref signaled, 1) == 0) licensed(); };
+            try
+            {
+                return await RunOnceAsync(decap, job, name, progress, from, to, cancel, passed).ConfigureAwait(false);
+            }
+            finally { passed(); }
+        }
+
+        private static async Task<PointCloudResult> RunOnceAsync(string decap, PointCloudJob job, string name, Action<double, string> progress,
+            double from, double to, CancellationToken cancel, Action passed)
         {
             Directory.CreateDirectory(job.OutputFolder);
             int scans = job.Inputs.Count;
@@ -404,6 +439,8 @@ namespace Lazo
             report(0, "Preparando…");
             int code = await RunAsync(decap, Arguments(job, name), line =>
             {
+                if (line.StartsWith("Importing", StringComparison.OrdinalIgnoreCase) || line.StartsWith("[P]") || line.StartsWith("[E]") ||
+                    line.StartsWith("Enabling", StringComparison.OrdinalIgnoreCase) || line.StartsWith("(")) passed();
                 Match step = Regex.Match(line, @"^\[P\]\[(\d+)\s+(\d+)\]");
                 if (step.Success)
                 {
