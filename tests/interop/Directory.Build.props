@@ -1,0 +1,6 @@
+<Project>
+  <!-- Los intermedios de compilación no van a OneDrive. -->
+  <PropertyGroup>
+    <BaseIntermediateOutputPath>$(HOME)/Library/Caches/lazo-build/winpeer-obj/</BaseIntermediateOutputPath>
+  </PropertyGroup>
+</Project>

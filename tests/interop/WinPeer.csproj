@@ -1,0 +1,15 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <!-- Motor de red de Windows (src/*.cs) ejecutado con .NET en macOS para probar contra la app de Mac. -->
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <OutputType>Exe</OutputType>
+    <EnableDefaultCompileItems>false</EnableDefaultCompileItems>
+    <ImplicitUsings>disable</ImplicitUsings>
+    <NoWarn>CA1416;SYSLIB0014;CS0618;SYSLIB0021</NoWarn>
+  </PropertyGroup>
+  <ItemGroup>
+    <Compile Include="../../src/SecureChannel.cs;../../src/NetworkEngine.cs;../../src/Identity.cs;../../src/ProfilePhoto.cs;WinPeer.cs" />
+    <PackageReference Include="System.Drawing.Common" Version="8.0.10" />
+    <PackageReference Include="System.Security.Cryptography.ProtectedData" Version="8.0.0" />
+  </ItemGroup>
+</Project>
