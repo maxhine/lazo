@@ -12,12 +12,23 @@ $csc = if (Test-Path -LiteralPath 'C:\Windows\Microsoft.NET\Framework64\v4.0.303
 } else { 'C:\Windows\Microsoft.NET\Framework\v4.0.30319\csc.exe' }
 $dist = Join-Path $project 'dist'
 New-Item -ItemType Directory -Force -Path $dist | Out-Null
-$name = if ($Name) { $Name } elseif ($Preview) { 'Lazo-Setup-Preview.exe' } else { 'Lazo-Setup-0.5.0.exe' }
+$name = if ($Name) { $Name } elseif ($Preview) { 'Lazo-Setup-Preview.exe' } else { 'Lazo-Setup-0.5.1.exe' }
 $target = Join-Path $dist $name
 $application = Join-Path $bin 'Lazo.exe'
 if (!(Test-Path -LiteralPath $application)) { throw 'No existe el binario de Lazo; compila antes de crear el instalador.' }
 $arguments = @('/nologo','/target:winexe','/platform:anycpu','/utf8output','/optimize+',('/out:' + $target),
     ('/resource:' + $application + ',Lazo.Payload'))
+# La ventana del instalador usa WPF, como Lazo.
+$gac = 'C:\Windows\Microsoft.NET\assembly'
+foreach ($assembly in @('PresentationCore','PresentationFramework','WindowsBase','System.Xaml')) {
+    $match = Get-ChildItem -LiteralPath $gac -Directory | ForEach-Object {
+        Get-ChildItem -LiteralPath $_.FullName -Directory -Filter $assembly -ErrorAction SilentlyContinue
+    } | ForEach-Object {
+        Get-ChildItem -LiteralPath $_.FullName -Filter "$assembly.dll" -File -Recurse -ErrorAction SilentlyContinue
+    } | Select-Object -First 1
+    if (!$match) { throw "No se encontró $assembly.dll" }
+    $arguments += '/reference:' + $match.FullName
+}
 $icon = Join-Path $project 'assets\lazo.ico'
 if (Test-Path -LiteralPath $icon) { $arguments += '/win32icon:' + $icon }
 if (!$Preview) { $arguments += '/win32manifest:' + (Join-Path $project 'installer\app.manifest') }

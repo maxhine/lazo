@@ -16,6 +16,8 @@ namespace Lazo
         Marker = 2,
         Arrow = 3,
         Box = 4,
+        /// <summary>Puntero láser: brilla y desaparece solo poco después de levantar el mouse.</summary>
+        Laser = 5,
         Eraser = 100
     }
 
@@ -69,7 +71,8 @@ namespace Lazo
                     if (op.Kind == Begin)
                     {
                         op.Tool = (AnnotationTool)reader.ReadByte();
-                        if (op.Tool < AnnotationTool.Pen || op.Tool > AnnotationTool.Box) return null;
+                        // Las versiones sin láser descartan esa herramienta: el trazo simplemente no se les ve.
+                        if (op.Tool < AnnotationTool.Pen || op.Tool > AnnotationTool.Laser) return null;
                         op.Color = reader.ReadUInt32();
                     }
                     if (op.Kind == Begin || op.Kind == Points)
@@ -173,6 +176,8 @@ namespace Lazo
             List<AnnotationOp> ops = new List<AnnotationOp>();
             foreach (Stroke stroke in _order)
             {
+                // El láser es efímero: quien se une tarde no lo recibe.
+                if (stroke.Tool == AnnotationTool.Laser) continue;
                 for (int start = 0; start < stroke.Xs.Count; start += AnnotationOp.MaxPoints)
                 {
                     int count = Math.Min(AnnotationOp.MaxPoints, stroke.Xs.Count - start);
@@ -226,9 +231,11 @@ namespace Lazo
             MouseLeftButtonDown += OnDown;
             MouseMove += OnMove;
             MouseLeftButtonUp += OnUp;
-            LostMouseCapture += (s, e) => { FlushBatch(); _current = 0; };
+            LostMouseCapture += (s, e) => { FlushBatch(); FinishStroke(_current); _current = 0; };
             _batchTimer = new System.Windows.Threading.DispatcherTimer { Interval = TimeSpan.FromMilliseconds(16) };
             _batchTimer.Tick += (s, e) => FlushBatch();
+            _laserTimer = new System.Windows.Threading.DispatcherTimer { Interval = TimeSpan.FromMilliseconds(500) };
+            _laserTimer.Tick += (s, e) => SweepLasers();
         }
 
         private void FlushBatch()
@@ -266,6 +273,18 @@ namespace Lazo
         {
             if (!_model.Apply(op)) return;
             Render(op);
+            RaiseStrokes();
+        }
+
+        /// <summary>Cambió el número de trazos (propios o llegados de la red).</summary>
+        public event Action StrokesChanged;
+
+        public bool HasStrokes { get { return _shapes.Count > 0; } }
+
+        private void RaiseStrokes()
+        {
+            Action handler = StrokesChanged;
+            if (handler != null) handler();
         }
 
         /// <summary>Borra los trazos hechos en este equipo y avisa de cada borrado.</summary>
@@ -290,6 +309,7 @@ namespace Lazo
         {
             if (!_model.Apply(op)) return false;
             Render(op);
+            RaiseStrokes();
             Action<AnnotationOp> handler = Local;
             if (handler != null) handler(op);
             return true;
@@ -302,23 +322,76 @@ namespace Lazo
                 Children.Clear();
                 _shapes.Clear();
                 _mine.Clear();
+                _lasers.Clear();
                 return;
             }
             if (op.Kind == AnnotationOp.Erase)
             {
                 Shape shape;
-                if (_shapes.TryGetValue(op.Id, out shape)) Children.Remove(shape);
+                if (_shapes.TryGetValue(op.Id, out shape))
+                {
+                    if (_lasers.Remove(op.Id)) FadeOut(shape);
+                    else Children.Remove(shape);
+                }
                 _shapes.Remove(op.Id);
                 _mine.Remove(op.Id);
                 return;
             }
             AnnotationModel.Stroke stroke = _model.Find(op.Id);
             if (stroke == null) return;
+            if (stroke.Tool == AnnotationTool.Laser)
+            {
+                _lasers[op.Id] = DateTime.UtcNow;
+                if (!_laserTimer.IsEnabled) _laserTimer.Start();
+            }
             Shape existing;
             if (_shapes.TryGetValue(op.Id, out existing)) Children.Remove(existing);
             Shape made = Build(stroke);
             _shapes[op.Id] = made;
             Children.Add(made);
+        }
+
+        // ── Láser: quien lo traza lo borra para todos un momento después de levantar el mouse ──
+
+        /// <summary>Tiempo que el láser sigue visible tras levantar el mouse.</summary>
+        public static readonly TimeSpan LaserLinger = TimeSpan.FromSeconds(1.2);
+        /// <summary>Si quien lo trazó desaparece sin borrarlo, cada equipo lo quita por su cuenta.</summary>
+        private static readonly TimeSpan LaserOrphan = TimeSpan.FromSeconds(6);
+        private readonly Dictionary<int, DateTime> _lasers = new Dictionary<int, DateTime>();
+        private readonly System.Windows.Threading.DispatcherTimer _laserTimer;
+
+        private void SweepLasers()
+        {
+            if (_lasers.Count == 0) { _laserTimer.Stop(); return; }
+            foreach (KeyValuePair<int, DateTime> laser in _lasers.ToArray())
+            {
+                if (_current == laser.Key || DateTime.UtcNow - laser.Value < LaserOrphan) continue;
+                // Solo en este equipo: no se anuncia, porque quien lo trazó ya no está para borrarlo.
+                AnnotationOp gone = new AnnotationOp { Kind = AnnotationOp.Erase, Id = laser.Key };
+                if (_model.Apply(gone)) { Render(gone); RaiseStrokes(); }
+                else _lasers.Remove(laser.Key);
+            }
+        }
+
+        /// <summary>Terminó un trazo propio (se levantó el mouse). Si es láser, se borra para todos al poco.</summary>
+        internal void FinishStroke(int id)
+        {
+            AnnotationModel.Stroke stroke = id > 0 ? _model.Find(id) : null;
+            if (stroke == null || stroke.Tool != AnnotationTool.Laser) return;
+            System.Windows.Threading.DispatcherTimer later = new System.Windows.Threading.DispatcherTimer { Interval = LaserLinger };
+            later.Tick += (s, e) =>
+            {
+                later.Stop();
+                if (_model.Find(id) != null) Emit(new AnnotationOp { Kind = AnnotationOp.Erase, Id = id });
+            };
+            later.Start();
+        }
+
+        private void FadeOut(Shape shape)
+        {
+            System.Windows.Media.Animation.DoubleAnimation fade = new System.Windows.Media.Animation.DoubleAnimation(shape.Opacity, 0, TimeSpan.FromMilliseconds(450));
+            fade.Completed += (s, e) => Children.Remove(shape);
+            shape.BeginAnimation(OpacityProperty, fade);
         }
 
         private void Redraw()
@@ -337,7 +410,7 @@ namespace Lazo
 
         private double StrokeWidth(AnnotationTool tool)
         {
-            double base_ = tool == AnnotationTool.Marker ? 16 : tool == AnnotationTool.Pen ? 3.5 : 4;
+            double base_ = tool == AnnotationTool.Marker ? 16 : tool == AnnotationTool.Pen ? 3.5 : tool == AnnotationTool.Laser ? 4.5 : 4;
             return base_ * Scale;
         }
 
@@ -391,7 +464,7 @@ namespace Lazo
                 geometry = line;
             }
             geometry.Freeze();
-            return new System.Windows.Shapes.Path
+            System.Windows.Shapes.Path path = new System.Windows.Shapes.Path
             {
                 Data = geometry,
                 Stroke = brush,
@@ -402,6 +475,10 @@ namespace Lazo
                 IsHitTestVisible = false,
                 Tag = stroke.Id
             };
+            // Láser: trazo intenso del color elegido con un halo de luz, visible en fondos claros y oscuros.
+            if (stroke.Tool == AnnotationTool.Laser)
+                path.Effect = new System.Windows.Media.Effects.DropShadowEffect { Color = color, ShadowDepth = 0, BlurRadius = 16 * Scale, Opacity = 0.95 };
+            return path;
         }
 
         private void OnDown(object sender, MouseButtonEventArgs e)
@@ -439,6 +516,7 @@ namespace Lazo
             if (!_drawing) return;
             e.Handled = true;
             FlushBatch();
+            FinishStroke(_current);
             _current = 0;
             if (IsMouseCaptured) ReleaseMouseCapture();
         }
@@ -502,6 +580,7 @@ namespace Lazo
             AddTool(AnnotationTool.Marker, "marker", "Marcador");
             AddTool(AnnotationTool.Arrow, "arrow", "Flecha");
             AddTool(AnnotationTool.Box, "box", "Recuadro");
+            AddTool(AnnotationTool.Laser, "laser", "Láser: el trazo se desvanece solo");
             AddTool(AnnotationTool.Eraser, "eraser", "Borrador: pulsa un trazo para quitarlo");
             Children.Add(new Border { Width = 1, Height = 18, Background = new SolidColorBrush(System.Windows.Media.Color.FromArgb(0x40, 255, 255, 255)), Margin = new Thickness(8, 0, 6, 0) });
             foreach (uint color in AnnotationLayer.Colors) AddSwatch(color);

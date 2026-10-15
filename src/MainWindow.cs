@@ -78,6 +78,7 @@ namespace Lazo
         private Border _shareDot;
         private bool _shareOpen;
         private Border _shareCard;
+        private ScrollViewer _shareWindowsScroll;
         private ScreenShareSession _share;
         private System.Windows.Shapes.Path _navHomeIcon, _navChatIcon, _navHistoryIcon, _navSettingsIcon, _navEyeIcon;
         private string _sendFailure;
@@ -125,7 +126,7 @@ namespace Lazo
                 _peers = new List<Peer> {
                     new Peer { Id = Guid.NewGuid(), Name = "JQUIN" },
                     new Peer { Id = Guid.NewGuid(), Name = "EQUIPO-OFICINA" },
-                    new Peer { Id = Guid.NewGuid(), Name = "ATLAS" }
+                    new Peer { Id = Guid.NewGuid(), Name = "ATLAS", Sharing = "Pantalla 1" }
                 };
                 _results.AddRange(new[] {
                     @"C:\Users\JQUIN\Documents\proyecto-neural-21.pdf",
@@ -184,6 +185,8 @@ namespace Lazo
                 _network.ChatReceived += OnChatReceived;
                 _network.ChatSignal += OnChatSignal;
                 _network.ScreenOffered += OnScreenOffered;
+                _network.JoinRequested += OnJoinRequested;
+                _network.ShareRequested += OnShareRequested;
                 _network.PairingPrompt += OnPairingPrompt;
                 Updater.CheckInBackground(text => Dispatcher.BeginInvoke((Action)(() => SetStatus(text))),
                     () => Dispatcher.BeginInvoke((Action)(() => { _exiting = true; Application.Current.Shutdown(); })));
@@ -1297,6 +1300,7 @@ namespace Lazo
             startup.Checked += (s, e) => Startup.Set(true);
             startup.Unchecked += (s, e) => { Startup.Set(false); startup.IsChecked = Startup.IsEnabled(); };
             panel.Children.Add(startup);
+            AddReceiveFolder(panel);
             CheckBox updates = new CheckBox
             {
                 Content = "Actualizar automáticamente",
@@ -1356,6 +1360,77 @@ namespace Lazo
                 Margin = new Thickness(0, 40, 8, 0),
                 Child = scroll
             }, 290);
+        }
+
+        /// <summary>Carpeta donde se guarda lo que llega: se ve, se abre, se cambia o vuelve a Descargas\Lazo.</summary>
+        private void AddReceiveFolder(StackPanel panel)
+        {
+            TextBlock label = Theme.Label("Carpeta de recepción");
+            label.Margin = new Thickness(0, 14, 0, 4);
+            panel.Children.Add(label);
+            string folder = _network.ReceiveDirectory;
+            TextBlock path = Theme.Text(folder, 11.5, Theme.Ink, FontWeights.Medium);
+            path.TextTrimming = TextTrimming.CharacterEllipsis;
+            path.TextWrapping = TextWrapping.NoWrap;
+            path.ToolTip = folder;
+            panel.Children.Add(path);
+            WrapPanel buttons = new WrapPanel { Margin = new Thickness(0, 6, 0, 0) };
+            Button reset = Theme.Button("Predeterminada", false);
+            Action refresh = () =>
+            {
+                path.Text = _network.ReceiveDirectory;
+                path.ToolTip = _network.ReceiveDirectory;
+                reset.Visibility = _network.UsesDefaultReceiveDirectory ? Visibility.Collapsed : Visibility.Visible;
+            };
+            Button change = Theme.Button("Cambiar…", false);
+            change.MinHeight = 30;
+            change.Click += (s, e) =>
+            {
+                if (_preview) return;
+                using (System.Windows.Forms.FolderBrowserDialog dialog = new System.Windows.Forms.FolderBrowserDialog
+                {
+                    Description = "Elige dónde guardar lo que te llega por Lazo",
+                    SelectedPath = Directory.Exists(_network.ReceiveDirectory) ? _network.ReceiveDirectory : "",
+                    ShowNewFolderButton = true
+                })
+                {
+                    if (dialog.ShowDialog() != System.Windows.Forms.DialogResult.OK) return;
+                    try
+                    {
+                        _network.SetReceiveDirectory(dialog.SelectedPath);
+                        ShowToast("Lo recibido se guardará en " + _network.ReceiveDirectory);
+                    }
+                    catch (Exception ex) { ShowToast("No se pudo usar esa carpeta: " + ex.Message); }
+                }
+                refresh();
+            };
+            buttons.Children.Add(change);
+            Button open = Theme.Button("Abrir", false);
+            open.MinHeight = 30;
+            open.Margin = new Thickness(6, 0, 0, 0);
+            open.Click += (s, e) =>
+            {
+                try
+                {
+                    Directory.CreateDirectory(_network.ReceiveDirectory);
+                    System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo { FileName = _network.ReceiveDirectory, UseShellExecute = true });
+                }
+                catch (Exception ex) { ShowToast(ex.Message); }
+            };
+            buttons.Children.Add(open);
+            reset.MinHeight = 30;
+            reset.Margin = new Thickness(6, 0, 0, 0);
+            reset.ToolTip = "Volver a Descargas\\Lazo";
+            reset.Click += (s, e) =>
+            {
+                if (_preview) return;
+                _network.SetReceiveDirectory(null);
+                ShowToast("Lo recibido se guardará en " + _network.ReceiveDirectory);
+                refresh();
+            };
+            buttons.Children.Add(reset);
+            panel.Children.Add(buttons);
+            refresh();
         }
 
         /// <summary>
@@ -2539,7 +2614,7 @@ namespace Lazo
         {
             string path = location;
             if (string.IsNullOrEmpty(path) && incoming)
-                path = Path.Combine(NetworkEngine.DefaultReceiveDirectory(), name);
+                path = Path.Combine(_network.ReceiveDirectory, name);
             try
             {
                 string explorer = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.Windows), "explorer.exe");
@@ -2787,6 +2862,8 @@ namespace Lazo
             Dispatcher.BeginInvoke((Action)(() =>
             {
                 _peers = peers;
+                foreach (Guid id in _joinAsked.Keys.Where(id => !peers.Any(p => p.Id == id && p.Sharing != null)).ToList()) _joinAsked.Remove(id);
+                if (_shareOpen) RefreshShareCard();
                 RefreshDots();
                 RefreshDevices();
                 RenderResults();
@@ -3014,9 +3091,41 @@ namespace Lazo
         private void SetupHotkeys()
         {
             _hotkeys = new Hotkeys(this, Toggle);
+            _hotkeys.Chord = OnShareChord;
             if (!_hotkeys.DoubleAltAvailable && !_hotkeys.AlternativeAvailable) SetStatus("Abre Lazo desde la bandeja.");
             else if (!_hotkeys.DoubleAltAvailable) SetStatus("Ctrl+Alt+L para abrir Lazo.");
             else if (!_hotkeys.AlternativeAvailable) SetStatus("Doble Alt para abrir Lazo.");
+        }
+
+        /// <summary>
+        /// Atajos de emergencia mientras comparto, desde el teclado físico (quien controla no puede usarlos):
+        /// Ctrl+Alt+Q quita permisos de dibujar y controlar · Ctrl+Alt+X deja de compartir ·
+        /// Ctrl+Alt+A acepta el último aviso (el control, solo en ventana activa) · Ctrl+Alt+R lo rechaza.
+        /// Corre en el gancho de teclado: decide al momento y deja el trabajo para después.
+        /// </summary>
+        private bool OnShareChord(char key)
+        {
+            ScreenShareSession session = _share;
+            switch (key)
+            {
+                case 'Q':
+                    if (session == null || !session.AnyGranted) return false;
+                    session.RevokeAll();
+                    Dispatcher.BeginInvoke((Action)(() => ShowToast("Quitaste todos los permisos (Ctrl+Alt+Q)")));
+                    return true;
+                case 'X':
+                    if (session == null) return false;
+                    Dispatcher.BeginInvoke((Action)StopShare);
+                    return true;
+                case 'A':
+                case 'R':
+                    if (_sharePrompts.Count == 0) return false;
+                    PermissionPromptWindow prompt = _sharePrompts[_sharePrompts.Count - 1];
+                    bool accept = key == 'A';
+                    Dispatcher.BeginInvoke((Action)(() => { if (accept) prompt.Accept(); else prompt.Dismiss(); }));
+                    return true;
+            }
+            return false;
         }
 
         private void Toggle() { if (IsVisible) HideAnimated(); else ShowAnimated(); }
@@ -3177,7 +3286,17 @@ namespace Lazo
 
         private void RefreshShareCard()
         {
-            if (_shareCard != null) _shareCard.Child = ShareContent();
+            if (_shareCard != null)
+            {
+                // El panel se reconstruye en cada clic: se conserva dónde estaba el scroll para que no salte arriba.
+                ScrollViewer before = _shareCard.Child as ScrollViewer;
+                double offset = before == null ? 0 : before.VerticalOffset;
+                double windowsOffset = _shareWindowsScroll == null ? 0 : _shareWindowsScroll.VerticalOffset;
+                _shareCard.Child = ShareContent();
+                ScrollViewer after = _shareCard.Child as ScrollViewer;
+                if (after != null && offset > 0) after.ScrollToVerticalOffset(offset);
+                if (_shareWindowsScroll != null && windowsOffset > 0) _shareWindowsScroll.ScrollToVerticalOffset(windowsOffset);
+            }
             if (_picker != null && _picker.Children.Count > 0) ((Border)_picker.Children[0]).Child = PickerContent();
             if (_shareDot != null) _shareDot.Visibility = _share != null ? Visibility.Visible : Visibility.Collapsed;
         }
@@ -3196,6 +3315,8 @@ namespace Lazo
             Grid.SetColumn(close, 1);
             head.Children.Add(close);
             panel.Children.Add(head);
+
+            BuildSharingNow(panel);
 
             if (_share != null)
             {
@@ -3217,13 +3338,14 @@ namespace Lazo
             List<ShareSource> list = ScreenSources.Windows();
             foreach (ShareSource window in list) windows.Children.Add(WindowChoice(window));
             if (list.Count == 0) windows.Children.Add(Theme.Text("No hay otras ventanas abiertas.", 11.5, Theme.Muted));
-            panel.Children.Add(new ScrollViewer
+            _shareWindowsScroll = new ScrollViewer
             {
                 Content = windows,
                 MaxHeight = 124,
                 VerticalScrollBarVisibility = ScrollBarVisibility.Auto,
                 HorizontalScrollBarVisibility = ScrollBarVisibility.Disabled
-            });
+            };
+            panel.Children.Add(_shareWindowsScroll);
 
             TextBlock peopleLabel = Theme.Label("Con quién");
             peopleLabel.Margin = new Thickness(0, 12, 0, 6);
@@ -3235,6 +3357,16 @@ namespace Lazo
                 panel.Children.Add(none);
             }
             WrapPanel people = new WrapPanel();
+            if (_peers.Count > 1)
+            {
+                bool all = _peers.All(p => _shareTargets.Contains(p.Id));
+                people.Children.Add(AllChip(all, () =>
+                {
+                    if (all) _shareTargets.Clear();
+                    else foreach (Peer peer in _peers) _shareTargets.Add(peer.Id);
+                    RefreshShareCard();
+                }));
+            }
             foreach (Peer peer in _peers) people.Children.Add(PeerChoice(peer));
             panel.Children.Add(people);
 
@@ -3248,6 +3380,197 @@ namespace Lazo
             note.Margin = new Thickness(0, 8, 0, 0);
             panel.Children.Add(note);
             return Scroll(panel);
+        }
+
+        // ── Quién está compartiendo y pedir unirse ───────────────────────────
+
+        /// <summary>Equipos a los que pedí unirme y cuándo; su invitación se acepta sin volver a preguntar.</summary>
+        private readonly Dictionary<Guid, DateTime> _joinAsked = new Dictionary<Guid, DateTime>();
+        /// <summary>Equipos cuya invitación de pantalla se abre sin preguntar porque yo pedí unirme o que compartan.</summary>
+        private readonly Dictionary<Guid, DateTime> _autoAccept = new Dictionary<Guid, DateTime>();
+        /// <summary>Quien comparte: última solicitud atendida de cada equipo, para no apilar avisos repetidos.</summary>
+        private readonly Dictionary<Guid, DateTime> _joinPrompted = new Dictionary<Guid, DateTime>();
+
+        private void BuildSharingNow(StackPanel panel)
+        {
+            List<Peer> sharing = _peers.Where(p => p.Sharing != null).ToList();
+            if (sharing.Count > 0)
+            {
+                panel.Children.Add(Theme.Label("Compartiendo ahora"));
+                StackPanel rows = new StackPanel { Margin = new Thickness(0, 6, 0, 12) };
+                foreach (Peer peer in sharing) rows.Children.Add(SharingRow(peer));
+                panel.Children.Add(rows);
+            }
+            // Pedir a quien no comparte que lo haga; su invitación se abre sin volver a preguntar.
+            List<Peer> others = _peers.Where(p => p.Sharing == null).ToList();
+            if (others.Count == 0) return;
+            panel.Children.Add(Theme.Label("Pedir que compartan"));
+            WrapPanel chips = new WrapPanel { Margin = new Thickness(0, 6, 0, 10) };
+            foreach (Peer peer in others)
+            {
+                Peer target = peer;
+                bool asked = _shareAsked.ContainsKey(peer.Id) && (DateTime.UtcNow - _shareAsked[peer.Id]).TotalMinutes < 2;
+                Button chip = Chip(peer, asked, () => RequestShare(target));
+                chip.IsEnabled = !asked;
+                chip.ToolTip = asked ? "Ya se lo pediste a " + peer.Name : "Pedir a " + peer.Name + " que comparta su pantalla";
+                chips.Children.Add(chip);
+            }
+            panel.Children.Add(chips);
+        }
+
+        /// <summary>Equipos a los que pedí que compartan, y cuándo.</summary>
+        private readonly Dictionary<Guid, DateTime> _shareAsked = new Dictionary<Guid, DateTime>();
+
+        private async void RequestShare(Peer peer)
+        {
+            if (_preview || peer == null) return;
+            _shareAsked[peer.Id] = DateTime.UtcNow;
+            // Su invitación será la respuesta: se abre sola, como al pedir unirse.
+            _autoAccept[peer.Id] = DateTime.UtcNow;
+            RefreshShareCard();
+            try
+            {
+                if (await _network.RequestShareAsync(peer)) ShowToast("Se pidió a " + peer.Name + " que comparta su pantalla");
+                else { _shareAsked.Remove(peer.Id); _autoAccept.Remove(peer.Id); ShowToast(peer.Name + " no puede atenderlo ahora"); }
+            }
+            catch (Exception ex)
+            {
+                _shareAsked.Remove(peer.Id);
+                _autoAccept.Remove(peer.Id);
+                ShowToast(ex.Message);
+            }
+            RefreshShareCard();
+        }
+
+        /// <summary>Hilo de red: alguien me pide que comparta. El aviso decide; nada se comparte sin elegirlo.</summary>
+        private bool OnShareRequested(Guid id, string name)
+        {
+            Dispatcher.BeginInvoke((Action)(() => AskToShare(id, name)));
+            return true;
+        }
+
+        private void AskToShare(Guid id, string name)
+        {
+            DateTime last;
+            if (_joinPrompted.TryGetValue(id, out last) && (DateTime.UtcNow - last).TotalSeconds < 20) return;
+            _joinPrompted[id] = DateTime.UtcNow;
+            PermissionPromptWindow prompt = null;
+            prompt = new PermissionPromptWindow(-1, name, SharePermission.AskShare, _sharePrompts.Count, (accept, full) =>
+            {
+                _sharePrompts.Remove(prompt);
+                RestackPrompts();
+                _joinPrompted.Remove(id);
+                if (!accept) return;
+                Peer peer = _peers.FirstOrDefault(p => p.Id == id);
+                if (peer == null) { ShowToast(name + " ya no está en línea"); return; }
+                if (_share != null)
+                {
+                    // Ya comparto: basta con invitarle.
+                    _share.Invite(peer);
+                    _shareInvited.Add(peer.Id);
+                    ShowToast("Invitación enviada a " + peer.Name);
+                    return;
+                }
+                // Se abre el panel con esa persona ya marcada; falta elegir pantalla o ventana y pulsar Compartir.
+                _shareTargets.Add(peer.Id);
+                ActivateFromElsewhere();
+                if (!_shareOpen) TogglePanel("share"); else RefreshShareCard();
+            });
+            _sharePrompts.Add(prompt);
+            prompt.Show();
+        }
+
+        private UIElement SharingRow(Peer peer)
+        {
+            Grid row = new Grid { Margin = new Thickness(0, 0, 0, 6) };
+            row.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+            row.ColumnDefinitions.Add(new ColumnDefinition());
+            row.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+            Grid avatar = new Grid { Width = 34, Height = 34, VerticalAlignment = VerticalAlignment.Center };
+            avatar.Children.Add(new Border { CornerRadius = new CornerRadius(17), Background = Theme.AvatarSurface, Child = PhotoContent(peer.Photo, peer.Name, 34) });
+            avatar.Children.Add(new System.Windows.Shapes.Ellipse
+            {
+                Width = 10, Height = 10, Fill = Theme.Danger, Stroke = Theme.CardSurface, StrokeThickness = 2,
+                HorizontalAlignment = HorizontalAlignment.Right, VerticalAlignment = VerticalAlignment.Bottom
+            });
+            row.Children.Add(avatar);
+            StackPanel words = new StackPanel { Margin = new Thickness(10, 0, 8, 0), VerticalAlignment = VerticalAlignment.Center };
+            TextBlock name = Theme.Text(peer.Name, 12.5, Theme.Ink, FontWeights.SemiBold);
+            name.TextTrimming = TextTrimming.CharacterEllipsis;
+            name.TextWrapping = TextWrapping.NoWrap;
+            words.Children.Add(name);
+            TextBlock what = Theme.Text("En vivo · " + peer.Sharing, 10.5, Theme.Muted);
+            what.TextTrimming = TextTrimming.CharacterEllipsis;
+            what.TextWrapping = TextWrapping.NoWrap;
+            what.ToolTip = peer.Sharing;
+            words.Children.Add(what);
+            Grid.SetColumn(words, 1);
+            row.Children.Add(words);
+            bool asked = _joinAsked.ContainsKey(peer.Id);
+            Button join = Theme.Button(asked ? "Enviada" : "Unirme", !asked);
+            join.MinHeight = 30;
+            join.FontSize = 12;
+            join.Padding = new Thickness(12, 0, 12, 0);
+            join.ToolTip = asked ? "Esperando a que " + peer.Name + " acepte" : "Pedir a " + peer.Name + " ver su pantalla";
+            join.IsEnabled = !asked;
+            join.VerticalAlignment = VerticalAlignment.Center;
+            Peer target = peer;
+            join.Click += (s, e) => RequestJoin(target);
+            Grid.SetColumn(join, 2);
+            row.Children.Add(join);
+            return row;
+        }
+
+        private async void RequestJoin(Peer peer)
+        {
+            if (_preview || peer == null) return;
+            _joinAsked[peer.Id] = DateTime.UtcNow;
+            _autoAccept[peer.Id] = DateTime.UtcNow;
+            RefreshShareCard();
+            try
+            {
+                if (await _network.RequestJoinAsync(peer)) ShowToast("Se pidió a " + peer.Name + " unirte a su pantalla");
+                else { _joinAsked.Remove(peer.Id); _autoAccept.Remove(peer.Id); ShowToast(peer.Name + " ya no está compartiendo"); }
+            }
+            catch (Exception ex)
+            {
+                _joinAsked.Remove(peer.Id);
+                _autoAccept.Remove(peer.Id);
+                ShowToast(ex.Message);
+            }
+            RefreshShareCard();
+        }
+
+        /// <summary>Hilo de red: alguien pide unirse. Solo se atiende si comparto; el aviso decide.</summary>
+        private bool OnJoinRequested(Guid id, string name)
+        {
+            if (_share == null) return false;
+            Dispatcher.BeginInvoke((Action)(() => AskJoin(id, name)));
+            return true;
+        }
+
+        private void AskJoin(Guid id, string name)
+        {
+            ScreenShareSession session = _share;
+            if (session == null) return;
+            DateTime last;
+            if (_joinPrompted.TryGetValue(id, out last) && (DateTime.UtcNow - last).TotalSeconds < 20) return;
+            _joinPrompted[id] = DateTime.UtcNow;
+            PermissionPromptWindow prompt = null;
+            prompt = new PermissionPromptWindow(-1, name, SharePermission.Watch, _sharePrompts.Count, (accept, full) =>
+            {
+                _sharePrompts.Remove(prompt);
+                RestackPrompts();
+                _joinPrompted.Remove(id);
+                if (!accept || _share != session) return;
+                Peer peer = _peers.FirstOrDefault(p => p.Id == id);
+                if (peer == null) { ShowToast(name + " ya no está en línea"); return; }
+                session.Invite(peer);
+                _shareInvited.Add(peer.Id);
+                if (_chatPanel != null) _chatPanel.RefreshOpen();
+            });
+            _sharePrompts.Add(prompt);
+            prompt.Show();
         }
 
         private static ScrollViewer Scroll(UIElement content)
@@ -3289,6 +3612,14 @@ namespace Lazo
             panel.Children.Add(invite);
             string[] watching = _share.ViewerNames();
             WrapPanel people = new WrapPanel();
+            List<Peer> missing = _peers.Where(p => !watching.Contains(p.Name) && !_shareInvited.Contains(p.Id)).ToList();
+            if (missing.Count > 1)
+                people.Children.Add(AllChip(false, () =>
+                {
+                    if (_share == null) return;
+                    foreach (Peer peer in missing) { _share.Invite(peer); _shareInvited.Add(peer.Id); }
+                    ShowToast("Invitaciones enviadas a " + missing.Count + " personas");
+                }, "Invitar a todos"));
             foreach (Peer peer in _peers)
             {
                 Peer target = peer;
@@ -3390,6 +3721,38 @@ namespace Lazo
             });
         }
 
+        /// <summary>Pastilla «Todos»: marca (o desmarca) a todas las personas en línea de una vez.</summary>
+        private Button AllChip(bool selected, Action click, string text = "Todos")
+        {
+            StackPanel row = new StackPanel { Orientation = Orientation.Horizontal };
+            Border face = new Border
+            {
+                Width = 24,
+                Height = 24,
+                CornerRadius = new CornerRadius(12),
+                Background = selected ? Theme.SegmentActiveText : Theme.AvatarSurface,
+                Child = Icons.Make("users", 13, selected ? Theme.SegmentActive : Theme.Ink, 2)
+            };
+            row.Children.Add(face);
+            TextBlock name = Theme.Text(text, 12, selected ? Theme.SegmentActiveText : Theme.Ink, FontWeights.SemiBold);
+            name.VerticalAlignment = VerticalAlignment.Center;
+            name.Margin = new Thickness(7, 0, 4, 0);
+            row.Children.Add(name);
+            if (selected)
+                { System.Windows.Shapes.Path tick = Icons.Make("check", 13, Theme.SegmentActiveText, 2.4); tick.Margin = new Thickness(2, 0, 2, 0); row.Children.Add(tick); }
+            Border pill = new Border
+            {
+                CornerRadius = new CornerRadius(16),
+                Padding = new Thickness(4, 4, 10, 4),
+                Background = selected ? Theme.SegmentActive : Theme.SoftSurface,
+                Child = row
+            };
+            Button button = Plain(pill, click);
+            button.Margin = new Thickness(0, 0, 6, 6);
+            button.ToolTip = selected ? "Quitar a todos" : "Compartir con todas las personas en línea";
+            return button;
+        }
+
         private Button Chip(Peer peer, bool selected, Action click)
         {
             StackPanel row = new StackPanel { Orientation = Orientation.Horizontal };
@@ -3456,6 +3819,7 @@ namespace Lazo
             ScreenOverlayWindow overlay = new ScreenOverlayWindow(_shareSource);
             overlay.Layer.Local += op => session.Annotate(op);
             session.Annotated += op => Dispatcher.BeginInvoke((Action)(() => { if (_shareOverlay == overlay) overlay.Layer.Apply(op); }));
+            session.PointerMoved += pointer => Dispatcher.BeginInvoke((Action)(() => { if (_shareOverlay == overlay) overlay.Pointers.Apply(pointer); }));
             session.PermissionRequested += (viewerId, name, kind) => Dispatcher.BeginInvoke((Action)(() => AskSharePermission(session, viewerId, name, kind)));
             session.ViewerLeft += viewerId => Dispatcher.BeginInvoke((Action)(() => DismissPrompts(viewerId)));
             overlay.DrawingChanged += drawing => session.InputPaused = drawing;
@@ -3464,6 +3828,8 @@ namespace Lazo
             _shareInvited.Clear();
             foreach (Peer peer in targets) { session.Invite(peer); _shareInvited.Add(peer.Id); }
             session.Start();
+            // Los demás ven en su panel que comparto y pueden pedir unirse.
+            _network.SetSharing(_shareSource.Label);
             overlay.Show();
             _shareBar = new ShareBarWindow(StopShare, overlay, session.RevokeAll);
             _shareBar.Show();
@@ -3603,6 +3969,8 @@ namespace Lazo
         {
             if (_share != session) return;
             _share = null;
+            _network.SetSharing(null);
+            _joinPrompted.Clear();
             if (_shareBar != null) { _shareBar.Close(); _shareBar = null; }
             if (_shareOverlay != null) { _shareOverlay.Close(); _shareOverlay = null; }
             foreach (PermissionPromptWindow prompt in _sharePrompts.ToArray()) prompt.Dismiss();
@@ -3625,7 +3993,7 @@ namespace Lazo
                 session.Answer(viewerId, kind, accept, full);
                 if (!accept) return;
                 if (kind != SharePermission.Control) ShowToast(name + " puede dibujar en tu pantalla");
-                else ShowToast(full ? name + " tiene el control total del equipo" : name + " puede controlar la ventana activa");
+                else ShowToast(full ? name + " tiene el control total del equipo · Ctrl+Alt+Q para quitarlo" : name + " puede controlar la ventana activa · Ctrl+Alt+Q para quitarlo");
             });
             _sharePrompts.Add(prompt);
             prompt.Show();
@@ -3642,18 +4010,44 @@ namespace Lazo
             for (int i = 0; i < _sharePrompts.Count; i++) _sharePrompts[i].Restack(i);
         }
 
+        private ScreenStageWindow _stage;
+
         private Task<IScreenSink> OnScreenOffered(ScreenInvite invite)
         {
             TaskCompletionSource<IScreenSink> response = new TaskCompletionSource<IScreenSink>();
             Dispatcher.BeginInvoke((Action)(() =>
             {
+                Action open = () =>
+                {
+                    // Todas las pantallas que veo van a una sola ventana; con dos o más, en mosaico.
+                    if (_stage == null)
+                    {
+                        ScreenStageWindow stage = new ScreenStageWindow();
+                        stage.Closed += (s, e) => { if (_stage == stage) _stage = null; };
+                        _stage = stage;
+                    }
+                    ScreenViewerView view = new ScreenViewerView(invite.Sender, invite.Source);
+                    _stage.Add(view);
+                    if (!_stage.IsVisible) _stage.Show();
+                    if (_stage.WindowState == WindowState.Minimized) _stage.WindowState = WindowState.Normal;
+                    _stage.Activate();
+                    response.TrySetResult(new ScreenViewer(view));
+                };
+                // Si yo pedí unirme hace poco, la invitación es la respuesta: se abre sin volver a preguntar.
+                DateTime asked;
+                if (_autoAccept.TryGetValue(invite.Id, out asked) && (DateTime.UtcNow - asked).TotalMinutes < 3)
+                {
+                    _autoAccept.Remove(invite.Id);
+                    _joinAsked.Remove(invite.Id);
+                    _shareAsked.Remove(invite.Id);
+                    if (_shareOpen) RefreshShareCard();
+                    open();
+                    return;
+                }
                 ScreenInviteWindow prompt = new ScreenInviteWindow(invite, accept =>
                 {
                     if (!accept) { response.TrySetResult(null); return; }
-                    ScreenViewerWindow window = new ScreenViewerWindow(invite.Sender, invite.Source);
-                    window.Show();
-                    window.Activate();
-                    response.TrySetResult(new ScreenViewer(window));
+                    open();
                 });
                 prompt.Show();
             }));

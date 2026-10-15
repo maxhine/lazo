@@ -65,6 +65,28 @@ internal static class ControlSmoke
         ShareSource source = new ShareSource { IsWindow = true, Handle = new System.Windows.Interop.WindowInteropHelper(shared).Handle, Label = "Lazo prueba control" };
 
         bool ok = true;
+
+        // Atajos de emergencia: solo Ctrl + Alt izquierdo físicos; ni la entrada inyectada ni AltGr (@) los activan.
+        Hotkeys physical = new Hotkeys();
+        physical.Feed(0xA2, 0x1D, 0, true);
+        physical.Feed(0xA4, 0x38, 0x20, true);
+        ok &= Check(physical.Feed(0x51, 0x10, 0x20, true) == 'Q', "Ctrl+Alt+Q desde el teclado físico activa el atajo");
+        physical.Feed(0x51, 0x10, 0x80, false);
+        physical.Feed(0xA4, 0x38, 0x80, false);
+        ok &= Check(physical.Feed(0x51, 0x10, 0, true) == '\0', "al soltar Alt ya no hay atajo");
+        Hotkeys injected = new Hotkeys();
+        injected.Feed(0xA2, 0x1D, 0x10, true);
+        injected.Feed(0xA4, 0x38, 0x30, true);
+        ok &= Check(injected.Feed(0x51, 0x10, 0x30, true) == '\0', "quien controla a distancia no puede usar los atajos");
+        Hotkeys mixed = new Hotkeys();
+        mixed.Feed(0xA2, 0x1D, 0x10, true);
+        mixed.Feed(0xA4, 0x38, 0x20, true);
+        ok &= Check(mixed.Feed(0x51, 0x10, 0x20, true) == '\0', "un Ctrl inyectado no completa el atajo");
+        Hotkeys altGr = new Hotkeys();
+        altGr.Feed(0xA2, 0x21D, 0x20, true);
+        altGr.Feed(0xA5, 0x38, 0x21, true);
+        ok &= Check(altGr.Feed(0x51, 0x10, 0x20, true) == '\0', "AltGr+Q (@) no activa el atajo");
+
         int port = FreePort();
         using (NetworkEngine viewerSide = new NetworkEngine(Path.Combine(output, "inbox"), FreeUdp(), port, Path.Combine(output, "perfil-visor")))
         using (NetworkEngine sharer = new NetworkEngine(Path.Combine(output, "inbox2"), FreeUdp(), FreePort(), Path.Combine(output, "perfil-emisor")))
@@ -98,6 +120,8 @@ internal static class ControlSmoke
             session.PermissionRequested += (id, name, kind) => { asked |= kind; session.Answer(id, kind, true, kind == SharePermission.Control && fullNext); };
             bool ended = false;
             session.Ended += () => ended = true;
+            PointerUpdate pointer = null;
+            session.PointerMoved += update => pointer = update;
             session.Invite(new Peer { Id = viewerSide.SelfId, Name = "Visor", Address = local, Port = port });
             session.Start();
 
@@ -122,6 +146,20 @@ internal static class ControlSmoke
             window.Layer.EraseMine();
             ok &= Check(await Until(() => hostLayer.Children.Count == 1, 3000), "borrar los trazos propios se refleja en quien comparte");
 
+            // Láser: llega a quien comparte y, al levantar el mouse, se desvanece solo en los dos lados.
+            int viewerBefore = window.Layer.Children.Count;
+            window.Layer.Commit(Stroke(44, AnnotationTool.Laser, 0.3, 0.3, 0.6, 0.4));
+            ok &= Check(await Until(() => hostLayer.Children.Count == 2, 3000), "el láser llega a quien comparte");
+            window.Layer.FinishStroke(44);
+            bool faded = await Until(() => hostLayer.Children.Count == 1 && window.Layer.Children.Count == viewerBefore, 5000);
+            if (!faded) Console.WriteLine("  quien comparte: " + hostLayer.Children.Count + " · visor: " + window.Layer.Children.Count);
+            ok &= Check(faded, "el láser se desvanece solo en los dos lados");
+
+            // Mientras dibuja, su puntero llega a quien comparte con su nombre.
+            window.MovePointer(0.25, 0.5);
+            ok &= Check(await Until(() => pointer != null && pointer.Visible && pointer.Name == "Visor" && Math.Abs(pointer.X / 65535.0 - 0.25) < 0.01, 3000),
+                "el puntero de quien dibuja llega a quien comparte con su nombre");
+
             window.Request(SharePermission.Control);
             ok &= Check(await Until(() => (window.Granted & SharePermission.Control) != 0 && session.Controller == "Visor (ventana activa)", 3000)
                 && (window.Granted & SharePermission.FullControl) == 0,
@@ -137,6 +175,10 @@ internal static class ControlSmoke
 
             session.RevokeAll();
             ok &= Check(await Until(() => window.Granted == 0 && session.Controller == null && !session.AnyGranted, 3000), "quitar permisos llega al visor");
+            ok &= Check(await Until(() => pointer != null && !pointer.Visible, 3000), "sin permisos, su puntero desaparece");
+            window.MovePointer(0.6, 0.6);
+            await Task.Delay(500);
+            ok &= Check(!pointer.Visible, "sin permisos no se envía el puntero");
 
             // Sin permiso, un trazo del visor se ignora. (El borrado anterior ya contó como operación del visor.)
             int acceptedBefore = fromViewer;
