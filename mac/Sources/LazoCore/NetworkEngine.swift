@@ -33,6 +33,11 @@ public struct Offer {
     public let fileName: String
     public let size: Int64
     public let preview: Data?
+
+    public init(id: UUID, peerId: String, sender: String, address: String, fileName: String, size: Int64, preview: Data?) {
+        self.id = id; self.peerId = peerId; self.sender = sender; self.address = address
+        self.fileName = fileName; self.size = size; self.preview = preview
+    }
 }
 
 public struct ScreenInvite {
