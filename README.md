@@ -17,10 +17,10 @@ La interfaz usa Bahnschrift con respaldo en Segoe UI. Paneles, chat y cambios de
 
 ## Instalar y compartir
 
-Comparte **`dist/Lazo-Setup-0.5.1.exe`**. Es un solo archivo: contiene Lazo, crea accesos directos, registra la desinstalación en Configuración de Windows y configura dos reglas entrantes limitadas al perfil **Privado** y a la **subred local**. Solicita permisos de administrador. Puede iniciar con Windows si se deja marcada la opción del instalador.
+Comparte **`dist/Lazo-Setup-0.5.2.exe`**. Es un solo archivo: contiene Lazo, crea accesos directos, registra la desinstalación en Configuración de Windows y configura dos reglas entrantes limitadas al perfil **Privado** y a la **subred local**. Solicita permisos de administrador. Puede iniciar con Windows si se deja marcada la opción del instalador.
 
 1. Cierra cualquier copia anterior de Lazo desde el icono de la bandeja.
-2. Ejecuta `Lazo-Setup-0.5.1.exe` y acepta el aviso de Windows.
+2. Ejecuta `Lazo-Setup-0.5.2.exe` y acepta el aviso de Windows.
 3. Abre Lazo desde el menú Inicio. Repite la instalación en el otro equipo.
 4. Asegúrate de que ambos equipos estén en una red marcada como **Privada** en Windows.
 
@@ -37,6 +37,12 @@ También puede generarse un paquete portable con `scripts/package.ps1`, pero el 
 5. El archivo aceptado se guarda en `Descargas\Lazo`. Se verifica con SHA-256 antes de conservarlo; la alerta se repliega al terminar.
 
 Cerrar la ventana principal la oculta en la bandeja. **Salir** en el menú de la bandeja detiene Lazo.
+
+## Utilidades
+
+Sección de herramientas de trabajo (ícono de llave). Hoy:
+
+- **Nube de puntos a ReCap**: `.las`, `.laz` o `.e57` a proyecto `.rcp` o nube única `.rcs`, con Autodesk ReCap instalado (usa su conversor `DeCap.exe` y la licencia del equipo). Lee el sistema de coordenadas de la nube y deja elegir el de salida; Origen Nacional (MAGNA-SIRGAS 2018), que ReCap no trae, lo calcula Lazo, y puede pasar alturas elipsoidales a EGM2008 con `egm08_25.gtx`. Las nubes grandes se parten y se convierten con varios ReCap a la vez; al final se pueden unir en un solo escaneo. Cada conversión deja un reporte de tiempos (`nombre - reporte.txt`) y el ícono de la bandeja muestra el avance como un anillo.
 
 ## Seguridad
 
