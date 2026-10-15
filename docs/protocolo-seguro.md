@@ -8,7 +8,7 @@ Todos los enteros van en *little endian*, salvo donde se indique. `texto` es `u1
 
 - Cada equipo tiene un identificador (`device.id`, GUID en formato `D`, minúsculas, 36 caracteres ASCII) y una clave de identidad ECDSA P‑256 que no sale del equipo.
   - Windows: `%AppData%\Lazo\identity.key`, protegida con DPAPI del usuario.
-  - macOS: Llavero del usuario, servicio `com.lazo.identity`.
+  - macOS: `~/Library/Application Support/Lazo/identity.key`, permisos `0600` (como las claves de SSH).
 - Clave pública: 64 bytes `X || Y` (big endian, sin el prefijo `0x04`).
 - Huella: SHA‑256 de la clave pública, en hexadecimal minúscula.
 - Equipos conocidos: identificador → huella, nombre y si está verificado, en `paired.txt` (Windows, `%AppData%\Lazo`) o `paired.json` (macOS, `~/Library/Application Support/Lazo`). Se guardan solos en el primer contacto (confianza en el primer uso, como SSH). Verificar con el código de 6 cifras es opcional.
