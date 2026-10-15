@@ -29,7 +29,10 @@ namespace Lazo
             foreach (string arg in args)
                 if (arg.StartsWith("--preview-theme=")) Theme.Override = Theme.ParseTheme(arg.Substring(16));
             foreach (string arg in args)
+            {
                 if (arg.StartsWith("--preview-panel=")) MainWindow.PreviewPanel = arg.Substring(16);
+                if (arg.StartsWith("--preview-cloud=")) MainWindow.PreviewCloud = arg.Substring(16);
+            }
             if (Array.IndexOf(args, "--preview-share") >= 0) MainWindow.PreviewPanel = "share";
             if (Array.IndexOf(args, "--preview-eyecare-alert") >= 0)
             {

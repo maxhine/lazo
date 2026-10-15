@@ -16,7 +16,7 @@ $output = Join-Path $project 'bin'
 $exe = Join-Path $output 'ScreenSmoke.exe'
 # Todo el código de la aplicación salvo su punto de entrada, más la prueba.
 $sources = Get-ChildItem -LiteralPath (Join-Path $project 'src') -Filter '*.cs' | Where-Object { $_.Name -ne 'Program.cs' } | Select-Object -ExpandProperty FullName
-& $csc /nologo /target:exe /platform:anycpu /utf8output ('/out:' + $exe) $references $sources (Join-Path $project 'tests\ScreenSmoke.cs')
+& $csc /nologo /target:exe /platform:anycpu /utf8output ('/out:' + $exe) /reference:System.IO.Compression.dll /reference:System.IO.Compression.FileSystem.dll $references $sources (Join-Path $project 'tests\ScreenSmoke.cs')
 if ($LASTEXITCODE -ne 0) { throw 'Falló la compilación de la prueba de pantalla.' }
 & $exe (Join-Path $output 'screen-check') $Mode
 if ($LASTEXITCODE -ne 0) { throw 'Falló la prueba de pantalla compartida.' }

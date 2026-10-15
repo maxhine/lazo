@@ -16,14 +16,14 @@ using Microsoft.Win32;
 
 [assembly: AssemblyTitle("Lazo Installer")]
 [assembly: AssemblyCompany("Jhon Andrew")]
-[assembly: AssemblyVersion("0.5.1.0")]
-[assembly: AssemblyFileVersion("0.5.1.0")]
+[assembly: AssemblyVersion("0.5.2.0")]
+[assembly: AssemblyFileVersion("0.5.2.0")]
 
 namespace LazoInstaller
 {
     internal static class Program
     {
-        public const string Version = "0.5.1";
+        public const string Version = "0.5.2";
 
         [STAThread]
         private static void Main(string[] args)

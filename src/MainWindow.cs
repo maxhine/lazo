@@ -15,7 +15,7 @@ using Microsoft.Win32;
 
 namespace Lazo
 {
-    internal sealed class MainWindow : Window
+    internal sealed partial class MainWindow : Window
     {
         private readonly NetworkEngine _network = new NetworkEngine();
         private readonly bool _preview;
@@ -70,9 +70,11 @@ namespace Lazo
         private TextBox _peerFilterBox;
         private string _peerFilter = "";
         private double _ownAvatarSize = 24;
-        private Button _navHome, _navChat, _navHistory, _navSettings, _navEye, _navShare;
+        private Button _navHome, _navChat, _navHistory, _navSettings, _navEye, _navShare, _navTools;
         internal static string PreviewPanel;
-        private System.Windows.Shapes.Path _navShareIcon;
+        /// <summary>Vista previa de Utilidades con una nube ya cargada (--preview-cloud=ruta).</summary>
+        internal static string PreviewCloud;
+        private System.Windows.Shapes.Path _navShareIcon, _navToolsIcon;
         private TextBlock _sectionCount;
         private TextBlock _heroChip;
         private Border _shareDot;
@@ -140,6 +142,12 @@ namespace Lazo
             ApplySize(false);
             if (previewSettings) { _settingsOpen = true; SyncChrome(); }
             if (PreviewPanel == "share") { _shareOpen = true; SyncChrome(); }
+            if (PreviewPanel == "tools")
+            {
+                if (PreviewCloud != null) { AddCloudFiles(new[] { PreviewCloud }); _cloudTarget = new CsChoice { Lazo = LazoProjection.ById("on-egm") }; }
+                _toolsOpen = true;
+                SyncChrome();
+            }
             if (PreviewPanel == "chat") { _chatOpen = true; SyncChrome(); ChatThread first = ChatStore.Threads().OrderByDescending(t => t.When).FirstOrDefault(); if (first != null && _chatPanel != null) _chatPanel.Open(first.Id, first.Name); }
             if (PreviewPanel == "settings") { _settingsOpen = true; SyncChrome(); }
             Loaded += (s, e) =>
@@ -263,7 +271,7 @@ namespace Lazo
             _peerFilterBox = null;
             _bodyHost = null;
             _tagline = null;
-            _navHome = _navChat = _navHistory = _navSettings = _navEye = _navShare = null;
+            _navHome = _navChat = _navHistory = _navSettings = _navEye = _navShare = _navTools = null;
             _shareDot = null;
             _sectionCount = null;
             _heroChip = null;
@@ -342,6 +350,10 @@ namespace Lazo
             _shareCard.Visibility = _shareOpen ? Visibility.Visible : Visibility.Collapsed;
             _shareCard.MouseLeftButtonDown += (s, e) => e.Handled = true;
             overlay.Children.Add(_shareCard);
+            _toolsCard = ToolsCard();
+            _toolsCard.Visibility = _toolsOpen ? Visibility.Visible : Visibility.Collapsed;
+            _toolsCard.MouseLeftButtonDown += (s, e) => e.Handled = true;
+            overlay.Children.Add(_toolsCard);
             _progressScale = new ScaleTransform(0, 1);
             Border progress = new Border
             {
@@ -382,21 +394,23 @@ namespace Lazo
             RefreshDots();
             ApplyBodyMargin();
             RefreshDevices();
-            if (_bodyHost != null && _chatOpen) _bodyHost.Visibility = Visibility.Collapsed;
+            if (_bodyHost != null && (_chatOpen || _toolsOpen)) _bodyHost.Visibility = Visibility.Collapsed;
             if (IsVisible) EnableGlass();
         }
 
         private void TogglePanel(string panel)
         {
             bool open = panel == "settings" ? !_settingsOpen : panel == "history" ? !_historyOpen :
-                        panel == "chat" ? !_chatOpen : panel == "share" ? !_shareOpen : !_eyeCareOpen;
-            _settingsOpen = _historyOpen = _eyeCareOpen = _chatOpen = _shareOpen = false;
+                        panel == "chat" ? !_chatOpen : panel == "share" ? !_shareOpen :
+                        panel == "tools" ? !_toolsOpen : !_eyeCareOpen;
+            _settingsOpen = _historyOpen = _eyeCareOpen = _chatOpen = _shareOpen = _toolsOpen = false;
             if (open)
             {
                 if (panel == "settings") _settingsOpen = true;
                 else if (panel == "history") _historyOpen = true;
                 else if (panel == "chat") _chatOpen = true;
                 else if (panel == "share") { _shareOpen = true; RefreshShareCard(); }
+                else if (panel == "tools") { _toolsOpen = true; RefreshToolsCard(); }
                 else _eyeCareOpen = true;
             }
             SyncChrome();
@@ -438,6 +452,7 @@ namespace Lazo
             overlay.Children.Add(ChatDot(new Thickness(0, 8, 104, 0), HorizontalAlignment.Right));
             place(IconButton("eye", () => TogglePanel("eyecare")), 136, "Descanso Visual");
             place(IconButton("screen", () => TogglePanel("share")), 168, "Compartir pantalla");
+            place(IconButton("tools", () => TogglePanel("tools")), 200, "Utilidades");
         }
 
         private void BuildMinimal(Grid layout)
@@ -483,6 +498,8 @@ namespace Lazo
         }
 
         private static double SidebarWidth { get { return 64; } }
+        /// <summary>Alto mínimo en Standard: márgenes, logo, seis botones de 42 px y el botón de agregar.</summary>
+        private const double SidebarMinHeight = 448;
         private const double HeaderHeight = 58;
 
         /// <summary>Botón circular de navegación con ícono vectorial; el estado activo aparece con un fundido.</summary>
@@ -500,7 +517,7 @@ namespace Lazo
                 Content = face,
                 Width = 38,
                 Height = 38,
-                Margin = new Thickness(0, 3, 0, 3),
+                Margin = new Thickness(0, 2, 0, 2),
                 Background = Brushes.Transparent,
                 BorderThickness = new Thickness(0),
                 Cursor = Cursors.Hand,
@@ -526,18 +543,19 @@ namespace Lazo
         private void UpdateNav()
         {
             if (_navHome == null) return;
-            bool panel = _settingsOpen || _historyOpen || _chatOpen || _eyeCareOpen || _shareOpen;
+            bool panel = _settingsOpen || _historyOpen || _chatOpen || _eyeCareOpen || _shareOpen || _toolsOpen;
             MarkNav(_navHome, _navHomeIcon, !panel);
             MarkNav(_navChat, _navChatIcon, _chatOpen);
             MarkNav(_navHistory, _navHistoryIcon, _historyOpen);
             MarkNav(_navSettings, _navSettingsIcon, _settingsOpen);
             MarkNav(_navEye, _navEyeIcon, _eyeCareOpen);
             MarkNav(_navShare, _navShareIcon, _shareOpen);
+            MarkNav(_navTools, _navToolsIcon, _toolsOpen);
         }
 
         private void GoHome()
         {
-            _settingsOpen = _historyOpen = _eyeCareOpen = _chatOpen = _shareOpen = false;
+            _settingsOpen = _historyOpen = _eyeCareOpen = _chatOpen = _shareOpen = _toolsOpen = false;
             if (_picked != null) { BackToDevices(); return; }
             SyncChrome();
         }
@@ -583,6 +601,8 @@ namespace Lazo
             };
             shareHost.Children.Add(_shareDot);
             nav.Children.Add(shareHost);
+            _navTools = NavButton("tools", "Utilidades", () => TogglePanel("tools"), out _navToolsIcon);
+            nav.Children.Add(_navTools);
             _navHistory = NavButton("history", "Historial", () => TogglePanel("history"), out _navHistoryIcon);
             nav.Children.Add(_navHistory);
             _navSettings = NavButton("settings", "Ajustes", () => TogglePanel("settings"), out _navSettingsIcon);
@@ -1850,6 +1870,7 @@ namespace Lazo
             _historyOpen = false;
             _chatOpen = false;
             _shareOpen = false;
+            _toolsOpen = false;
             SyncChrome();
         }
 
@@ -1868,6 +1889,7 @@ namespace Lazo
             _eyeCareOpen = false;
             _chatOpen = false;
             _shareOpen = false;
+            _toolsOpen = false;
             _manualFiles.Clear();
             _results.Clear();
             _selectedRow = 0;
@@ -1913,9 +1935,10 @@ namespace Lazo
                 if (_chatPanel != null) _chatPanel.SetActive(_chatOpen);
             }
             if (_shareCard != null) Theme.Reveal(_shareCard, _shareOpen, 28);
-            if (_bodyHost != null) Theme.Reveal(_bodyHost, !_chatOpen, 0);
+            if (_toolsCard != null) Theme.Reveal(_toolsCard, _toolsOpen, 28);
+            if (_bodyHost != null) Theme.Reveal(_bodyHost, !_chatOpen && !_toolsOpen, 0);
             if (_resultsRow != null && Theme.IsMinimal)
-                _resultsRow.Height = HasResults() ? new GridLength(1, GridUnitType.Star) : new GridLength(0);
+                _resultsRow.Height = HasResults() && !_toolsOpen ? new GridLength(1, GridUnitType.Star) : new GridLength(0);
             ApplyBodyMargin();
             UpdateNav();
             ApplySize(false);
@@ -1965,7 +1988,8 @@ namespace Lazo
                     bodyHeight = 340;
                 }
                 width = SidebarWidth + bodyWidth + 14;
-                height = Math.Max(390, HeaderHeight + bodyHeight + 14);
+                // Lo justo para que la barra lateral (logo, seis secciones y el botón de agregar) no se monte.
+                height = Math.Max(SidebarMinHeight, HeaderHeight + bodyHeight + 14);
                 double panel = PanelWidth();
                 if (panel > 0) width += panel + 12;
                 if (_settingsOpen) height = Math.Max(height, 560);
@@ -1985,6 +2009,8 @@ namespace Lazo
             }
             if (_chatOpen)
                 FitChat(ref width, ref height);
+            else if (_toolsOpen)
+                FitTools(ref width, ref height);
             else if (_eyeCareOpen)
             {
                 FitEyeCare(ref width, ref height);
@@ -2753,6 +2779,7 @@ namespace Lazo
             _historyOpen = false;
             _eyeCareOpen = false;
             _shareOpen = false;
+            _toolsOpen = false;
             SyncChrome();
         }
 
@@ -3002,6 +3029,13 @@ namespace Lazo
         {
             if (e.Key == Key.Escape)
             {
+                if (_toolsOpen)
+                {
+                    _toolsOpen = false;
+                    SyncChrome();
+                    e.Handled = true;
+                    return;
+                }
                 if (_shareOpen)
                 {
                     _shareOpen = false;
@@ -3173,6 +3207,7 @@ namespace Lazo
             _eyeCareOpen = false;
             _chatOpen = false;
             _shareOpen = false;
+            _toolsOpen = false;
             _picked = null;
             _manualFiles.Clear();
             _results.Clear();
@@ -3241,6 +3276,12 @@ namespace Lazo
             if (_shareOpen)
             {
                 _shareOpen = false;
+                SyncChrome();
+                return;
+            }
+            if (_toolsOpen)
+            {
+                _toolsOpen = false;
                 SyncChrome();
                 return;
             }
