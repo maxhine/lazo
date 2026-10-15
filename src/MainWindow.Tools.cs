@@ -23,6 +23,10 @@ namespace Lazo
         private string _cloudFolder;
         private string _cloudName = "";
         private bool _cloudUnify;
+        /// <summary>Proyecto .rcp: unir las partes en un solo escaneo al final.</summary>
+        private bool _cloudMerge;
+        private string _cloudReport;
+        private TrayProgressRing _trayRing;
         private int _cloudUnit = 2;
         private string _cloudDecimation = "";
         private CancellationTokenSource _cloudRun;
@@ -161,11 +165,26 @@ namespace Lazo
             ((FrameworkElement)mode).IsEnabled = !running;
             left.Children.Add(mode);
             TextBlock modeHelp = Theme.Text(_cloudUnify
-                ? "Todos los archivos en un solo .rcs, para Revit, AutoCAD o Navisworks."
-                : "Un proyecto .rcp con un .rcs por escaneo, para abrir y organizar en ReCap.", 10.5, Theme.Muted);
+                ? "Todo en un solo .rcs, para Revit, AutoCAD o Navisworks. Con reducción de puntos se convierte en partes a la vez y se une al final."
+                : "Un proyecto .rcp para abrir y organizar en ReCap. Las nubes grandes se convierten en partes a la vez (un escaneo por parte).", 10.5, Theme.Muted);
             modeHelp.TextWrapping = TextWrapping.Wrap;
             modeHelp.Margin = new Thickness(0, 4, 0, 0);
             left.Children.Add(modeHelp);
+            if (!_cloudUnify)
+            {
+                CheckBox merge = new CheckBox
+                {
+                    Content = "Unir las partes al final en un solo escaneo",
+                    IsChecked = _cloudMerge,
+                    IsEnabled = !running,
+                    Foreground = Theme.Ink, FontFamily = Theme.Font, FontSize = 11.5,
+                    Margin = new Thickness(0, 8, 0, 0),
+                    ToolTip = "Más rápido cuando reduces puntos: las partes ya llegan livianas y unirlas toma poco."
+                };
+                merge.Checked += (s, e) => _cloudMerge = true;
+                merge.Unchecked += (s, e) => _cloudMerge = false;
+                left.Children.Add(merge);
+            }
 
             TextBlock nameLabel = Theme.Label("Nombre");
             nameLabel.Margin = new Thickness(0, 12, 0, 4);
@@ -660,6 +679,15 @@ namespace Lazo
                     open.Click += (s, e) => OpenCloud(output);
                     buttons.Children.Add(open);
                 }
+                if (_cloudReport != null && File.Exists(_cloudReport))
+                {
+                    string report = _cloudReport;
+                    Button view = Theme.Button("Ver reporte", false);
+                    view.Margin = new Thickness(8, 0, 0, 0);
+                    view.ToolTip = "Cuánto tardó cada paso y el total";
+                    view.Click += (s, e) => OpenCloud(report);
+                    buttons.Children.Add(view);
+                }
                 Button convert = Theme.Button("Convertir", true);
                 convert.Margin = new Thickness(8, 0, 0, 0);
                 convert.IsEnabled = _cloudFiles.Count > 0 && !_preview;
@@ -746,12 +774,16 @@ namespace Lazo
             string problem = PointCloudConverter.Validate(job);
             if (problem != null) { _cloudResult = new PointCloudResult { Message = problem }; _cloudStatus = problem; RefreshToolsCard(); return; }
 
+            job.MergeParts = !_cloudUnify && _cloudMerge;
             CancellationTokenSource run = new CancellationTokenSource();
             _cloudRun = run;
             _cloudResult = null;
+            _cloudReport = null;
             _cloudProgress = 0;
             _cloudStatus = "Comprobando la licencia de ReCap…";
             RefreshToolsCard();
+            TrayProgress(0, "Lazo · convirtiendo nube");
+            System.Diagnostics.Stopwatch clock = System.Diagnostics.Stopwatch.StartNew();
             PointCloudResult result;
             try
             {
@@ -761,17 +793,30 @@ namespace Lazo
                     {
                         if (_cloudRun != run) return;
                         _cloudProgress = value;
-                        _cloudStatus = text + "  " + Math.Round(value * 100) + " %";
+                        _cloudStatus = text + "  " + Math.Round(value * 100) + " %  ·  " + ConversionReport.Duration(clock.Elapsed);
                         RefreshToolsCard();
+                        TrayProgress(value, "Lazo · nube " + Math.Round(value * 100) + " %");
                     })), run.Token);
             }
             catch (Exception ex) { result = new PointCloudResult { Message = ex.Message }; }
+            TrayProgress(-1, null);
             _cloudRun = null;
             _cloudResult = result;
+            _cloudReport = result.Report;
             _cloudProgress = result.Ok ? 1 : 0;
-            _cloudStatus = result.Ok ? "Listo: " + result.Output : result.Message;
+            string took = ConversionReport.Duration(clock.Elapsed);
+            _cloudStatus = result.Ok ? "Listo en " + took + ": " + result.Output : result.Message;
             RefreshToolsCard();
-            ShowToast(result.Ok ? "Nube convertida: " + Path.GetFileName(result.Output) : "No se pudo convertir: " + result.Message);
+            ShowToast(result.Ok ? "Nube convertida en " + took + ": " + Path.GetFileName(result.Output) : "No se pudo convertir: " + result.Message);
+        }
+
+        /// <summary>Progreso de la conversión como anillo alrededor del ícono de la bandeja (negativo: quitarlo).</summary>
+        private void TrayProgress(double value, string text)
+        {
+            if (_tray == null) return;
+            if (_trayRing == null) _trayRing = new TrayProgressRing(_tray);
+            if (value < 0) _trayRing.Clear();
+            else _trayRing.Show(value, text);
         }
 
         private void RevealCloud(string path)

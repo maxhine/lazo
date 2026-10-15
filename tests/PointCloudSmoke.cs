@@ -142,6 +142,22 @@ internal static class PointCloudSmoke
             PointCloudResult on2 = await PointCloudConverter.ConvertAsync(decap, nationalSplit, null, CancellationToken.None);
             ok &= Check(on2.Ok && Directory.GetFiles(Path.Combine(output, "ON en paralelo Support"), "*.rcs").Length > 1,
                 "reproyección a Origen Nacional en paralelo (" + on2.Message + ")");
+
+            // Nube única con reducción de puntos: partes en paralelo y unión al final, con su reporte.
+            PointCloudJob reduced = new PointCloudJob { OutputFolder = output, Name = "Unida reducida", Unify = true, DecimationMm = 50 };
+            reduced.Inputs.Add(big);
+            PointCloudResult single = await PointCloudConverter.ConvertAsync(decap, reduced, null, CancellationToken.None);
+            string report = single.Report != null && File.Exists(single.Report) ? File.ReadAllText(single.Report) : "";
+            ok &= Check(single.Ok && single.Output.EndsWith("Unida reducida.rcs"), "nube única: partes en paralelo y unidas al final (" + single.Message + ")");
+            ok &= Check(report.Contains("Convertir") && report.Contains("Unir las") && report.Contains("Total") && report.Contains("50 mm"),
+                "el reporte trae cada paso, las partes y el total");
+
+            // Proyecto con las partes unidas en un solo escaneo.
+            PointCloudJob merged = new PointCloudJob { OutputFolder = output, Name = "Proyecto unido", MergeParts = true };
+            merged.Inputs.Add(big);
+            PointCloudResult oneScan = await PointCloudConverter.ConvertAsync(decap, merged, null, CancellationToken.None);
+            ok &= Check(oneScan.Ok && Directory.GetFiles(Path.Combine(output, "Proyecto unido Support"), "*.rcs").Length == 1,
+                "proyecto con las partes unidas en un solo escaneo (" + oneScan.Message + ")");
         }
         finally { PointCloudConverter.ParallelThreshold = saved; }
         return ok;

@@ -19,6 +19,8 @@ namespace Lazo
         public string Name;
         /// <summary>true: una sola nube .rcs; false: proyecto .rcp con un .rcs por escaneo.</summary>
         public bool Unify;
+        /// <summary>Proyecto .rcp: al final se unen las partes en un solo escaneo.</summary>
+        public bool MergeParts;
         public int Unit = 2;
         /// <summary>Distancia mínima entre puntos en milímetros; 0 o menos para no reducir.</summary>
         public double DecimationMm;
@@ -46,7 +48,7 @@ namespace Lazo
             return new PointCloudJob
             {
                 Inputs = Inputs.ToList(), OutputFolder = OutputFolder, Name = Name, Unify = Unify, Unit = Unit,
-                DecimationMm = DecimationMm, SourceCs = SourceCs, TargetCs = TargetCs,
+                DecimationMm = DecimationMm, SourceCs = SourceCs, TargetCs = TargetCs, MergeParts = MergeParts,
                 LazoFrom = LazoFrom, LazoTo = LazoTo, Ellipsoidal = Ellipsoidal, GeoidPath = GeoidPath
             };
         }
@@ -57,6 +59,133 @@ namespace Lazo
         public bool Ok;
         public string Output;
         public string Message;
+        /// <summary>Reporte de tiempos guardado junto al resultado («nombre - reporte.txt»), si se pudo escribir.</summary>
+        public string Report;
+    }
+
+    /// <summary>
+    /// Cuánto tardó cada paso de una conversión y en total. Se guarda como texto junto al resultado.
+    /// </summary>
+    internal sealed class ConversionReport
+    {
+        private readonly PointCloudJob _job;
+        private readonly string _name;
+        private readonly DateTime _started = DateTime.Now;
+        private readonly Stopwatch _clock = Stopwatch.StartNew();
+        private readonly List<KeyValuePair<string, TimeSpan>> _steps = new List<KeyValuePair<string, TimeSpan>>();
+        private readonly List<string> _parts = new List<string>();
+        public string Strategy = "";
+
+        public ConversionReport(PointCloudJob job, string name)
+        {
+            _job = job;
+            _name = name;
+        }
+
+        public async Task<T> TimeAsync<T>(string step, Func<Task<T>> work)
+        {
+            Stopwatch clock = Stopwatch.StartNew();
+            try { return await work().ConfigureAwait(false); }
+            finally { lock (_steps) _steps.Add(new KeyValuePair<string, TimeSpan>(step, clock.Elapsed)); }
+        }
+
+        public void Part(string name, long points, TimeSpan elapsed, int attempts, bool ok)
+        {
+            string line = string.Format(CultureInfo.InvariantCulture, "  {0,-40} {1,14} {2,10}{3}", Trim(name, 40),
+                points > 0 ? points.ToString("N0", CultureInfo.GetCultureInfo("es-CO")) + " pts" : "", Duration(elapsed),
+                (attempts > 1 ? "  (" + attempts + " intentos)" : "") + (ok ? "" : "  FALLÓ"));
+            lock (_parts) _parts.Add(line);
+        }
+
+        /// <summary>Cierra el reporte, lo guarda junto al resultado y devuelve su ruta (o null).</summary>
+        public string Finish(PointCloudResult result)
+        {
+            TimeSpan total = _clock.Elapsed;
+            CultureInfo es = CultureInfo.GetCultureInfo("es-CO");
+            StringBuilder text = new StringBuilder();
+            text.AppendLine("Lazo · reporte de conversión de nube de puntos");
+            text.AppendLine(new string('─', 60));
+            text.AppendLine("Inicio:       " + _started.ToString("yyyy-MM-dd HH:mm:ss", es));
+            text.AppendLine("Fin:          " + DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss", es));
+            text.AppendLine("Duración:     " + Duration(total));
+            text.AppendLine("Resultado:    " + (result.Ok ? result.Output : "falló · " + result.Message));
+            if (result.Ok) text.AppendLine("Tamaño:       " + Size(OutputSize(result.Output)));
+            text.AppendLine();
+            text.AppendLine("Entradas");
+            long inputBytes = 0;
+            foreach (string input in _job.Inputs)
+            {
+                long bytes = 0;
+                try { bytes = new FileInfo(input).Length; } catch { }
+                inputBytes += bytes;
+                text.AppendLine("  " + input + "  (" + Size(bytes) + ")");
+            }
+            if (result.Ok && total.TotalSeconds > 0)
+                text.AppendLine("  Ritmo: " + Size((long)(inputBytes / total.TotalSeconds)) + "/s");
+            text.AppendLine();
+            text.AppendLine("Opciones");
+            text.AppendLine("  Salida:       " + (_job.Unify ? "nube única .rcs" : "proyecto .rcp" + (_job.MergeParts ? " con un solo escaneo" : "")));
+            text.AppendLine("  Reducción:    " + (_job.DecimationMm > 0 ? _job.DecimationMm.ToString("0.###", es) + " mm entre puntos" : "sin reducir"));
+            text.AppendLine("  Unidades:     " + PointCloudConverter.UnitNames[Math.Max(0, Math.Min(PointCloudConverter.UnitNames.Length - 1, _job.Unit))]);
+            if (_job.LazoTo != null) text.AppendLine("  Coordenadas:  " + (_job.LazoFrom != null ? _job.LazoFrom.Name : "?") + " → " + _job.LazoTo.Name + " (Lazo)" + (_job.Ellipsoidal ? ", alturas a EGM2008" : ""));
+            else if (!string.IsNullOrEmpty(_job.SourceCs)) text.AppendLine("  Coordenadas:  " + _job.SourceCs + (_job.Reprojects ? " → " + _job.TargetCs + " (ReCap)" : ""));
+            text.AppendLine("  Equipo:       " + Environment.ProcessorCount + " hilos · hasta " + PointCloudConverter.Lanes + " ReCap a la vez");
+            if (Strategy.Length > 0) text.AppendLine("  Cómo:         " + Strategy);
+            text.AppendLine();
+            text.AppendLine("Pasos");
+            lock (_steps)
+                foreach (KeyValuePair<string, TimeSpan> step in _steps)
+                    text.AppendLine(string.Format("  {0,-62} {1,10}", Trim(step.Key, 62), Duration(step.Value)));
+            text.AppendLine(string.Format("  {0,-62} {1,10}", "Total", Duration(total)));
+            lock (_parts)
+                if (_parts.Count > 0)
+                {
+                    text.AppendLine();
+                    text.AppendLine("Partes (cada una en su propio ReCap)");
+                    foreach (string part in _parts) text.AppendLine(part);
+                }
+            try
+            {
+                string path = Path.Combine(_job.OutputFolder, _name + " - reporte.txt");
+                File.WriteAllText(path, text.ToString(), new UTF8Encoding(true));
+                return path;
+            }
+            catch { return null; }
+        }
+
+        private static long OutputSize(string output)
+        {
+            long bytes = 0;
+            try
+            {
+                if (File.Exists(output)) bytes += new FileInfo(output).Length;
+                string support = Path.Combine(Path.GetDirectoryName(output), Path.GetFileNameWithoutExtension(output) + " Support");
+                if (output.EndsWith(".rcp", StringComparison.OrdinalIgnoreCase) && Directory.Exists(support))
+                    bytes += Directory.GetFiles(support, "*", SearchOption.AllDirectories).Sum(f => new FileInfo(f).Length);
+            }
+            catch { }
+            return bytes;
+        }
+
+        internal static string Duration(TimeSpan time)
+        {
+            if (time.TotalHours >= 1) return string.Format("{0} h {1:00} min", (int)time.TotalHours, time.Minutes);
+            if (time.TotalMinutes >= 1) return string.Format("{0} min {1:00} s", (int)time.TotalMinutes, time.Seconds);
+            return time.TotalSeconds.ToString("0.0", CultureInfo.GetCultureInfo("es-CO")) + " s";
+        }
+
+        private static string Size(long bytes)
+        {
+            CultureInfo es = CultureInfo.GetCultureInfo("es-CO");
+            if (bytes >= 1L << 30) return (bytes / (double)(1L << 30)).ToString("0.0", es) + " GB";
+            if (bytes >= 1L << 20) return (bytes / (double)(1L << 20)).ToString("0.0", es) + " MB";
+            return Math.Max(0, bytes / 1024) + " KB";
+        }
+
+        private static string Trim(string text, int max)
+        {
+            return text.Length <= max ? text : text.Substring(0, max - 1) + "…";
+        }
     }
 
     /// <summary>
@@ -196,14 +325,32 @@ namespace Lazo
             if (problem != null) return new PointCloudResult { Message = problem };
             Directory.CreateDirectory(job.OutputFolder);
             string name = FreeName(job.OutputFolder, CleanName(job.Name));
+            ConversionReport report = new ConversionReport(job, name);
+            PointCloudResult result;
+            try { result = await ConvertCoreAsync(decap, job, name, progress, report, cancel).ConfigureAwait(false); }
+            catch (OperationCanceledException) { result = new PointCloudResult { Message = "Conversión cancelada." }; }
+            catch (Exception ex) { result = new PointCloudResult { Message = ex.Message }; }
+            result.Report = report.Finish(result);
+            return result;
+        }
+
+        private static async Task<PointCloudResult> ConvertCoreAsync(string decap, PointCloudJob job, string name, Action<double, string> progress,
+            ConversionReport report, CancellationToken cancel)
+        {
             bool splittable = job.Inputs.All(i => IsLas(i) || IsLaz(i));
             long size = job.Inputs.Sum(i => new FileInfo(i).Length);
             bool large = size >= ParallelThreshold;
-            // Lo pequeño y lo que no se puede repartir va directo, como siempre.
-            if (job.LazoTo == null && !job.Reprojects && (job.Unify || (!large && job.Inputs.Count == 1)))
-                return await RunAsync(decap, job, name, progress, 0, 1, cancel).ConfigureAwait(false);
-            if (job.LazoTo == null && !large && job.Inputs.Count == 1 && !job.Unify)
-                return await RunAsync(decap, job, name, progress, 0, 1, cancel).ConfigureAwait(false);
+            bool decimated = job.DecimationMm > 0;
+            // Nube única sin reproyectar: con reducción de puntos conviene convertir en paralelo y unir al final (las
+            // partes ya llegan reducidas y unirlas es rápido); sin reducción, ReCap directo es más rápido (medido).
+            bool partsThenUnify = job.Unify && large && splittable && decimated;
+            bool direct = job.LazoTo == null && !job.Reprojects &&
+                          ((job.Unify && !partsThenUnify) || (!job.Unify && !large && job.Inputs.Count == 1 && !job.MergeParts));
+            if (direct)
+            {
+                report.Strategy = job.Unify ? "ReCap directo en un solo proceso (sin reducción de puntos es lo más rápido)." : "ReCap directo (nube pequeña).";
+                return await report.TimeAsync("Conversión con ReCap", () => RunAsync(decap, job, name, progress, 0, 1, cancel)).ConfigureAwait(false);
+            }
 
             string temporary = TemporaryFolder(job.OutputFolder);
             GeoidGrid geoid = null;
@@ -218,43 +365,62 @@ namespace Lazo
                 if (built)
                 {
                     units = CloudReprojector.Plan(job.Inputs, job.LazoTo != null || large ? Lanes : 1, Path.Combine(temporary, "tramos"));
-                    await BuildTilesAsync(units, job, geoid, Path.GetDirectoryName(decap), (value) =>
-                    {
-                        if (progress != null) progress(0.3 * value, job.LazoTo != null ? "Reproyectando a " + job.LazoTo.Name + "…" : "Preparando tramos en paralelo…");
-                    }, cancel).ConfigureAwait(false);
+                    await report.TimeAsync(job.LazoTo != null ? "Reproyectar a " + job.LazoTo.Name + " y preparar " + units.Count + " tramos" : "Preparar " + units.Count + " tramos",
+                        async () => { await BuildTilesAsync(units, job, geoid, Path.GetDirectoryName(decap), value =>
+                        {
+                            if (progress != null) progress(0.3 * value, job.LazoTo != null ? "Reproyectando a " + job.LazoTo.Name + "…" : "Preparando tramos en paralelo…");
+                        }, cancel).ConfigureAwait(false); return true; }).ConfigureAwait(false);
                 }
-                else units = job.Inputs.Select(i => new CloudTile { Input = i, Output = i, ScanName = Path.GetFileNameWithoutExtension(i) }).ToList();
+                else units = job.Inputs.Select(i => new CloudTile { Input = i, Output = i, ScanName = Path.GetFileNameWithoutExtension(i), Count = PointCountOrZero(i) }).ToList();
                 double start = built ? 0.3 : 0;
 
                 // Sistema con el que ReCap debe etiquetar (y, en su caso, reproyectar) lo que recibe.
                 string current = job.LazoTo != null ? (job.LazoTo.RecapKey != null && CoordinateLibrary.Find(job.LazoTo.RecapKey) != null ? job.LazoTo.RecapKey : null) : job.SourceCs;
                 string target = job.LazoTo != null ? null : (job.Reprojects ? job.TargetCs : null);
 
-                // 2a. Nube única: ReCap la arma en un solo proceso (con varios no es más rápido; medido).
-                if (job.Unify && target == null)
+                // 2a. Nube única sin reducción tras reproyectar con Lazo: ReCap la arma de una vez desde los tramos.
+                if (job.Unify && target == null && !decimated)
                 {
+                    report.Strategy = "Lazo preparó los tramos en paralelo y ReCap armó la nube única en un solo proceso.";
                     PointCloudJob unify = new PointCloudJob
                     {
                         Inputs = units.Select(u => u.Output).ToList(), OutputFolder = job.OutputFolder, Name = name, Unify = true,
-                        Unit = job.LazoTo != null ? 2 : job.Unit, DecimationMm = job.DecimationMm, SourceCs = current
+                        Unit = job.LazoTo != null ? 2 : job.Unit, SourceCs = current
                     };
-                    return await RunAsync(decap, unify, name, progress, start, 1, cancel).ConfigureAwait(false);
+                    return await report.TimeAsync("Armar la nube única con ReCap", () => RunAsync(decap, unify, name, progress, start, 1, cancel)).ConfigureAwait(false);
                 }
 
-                // 2b. Proyecto (o paso previo de una nube única reproyectada por ReCap): un ReCap por unidad, varios a la vez.
-                string[] scans = await ConvertUnitsAsync(decap, units, job, current, target, temporary, (value, text) =>
-                {
-                    if (progress != null) progress(start + (job.Unify ? 0.6 : 0.65) * (1 - start) * value, text);
-                }, cancel).ConfigureAwait(false);
+                // 2b. Un ReCap por unidad, varios a la vez (con la reducción de puntos ya aplicada en cada parte).
+                bool merge = job.Unify || job.MergeParts;
+                double convertEnd = start + (merge ? 0.55 : 0.85) * (1 - start);
+                string[] scans = await report.TimeAsync("Convertir " + units.Count + " partes en paralelo (" + Math.Min(Lanes, units.Count) + " ReCap a la vez)",
+                    () => ConvertUnitsAsync(decap, units, job, current, target, temporary, report, (value, text) =>
+                    {
+                        if (progress != null) progress(start + (convertEnd - start) * value, text);
+                    }, cancel)).ConfigureAwait(false);
 
-                if (job.Unify)
+                // 3. Unir las partes en un solo .rcs: es el resultado (nube única) o el único escaneo del proyecto.
+                if (merge)
                 {
-                    PointCloudJob unify = new PointCloudJob { Inputs = scans.ToList(), OutputFolder = job.OutputFolder, Name = name, Unify = true };
-                    return await RunAsync(decap, unify, name, (value, text) =>
-                        { if (progress != null) progress(value, "Uniendo en un solo .rcs…"); }, start + 0.6 * (1 - start), 1, cancel).ConfigureAwait(false);
+                    string mergedFolder = job.Unify ? job.OutputFolder : Path.Combine(temporary, "unida");
+                    string mergedName = job.Unify ? name : "unida";
+                    PointCloudJob unify = new PointCloudJob { Inputs = scans.ToList(), OutputFolder = mergedFolder, Name = mergedName, Unify = true };
+                    PointCloudResult merged = await report.TimeAsync("Unir las " + scans.Length + " partes en un solo .rcs", () => RunAsync(decap, unify, mergedName, (value, text) =>
+                        { if (progress != null) progress(value, "Uniendo las partes en un solo .rcs…"); }, convertEnd, job.Unify ? 1 : 0.95, cancel)).ConfigureAwait(false);
+                    if (job.Unify || !merged.Ok)
+                    {
+                        report.Strategy = "Partes convertidas en paralelo y unidas al final en una sola nube.";
+                        return merged;
+                    }
+                    // El escaneo único se llama como el proyecto.
+                    string single = Path.Combine(temporary, "unida", name + " nube.rcs");
+                    File.Move(merged.Output, single);
+                    scans = new[] { single };
+                    report.Strategy = "Partes convertidas en paralelo, unidas en un solo escaneo y armadas en un proyecto.";
                 }
+                else report.Strategy = "Partes convertidas en paralelo y armadas en un proyecto (un escaneo por parte).";
 
-                // 3. Montaje: los .rcs van a la carpeta «Support» del proyecto y ReCap arma el .rcp en segundos.
+                // 4. Montaje: los .rcs van a la carpeta «Support» del proyecto y ReCap arma el .rcp en segundos.
                 string support = Path.Combine(job.OutputFolder, name + " Support");
                 Directory.CreateDirectory(support);
                 List<string> placed = new List<string>();
@@ -265,18 +431,21 @@ namespace Lazo
                     placed.Add(destination);
                 }
                 PointCloudJob assemble = new PointCloudJob { Inputs = placed, OutputFolder = job.OutputFolder, Name = name };
-                PointCloudResult result = await RunAsync(decap, assemble, name, (value, text) =>
-                    { if (progress != null) progress(value, "Armando el proyecto…"); }, start + 0.65 * (1 - start), 1, cancel).ConfigureAwait(false);
+                PointCloudResult result = await report.TimeAsync("Armar el proyecto .rcp", () => RunAsync(decap, assemble, name, (value, text) =>
+                    { if (progress != null) progress(value, "Armando el proyecto…"); }, merge ? 0.95 : convertEnd, 1, cancel)).ConfigureAwait(false);
                 if (result.Ok) LabelProject(result.Output, target ?? current);
                 return result;
             }
-            catch (OperationCanceledException) { return new PointCloudResult { Message = "Conversión cancelada." }; }
-            catch (Exception ex) { return new PointCloudResult { Message = ex.Message }; }
             finally
             {
                 if (geoid != null) geoid.Dispose();
                 try { if (Directory.Exists(temporary)) Directory.Delete(temporary, true); } catch { }
             }
+        }
+
+        private static long PointCountOrZero(string path)
+        {
+            try { return IsLas(path) || IsLaz(path) ? CloudReprojector.PointCount(path) : 0; } catch { return 0; }
         }
 
         private static bool IsLas(string path) { return string.Equals(Path.GetExtension(path), ".las", StringComparison.OrdinalIgnoreCase); }
@@ -331,7 +500,7 @@ namespace Lazo
 
         /// <summary>Un ReCap por unidad, hasta <see cref="Lanes"/> a la vez. Devuelve los .rcs que generaron.</summary>
         private static async Task<string[]> ConvertUnitsAsync(string decap, List<CloudTile> units, PointCloudJob job, string current, string target,
-            string temporary, Action<double, string> progress, CancellationToken cancel)
+            string temporary, ConversionReport report, Action<double, string> progress, CancellationToken cancel)
         {
             string[] scans = new string[units.Count];
             double[] parts = new double[units.Count];
@@ -351,10 +520,13 @@ namespace Lazo
                             Unit = job.LazoTo != null ? 2 : job.Unit, DecimationMm = job.DecimationMm, SourceCs = current, TargetCs = target
                         };
                         PointCloudResult result = null;
+                        Stopwatch clock = Stopwatch.StartNew();
+                        int attempts = 0;
                         // La licencia de ReCap no aguanta que varios procesos la pidan a la vez: arrancan de uno en uno
                         // (el siguiente espera a que el anterior ya esté convirtiendo) y, si aun así falla, se reintenta.
                         for (int attempt = 1; attempt <= 3; attempt++)
                         {
+                            attempts = attempt;
                             if (Directory.Exists(folder)) try { Directory.Delete(folder, true); } catch { }
                             await licensing.WaitAsync(cancel).ConfigureAwait(false);
                             int released = 0;
@@ -374,6 +546,7 @@ namespace Lazo
                             if (result.Ok || !IsLicensing(result.Message) || cancel.IsCancellationRequested) break;
                             await Task.Delay(2000 * attempt, cancel).ConfigureAwait(false);
                         }
+                        report.Part(unit.ScanName, unit.Count, clock.Elapsed, attempts, result.Ok);
                         if (!result.Ok) throw new InvalidOperationException(unit.ScanName + ": " + result.Message);
                         string produced = Directory.GetFiles(Path.Combine(folder, "u" + index + " Support"), "*.rcs").FirstOrDefault();
                         if (produced == null) throw new InvalidOperationException("ReCap no generó " + unit.ScanName + ".");
