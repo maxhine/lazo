@@ -157,6 +157,19 @@ internal static class NetworkSmoke
                 "pedir unirse llega con la identidad comprobada");
             sharingNow = false;
             Check(!await sender.RequestJoinAsync(target), "si ya no comparte, la solicitud no se atiende");
+            Guid askFrom = Guid.Empty;
+            receiver.ShareRequested += (id, name) => { askFrom = id; return true; };
+            Check(await sender.RequestShareAsync(target) && askFrom == sender.SelfId, "pedir que comparta llega con la identidad comprobada");
+
+            // Carpeta de recepción elegida en Ajustes: se recuerda y lo siguiente llega allí.
+            string chosen = Path.Combine(directory, "elegida");
+            receiver.SetReceiveDirectory(chosen);
+            Check(receiver.ReceiveDirectory == Path.GetFullPath(chosen) && File.ReadAllText(Path.Combine(directory, "perfil-receptor", "receive-folder.txt")).Trim() == Path.GetFullPath(chosen),
+                "la carpeta de recepción elegida se guarda");
+            finished = new TaskCompletionSource<string>();
+            await sender.SendAsync(target, input, null);
+            await Expect(finished.Task, 15000, "envío a la carpeta elegida");
+            Check(receivedPath != null && Path.GetDirectoryName(receivedPath) == Path.GetFullPath(chosen) && File.ReadAllBytes(receivedPath).SequenceEqual(data), "lo recibido queda en la carpeta elegida");
 
             // Verificación opcional: si alguien cancela no queda verificado; si los dos confirman, sí.
             Check(!await sender.VerifyAsync(target) && !sender.Pairings.Get(receiver.SelfId.ToString("D")).Verified, "verificación cancelada no marca nada");

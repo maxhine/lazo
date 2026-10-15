@@ -21,6 +21,8 @@ namespace Lazo
         public const byte FullControl = 4;
         /// <summary>Solo para el aviso local: alguien que no mira pide unirse. No viaja en el canal de retorno.</summary>
         public const byte Watch = 0x20;
+        /// <summary>Solo para el aviso local: alguien pide que compartas tu pantalla.</summary>
+        public const byte AskShare = 0x10;
         /// <summary>Se suma al tipo de una petición para renunciar a ese permiso.</summary>
         public const byte Release = 0x80;
     }
@@ -573,6 +575,7 @@ namespace Lazo
             _respond = respond;
             bool control = kind == SharePermission.Control;
             bool watch = kind == SharePermission.Watch;
+            bool ask = kind == SharePermission.AskShare;
             Title = "Lazo · permiso";
             Width = control ? 430 : 380;
             SizeToContent = SizeToContent.Height;
@@ -595,13 +598,14 @@ namespace Lazo
                 Height = 40,
                 CornerRadius = new CornerRadius(20),
                 Background = control ? Theme.Danger : Theme.Primary,
-                Child = Icons.Make(control ? "pointer" : watch ? "eye" : "pen", 20, control ? Brushes.White : Theme.PrimaryText, 2)
+                Child = Icons.Make(control ? "pointer" : watch ? "eye" : ask ? "screen" : "pen", 20, control ? Brushes.White : Theme.PrimaryText, 2)
             });
             StackPanel words = new StackPanel { Margin = new Thickness(12, 0, 0, 0), VerticalAlignment = VerticalAlignment.Center };
-            words.Children.Add(Theme.Text(viewer + (control ? " quiere controlar tu equipo" : watch ? " quiere ver tu pantalla" : " quiere dibujar en tu pantalla"), 13, Theme.Ink, FontWeights.SemiBold));
+            words.Children.Add(Theme.Text(viewer + (control ? " quiere controlar tu equipo" : watch ? " quiere ver tu pantalla" : ask ? " te pide que compartas tu pantalla" : " quiere dibujar en tu pantalla"), 13, Theme.Ink, FontWeights.SemiBold));
             words.Children.Add(Theme.Text(control
                 ? "Ventana activa: solo la ventana que compartes (o la que tienes al frente). Control total: mouse y teclado en todo el equipo, incluidas las teclas de Windows. Quítalo cuando quieras desde la barra superior."
                 : watch ? "Verá lo mismo que los demás que miran. Puedes dejar de compartir cuando quieras."
+                : ask ? "Elige qué compartir; nada se ve hasta que pulses Compartir."
                 : "Sus trazos aparecerán sobre tu pantalla y los verán todos los que miran.", 11.5, Theme.Muted));
             Grid.SetColumn(words, 1);
             head.Children.Add(words);
@@ -624,7 +628,8 @@ namespace Lazo
             }
             else
             {
-                Button allow = Theme.Button("Permitir", true);
+                deny.Content = ask ? "Ahora no" : "Rechazar";
+                Button allow = Theme.Button(ask ? "Elegir qué compartir" : "Permitir", true);
                 allow.Margin = new Thickness(8, 0, 0, 0);
                 allow.Click += (s, e) => Answer(true, false);
                 buttons.Children.Add(allow);

@@ -186,6 +186,7 @@ namespace Lazo
                 _network.ChatSignal += OnChatSignal;
                 _network.ScreenOffered += OnScreenOffered;
                 _network.JoinRequested += OnJoinRequested;
+                _network.ShareRequested += OnShareRequested;
                 _network.PairingPrompt += OnPairingPrompt;
                 Updater.CheckInBackground(text => Dispatcher.BeginInvoke((Action)(() => SetStatus(text))),
                     () => Dispatcher.BeginInvoke((Action)(() => { _exiting = true; Application.Current.Shutdown(); })));
@@ -1299,6 +1300,7 @@ namespace Lazo
             startup.Checked += (s, e) => Startup.Set(true);
             startup.Unchecked += (s, e) => { Startup.Set(false); startup.IsChecked = Startup.IsEnabled(); };
             panel.Children.Add(startup);
+            AddReceiveFolder(panel);
             CheckBox updates = new CheckBox
             {
                 Content = "Actualizar automáticamente",
@@ -1358,6 +1360,77 @@ namespace Lazo
                 Margin = new Thickness(0, 40, 8, 0),
                 Child = scroll
             }, 290);
+        }
+
+        /// <summary>Carpeta donde se guarda lo que llega: se ve, se abre, se cambia o vuelve a Descargas\Lazo.</summary>
+        private void AddReceiveFolder(StackPanel panel)
+        {
+            TextBlock label = Theme.Label("Carpeta de recepción");
+            label.Margin = new Thickness(0, 14, 0, 4);
+            panel.Children.Add(label);
+            string folder = _network.ReceiveDirectory;
+            TextBlock path = Theme.Text(folder, 11.5, Theme.Ink, FontWeights.Medium);
+            path.TextTrimming = TextTrimming.CharacterEllipsis;
+            path.TextWrapping = TextWrapping.NoWrap;
+            path.ToolTip = folder;
+            panel.Children.Add(path);
+            WrapPanel buttons = new WrapPanel { Margin = new Thickness(0, 6, 0, 0) };
+            Button reset = Theme.Button("Predeterminada", false);
+            Action refresh = () =>
+            {
+                path.Text = _network.ReceiveDirectory;
+                path.ToolTip = _network.ReceiveDirectory;
+                reset.Visibility = _network.UsesDefaultReceiveDirectory ? Visibility.Collapsed : Visibility.Visible;
+            };
+            Button change = Theme.Button("Cambiar…", false);
+            change.MinHeight = 30;
+            change.Click += (s, e) =>
+            {
+                if (_preview) return;
+                using (System.Windows.Forms.FolderBrowserDialog dialog = new System.Windows.Forms.FolderBrowserDialog
+                {
+                    Description = "Elige dónde guardar lo que te llega por Lazo",
+                    SelectedPath = Directory.Exists(_network.ReceiveDirectory) ? _network.ReceiveDirectory : "",
+                    ShowNewFolderButton = true
+                })
+                {
+                    if (dialog.ShowDialog() != System.Windows.Forms.DialogResult.OK) return;
+                    try
+                    {
+                        _network.SetReceiveDirectory(dialog.SelectedPath);
+                        ShowToast("Lo recibido se guardará en " + _network.ReceiveDirectory);
+                    }
+                    catch (Exception ex) { ShowToast("No se pudo usar esa carpeta: " + ex.Message); }
+                }
+                refresh();
+            };
+            buttons.Children.Add(change);
+            Button open = Theme.Button("Abrir", false);
+            open.MinHeight = 30;
+            open.Margin = new Thickness(6, 0, 0, 0);
+            open.Click += (s, e) =>
+            {
+                try
+                {
+                    Directory.CreateDirectory(_network.ReceiveDirectory);
+                    System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo { FileName = _network.ReceiveDirectory, UseShellExecute = true });
+                }
+                catch (Exception ex) { ShowToast(ex.Message); }
+            };
+            buttons.Children.Add(open);
+            reset.MinHeight = 30;
+            reset.Margin = new Thickness(6, 0, 0, 0);
+            reset.ToolTip = "Volver a Descargas\\Lazo";
+            reset.Click += (s, e) =>
+            {
+                if (_preview) return;
+                _network.SetReceiveDirectory(null);
+                ShowToast("Lo recibido se guardará en " + _network.ReceiveDirectory);
+                refresh();
+            };
+            buttons.Children.Add(reset);
+            panel.Children.Add(buttons);
+            refresh();
         }
 
         /// <summary>
@@ -2541,7 +2614,7 @@ namespace Lazo
         {
             string path = location;
             if (string.IsNullOrEmpty(path) && incoming)
-                path = Path.Combine(NetworkEngine.DefaultReceiveDirectory(), name);
+                path = Path.Combine(_network.ReceiveDirectory, name);
             try
             {
                 string explorer = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.Windows), "explorer.exe");
@@ -3281,17 +3354,98 @@ namespace Lazo
 
         /// <summary>Equipos a los que pedí unirme y cuándo; su invitación se acepta sin volver a preguntar.</summary>
         private readonly Dictionary<Guid, DateTime> _joinAsked = new Dictionary<Guid, DateTime>();
+        /// <summary>Equipos cuya invitación de pantalla se abre sin preguntar porque yo pedí unirme o que compartan.</summary>
+        private readonly Dictionary<Guid, DateTime> _autoAccept = new Dictionary<Guid, DateTime>();
         /// <summary>Quien comparte: última solicitud atendida de cada equipo, para no apilar avisos repetidos.</summary>
         private readonly Dictionary<Guid, DateTime> _joinPrompted = new Dictionary<Guid, DateTime>();
 
         private void BuildSharingNow(StackPanel panel)
         {
             List<Peer> sharing = _peers.Where(p => p.Sharing != null).ToList();
-            if (sharing.Count == 0) return;
-            panel.Children.Add(Theme.Label("Compartiendo ahora"));
-            StackPanel rows = new StackPanel { Margin = new Thickness(0, 6, 0, 12) };
-            foreach (Peer peer in sharing) rows.Children.Add(SharingRow(peer));
-            panel.Children.Add(rows);
+            if (sharing.Count > 0)
+            {
+                panel.Children.Add(Theme.Label("Compartiendo ahora"));
+                StackPanel rows = new StackPanel { Margin = new Thickness(0, 6, 0, 12) };
+                foreach (Peer peer in sharing) rows.Children.Add(SharingRow(peer));
+                panel.Children.Add(rows);
+            }
+            // Pedir a quien no comparte que lo haga; su invitación se abre sin volver a preguntar.
+            List<Peer> others = _peers.Where(p => p.Sharing == null).ToList();
+            if (others.Count == 0) return;
+            panel.Children.Add(Theme.Label("Pedir que compartan"));
+            WrapPanel chips = new WrapPanel { Margin = new Thickness(0, 6, 0, 10) };
+            foreach (Peer peer in others)
+            {
+                Peer target = peer;
+                bool asked = _shareAsked.ContainsKey(peer.Id) && (DateTime.UtcNow - _shareAsked[peer.Id]).TotalMinutes < 2;
+                Button chip = Chip(peer, asked, () => RequestShare(target));
+                chip.IsEnabled = !asked;
+                chip.ToolTip = asked ? "Ya se lo pediste a " + peer.Name : "Pedir a " + peer.Name + " que comparta su pantalla";
+                chips.Children.Add(chip);
+            }
+            panel.Children.Add(chips);
+        }
+
+        /// <summary>Equipos a los que pedí que compartan, y cuándo.</summary>
+        private readonly Dictionary<Guid, DateTime> _shareAsked = new Dictionary<Guid, DateTime>();
+
+        private async void RequestShare(Peer peer)
+        {
+            if (_preview || peer == null) return;
+            _shareAsked[peer.Id] = DateTime.UtcNow;
+            // Su invitación será la respuesta: se abre sola, como al pedir unirse.
+            _autoAccept[peer.Id] = DateTime.UtcNow;
+            RefreshShareCard();
+            try
+            {
+                if (await _network.RequestShareAsync(peer)) ShowToast("Se pidió a " + peer.Name + " que comparta su pantalla");
+                else { _shareAsked.Remove(peer.Id); _autoAccept.Remove(peer.Id); ShowToast(peer.Name + " no puede atenderlo ahora"); }
+            }
+            catch (Exception ex)
+            {
+                _shareAsked.Remove(peer.Id);
+                _autoAccept.Remove(peer.Id);
+                ShowToast(ex.Message);
+            }
+            RefreshShareCard();
+        }
+
+        /// <summary>Hilo de red: alguien me pide que comparta. El aviso decide; nada se comparte sin elegirlo.</summary>
+        private bool OnShareRequested(Guid id, string name)
+        {
+            Dispatcher.BeginInvoke((Action)(() => AskToShare(id, name)));
+            return true;
+        }
+
+        private void AskToShare(Guid id, string name)
+        {
+            DateTime last;
+            if (_joinPrompted.TryGetValue(id, out last) && (DateTime.UtcNow - last).TotalSeconds < 20) return;
+            _joinPrompted[id] = DateTime.UtcNow;
+            PermissionPromptWindow prompt = null;
+            prompt = new PermissionPromptWindow(-1, name, SharePermission.AskShare, _sharePrompts.Count, (accept, full) =>
+            {
+                _sharePrompts.Remove(prompt);
+                RestackPrompts();
+                _joinPrompted.Remove(id);
+                if (!accept) return;
+                Peer peer = _peers.FirstOrDefault(p => p.Id == id);
+                if (peer == null) { ShowToast(name + " ya no está en línea"); return; }
+                if (_share != null)
+                {
+                    // Ya comparto: basta con invitarle.
+                    _share.Invite(peer);
+                    _shareInvited.Add(peer.Id);
+                    ShowToast("Invitación enviada a " + peer.Name);
+                    return;
+                }
+                // Se abre el panel con esa persona ya marcada; falta elegir pantalla o ventana y pulsar Compartir.
+                _shareTargets.Add(peer.Id);
+                ActivateFromElsewhere();
+                if (!_shareOpen) TogglePanel("share"); else RefreshShareCard();
+            });
+            _sharePrompts.Add(prompt);
+            prompt.Show();
         }
 
         private UIElement SharingRow(Peer peer)
@@ -3339,15 +3493,17 @@ namespace Lazo
         {
             if (_preview || peer == null) return;
             _joinAsked[peer.Id] = DateTime.UtcNow;
+            _autoAccept[peer.Id] = DateTime.UtcNow;
             RefreshShareCard();
             try
             {
                 if (await _network.RequestJoinAsync(peer)) ShowToast("Se pidió a " + peer.Name + " unirte a su pantalla");
-                else { _joinAsked.Remove(peer.Id); ShowToast(peer.Name + " ya no está compartiendo"); }
+                else { _joinAsked.Remove(peer.Id); _autoAccept.Remove(peer.Id); ShowToast(peer.Name + " ya no está compartiendo"); }
             }
             catch (Exception ex)
             {
                 _joinAsked.Remove(peer.Id);
+                _autoAccept.Remove(peer.Id);
                 ShowToast(ex.Message);
             }
             RefreshShareCard();
@@ -3822,6 +3978,8 @@ namespace Lazo
             for (int i = 0; i < _sharePrompts.Count; i++) _sharePrompts[i].Restack(i);
         }
 
+        private ScreenStageWindow _stage;
+
         private Task<IScreenSink> OnScreenOffered(ScreenInvite invite)
         {
             TaskCompletionSource<IScreenSink> response = new TaskCompletionSource<IScreenSink>();
@@ -3829,16 +3987,27 @@ namespace Lazo
             {
                 Action open = () =>
                 {
-                    ScreenViewerWindow window = new ScreenViewerWindow(invite.Sender, invite.Source);
-                    window.Show();
-                    window.Activate();
-                    response.TrySetResult(new ScreenViewer(window));
+                    // Todas las pantallas que veo van a una sola ventana; con dos o más, en mosaico.
+                    if (_stage == null)
+                    {
+                        ScreenStageWindow stage = new ScreenStageWindow();
+                        stage.Closed += (s, e) => { if (_stage == stage) _stage = null; };
+                        _stage = stage;
+                    }
+                    ScreenViewerView view = new ScreenViewerView(invite.Sender, invite.Source);
+                    _stage.Add(view);
+                    if (!_stage.IsVisible) _stage.Show();
+                    if (_stage.WindowState == WindowState.Minimized) _stage.WindowState = WindowState.Normal;
+                    _stage.Activate();
+                    response.TrySetResult(new ScreenViewer(view));
                 };
                 // Si yo pedí unirme hace poco, la invitación es la respuesta: se abre sin volver a preguntar.
                 DateTime asked;
-                if (_joinAsked.TryGetValue(invite.Id, out asked) && (DateTime.UtcNow - asked).TotalMinutes < 3)
+                if (_autoAccept.TryGetValue(invite.Id, out asked) && (DateTime.UtcNow - asked).TotalMinutes < 3)
                 {
+                    _autoAccept.Remove(invite.Id);
                     _joinAsked.Remove(invite.Id);
+                    _shareAsked.Remove(invite.Id);
                     if (_shareOpen) RefreshShareCard();
                     open();
                     return;

@@ -599,12 +599,16 @@ namespace Lazo
     /// <summary>Recibe la transmisión y la pinta en una ventana. Decodifica en paralelo fuera del hilo de interfaz.</summary>
     internal sealed class ScreenViewer : IScreenSink
     {
-        private readonly ScreenViewerWindow _window;
+        private readonly ScreenViewerView _window;
         private volatile bool _closed;
 
-        public ScreenViewer(ScreenViewerWindow window)
+        public ScreenViewer(ScreenViewerView view)
         {
-            _window = window;
+            _window = view;
+        }
+
+        public ScreenViewer(ScreenViewerWindow window) : this(window.View)
+        {
         }
 
         private struct Decoded
@@ -619,7 +623,7 @@ namespace Lazo
             ScreenBackChannel back = new ScreenBackChannel(network);
             ui.Invoke((Action)(() =>
             {
-                _window.Closed += (s, e) =>
+                _window.Closed += () =>
                 {
                     _closed = true;
                     try { network.Close(); } catch { }
@@ -694,7 +698,7 @@ namespace Lazo
                         tiles[i] = new Decoded { X = x, Y = y, W = w, H = h };
                     }
                     Parallel.For(0, count, i => tiles[i].Pixels = Decode(jpegs[i], tiles[i].W, tiles[i].H));
-                    ui.Invoke((Action)(() => _window.Apply(tiles.Select(t => new ScreenViewerWindow.Patch { X = t.X, Y = t.Y, W = t.W, H = t.H, Pixels = t.Pixels }).ToArray(), cx, cy, count > 0)),
+                    ui.Invoke((Action)(() => _window.Apply(tiles.Select(t => new ScreenViewerView.Patch { X = t.X, Y = t.Y, W = t.W, H = t.H, Pixels = t.Pixels }).ToArray(), cx, cy, count > 0)),
                         DispatcherPriority.Render);
                 }
             }
@@ -733,7 +737,11 @@ namespace Lazo
         }
     }
 
-    internal sealed class ScreenViewerWindow : Window
+    /// <summary>
+    /// Una pantalla compartida que estoy viendo: imagen, dibujo, control y punteros. Va dentro de una ventana
+    /// propia (<see cref="ScreenViewerWindow"/>) o como mosaico junto a otras (<see cref="ScreenStageWindow"/>).
+    /// </summary>
+    internal sealed class ScreenViewerView : Grid
     {
         private enum ViewerMode { Watch, Draw, Control }
 
@@ -772,23 +780,31 @@ namespace Lazo
         private int _frames;
         private DateTime _statStart = DateTime.UtcNow;
         private double _fps;
-        private WindowState _restoreState;
-        private bool _full;
+        private bool _closed;
 
-        public ScreenViewerWindow(string sender, string source)
+        /// <summary>Quien comparte esta pantalla.</summary>
+        public string Sender { get; private set; }
+        public bool HasEnded { get; private set; }
+        /// <summary>Pide ver esta pantalla en grande (F11, el botón de ampliar).</summary>
+        public event Action FullRequested;
+        /// <summary>Doble clic mientras solo se mira: destacarla entre las demás.</summary>
+        public event Action SpotlightRequested;
+        /// <summary>Botón de cerrar: quien la contiene la retira.</summary>
+        public event Action CloseRequested;
+        /// <summary>Se dejó de ver: hay que cortar la conexión.</summary>
+        public event Action Closed;
+        public event Action EndedChanged;
+
+        public ScreenViewerView(string sender, string source)
         {
+            Sender = sender;
             _title = sender + (string.IsNullOrEmpty(source) ? "" : " · " + source);
-            Title = "Lazo · pantalla de " + sender;
-            Rect area = SystemParameters.WorkArea;
-            Width = Math.Max(640, area.Width * 0.72);
-            Height = Math.Max(420, area.Height * 0.78);
-            WindowStartupLocation = WindowStartupLocation.CenterScreen;
             Background = Theme.Color("#0F0A0B");
-            FontFamily = Theme.Font;
-            try { Icon = BitmapFrame.Create(new Uri(System.Reflection.Assembly.GetEntryAssembly().Location)); } catch { }
+            System.Windows.Documents.TextElement.SetFontFamily(this, Theme.Font);
+            Focusable = true;
+            ClipToBounds = true;
 
-            Grid root = new Grid();
-            Content = root;
+            Grid root = this;
             _image = new Image { Stretch = Stretch.Fill };
             RenderOptions.SetBitmapScalingMode(_image, BitmapScalingMode.HighQuality);
             _cursor = new System.Windows.Shapes.Path
@@ -839,8 +855,8 @@ namespace Lazo
             _controlButton = BarButton("pointer", "Controlar el equipo (pide permiso)", OnControlClick);
             _controlButton.Visibility = Visibility.Collapsed;
             pill.Children.Add(_controlButton);
-            pill.Children.Add(BarButton("expand", "Pantalla completa (F11)", ToggleFull));
-            pill.Children.Add(BarButton("close", "Cerrar", Close));
+            pill.Children.Add(BarButton("expand", "Pantalla completa (F11)", () => Raise(FullRequested)));
+            pill.Children.Add(BarButton("close", "Dejar de ver", () => Raise(CloseRequested)));
             _tools = new AnnotationToolbar(Layer, "Borrar mis trazos", () => Layer.EraseMine())
             {
                 HorizontalAlignment = HorizontalAlignment.Center,
@@ -881,18 +897,55 @@ namespace Lazo
             _hintTimer.Tick += (s, e) => { _hintTimer.Stop(); Fade(_hintBox, 0); };
             PreviewKeyDown += OnPreviewKey;
             PreviewKeyUp += OnPreviewKey;
-            Deactivated += (s, e) => { ReleaseKeys(); ReleaseButtons(); };
+            // Si el teclado pasa a otra pantalla del mosaico, no se queda ninguna tecla pulsada en esta.
+            IsKeyboardFocusWithinChanged += (s, e) => { if (!IsKeyboardFocusWithin) ReleaseKeys(); };
 
             _idle = new DispatcherTimer { Interval = TimeSpan.FromSeconds(2.5) };
             _idle.Tick += (s, e) => { _idle.Stop(); if (_bitmap != null && _mode != ViewerMode.Draw) Fade(_bar, 0); };
             MouseMove += (s, e) => { Fade(_bar, 1); _idle.Stop(); _idle.Start(); };
-            MouseLeftButtonDown += (s, e) => { if (e.ClickCount == 2) ToggleFull(); };
-            KeyDown += (s, e) =>
+            MouseLeftButtonDown += (s, e) =>
             {
-                if (e.Key == Key.F11) { ToggleFull(); e.Handled = true; }
-                else if (e.Key == Key.Escape && _full) { ToggleFull(); e.Handled = true; }
+                if (_mode == ViewerMode.Watch) Focus();
+                if (e.ClickCount == 2 && _mode == ViewerMode.Watch) { Raise(SpotlightRequested); e.Handled = true; }
             };
+            KeyDown += (s, e) => { if (e.Key == Key.F11) { Raise(FullRequested); e.Handled = true; } };
             _idle.Start();
+        }
+
+        private static void Raise(Action handler)
+        {
+            if (handler != null) handler();
+        }
+
+        /// <summary>Miniatura en la tira del mosaico: sin barra ni avisos, solo la imagen.</summary>
+        public bool Compact
+        {
+            get { return _bar.Visibility != Visibility.Visible; }
+            set
+            {
+                _bar.Visibility = value ? Visibility.Collapsed : Visibility.Visible;
+                _hintBox.Visibility = value ? Visibility.Collapsed : Visibility.Visible;
+                if (value && _mode != ViewerMode.Watch) SetMode(ViewerMode.Watch);
+            }
+        }
+
+        /// <summary>La ventana que la contiene dejó de estar activa: se sueltan teclas y botones.</summary>
+        public void ReleaseInput()
+        {
+            ReleaseKeys();
+            ReleaseButtons();
+        }
+
+        /// <summary>Deja de ver esta pantalla (corta la conexión). Se puede llamar varias veces.</summary>
+        public void Close()
+        {
+            if (_closed) return;
+            _closed = true;
+            HidePointer();
+            ReleaseInput();
+            _idle.Stop();
+            _pointerTimer.Stop();
+            Raise(Closed);
         }
 
         private Button BarButton(string glyph, string tip, Action click)
@@ -928,25 +981,6 @@ namespace Lazo
         private static void Fade(UIElement element, double to)
         {
             element.BeginAnimation(OpacityProperty, Theme.Animation(element.Opacity, to, 200));
-        }
-
-        private void ToggleFull()
-        {
-            if (!_full)
-            {
-                _restoreState = WindowState;
-                WindowStyle = WindowStyle.None;
-                WindowState = WindowState.Normal;
-                WindowState = WindowState.Maximized;
-                Topmost = true;
-            }
-            else
-            {
-                Topmost = false;
-                WindowStyle = WindowStyle.SingleBorderWindow;
-                WindowState = _restoreState;
-            }
-            _full = !_full;
         }
 
         internal double Fps { get { return _fps; } }
@@ -1272,6 +1306,290 @@ namespace Lazo
             _image.Opacity = 0.35;
             Fade(_bar, 1);
             _idle.Stop();
+            HasEnded = true;
+            Raise(EndedChanged);
+        }
+    }
+
+    /// <summary>Pantalla completa de una ventana: sin marco, maximizada y encima, y vuelta atrás.</summary>
+    internal sealed class FullScreenToggle
+    {
+        private readonly Window _window;
+        private WindowState _restore;
+        public bool IsFull { get; private set; }
+
+        public FullScreenToggle(Window window)
+        {
+            _window = window;
+        }
+
+        public void Toggle()
+        {
+            if (!IsFull)
+            {
+                _restore = _window.WindowState;
+                _window.WindowStyle = WindowStyle.None;
+                _window.WindowState = WindowState.Normal;
+                _window.WindowState = WindowState.Maximized;
+                _window.Topmost = true;
+            }
+            else
+            {
+                _window.Topmost = false;
+                _window.WindowStyle = WindowStyle.SingleBorderWindow;
+                _window.WindowState = _restore;
+            }
+            IsFull = !IsFull;
+        }
+    }
+
+    /// <summary>Una sola pantalla compartida en su propia ventana.</summary>
+    internal sealed class ScreenViewerWindow : Window
+    {
+        private readonly FullScreenToggle _full;
+        public ScreenViewerView View { get; private set; }
+
+        public ScreenViewerWindow(string sender, string source)
+        {
+            Title = "Lazo · pantalla de " + sender;
+            Rect area = SystemParameters.WorkArea;
+            Width = Math.Max(640, area.Width * 0.72);
+            Height = Math.Max(420, area.Height * 0.78);
+            WindowStartupLocation = WindowStartupLocation.CenterScreen;
+            Background = Theme.Color("#0F0A0B");
+            try { Icon = BitmapFrame.Create(new Uri(System.Reflection.Assembly.GetEntryAssembly().Location)); } catch { }
+            _full = new FullScreenToggle(this);
+            View = new ScreenViewerView(sender, source);
+            View.FullRequested += _full.Toggle;
+            View.SpotlightRequested += _full.Toggle;
+            View.CloseRequested += Close;
+            Content = View;
+            KeyDown += (s, e) => { if (e.Key == Key.Escape && _full.IsFull) { _full.Toggle(); e.Handled = true; } };
+            Deactivated += (s, e) => View.ReleaseInput();
+            Closed += (s, e) => View.Close();
+        }
+
+        internal AnnotationLayer Layer { get { return View.Layer; } }
+        internal PointerLayer Pointers { get { return View.Pointers; } }
+        internal byte Granted { get { return View.Granted; } }
+        internal bool CanAsk { get { return View.CanAsk; } }
+        internal double Fps { get { return View.Fps; } }
+        internal BitmapSource Frame { get { return View.Frame; } }
+        internal void Request(byte kind) { View.Request(kind); }
+        internal void ToggleControl() { View.ToggleControl(); }
+        internal void MovePointer(double x, double y) { View.MovePointer(x, y); }
+    }
+
+    /// <summary>
+    /// Varias pantallas compartidas a la vez en una sola ventana, como en Discord: en mosaico, o una destacada
+    /// con las demás en una tira. Doble clic (o un clic en la tira) destaca una; F11 la pone a pantalla completa.
+    /// </summary>
+    internal sealed class ScreenStageWindow : Window
+    {
+        private readonly List<ScreenViewerView> _views = new List<ScreenViewerView>();
+        private readonly Grid _content;
+        private readonly TextBlock _count;
+        private readonly Button _mosaicButton;
+        private readonly Button _focusButton;
+        private readonly FullScreenToggle _full;
+        private ScreenViewerView _spotlight;
+        private bool _mosaic = true;
+
+        public ScreenStageWindow()
+        {
+            Title = "Lazo · pantallas compartidas";
+            Rect area = SystemParameters.WorkArea;
+            Width = Math.Max(720, area.Width * 0.78);
+            Height = Math.Max(460, area.Height * 0.82);
+            WindowStartupLocation = WindowStartupLocation.CenterScreen;
+            Background = Theme.Color("#0B0708");
+            FontFamily = Theme.Font;
+            try { Icon = BitmapFrame.Create(new Uri(System.Reflection.Assembly.GetEntryAssembly().Location)); } catch { }
+            _full = new FullScreenToggle(this);
+
+            Grid root = new Grid();
+            root.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
+            root.RowDefinitions.Add(new RowDefinition());
+            Grid head = new Grid { Margin = new Thickness(14, 8, 10, 6) };
+            head.ColumnDefinitions.Add(new ColumnDefinition());
+            head.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+            StackPanel title = new StackPanel { Orientation = Orientation.Horizontal, VerticalAlignment = VerticalAlignment.Center };
+            title.Children.Add(new System.Windows.Shapes.Ellipse { Width = 8, Height = 8, Fill = Theme.Color("#F25C45"), VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(0, 0, 8, 0) });
+            title.Children.Add(Theme.Text("Pantallas compartidas", 13, Brushes.White, FontWeights.SemiBold));
+            _count = Theme.Text("", 12, Theme.Color("#B9A9AA"));
+            _count.Margin = new Thickness(8, 0, 0, 0);
+            _count.VerticalAlignment = VerticalAlignment.Center;
+            title.Children.Add(_count);
+            head.Children.Add(title);
+            StackPanel modes = new StackPanel { Orientation = Orientation.Horizontal };
+            _mosaicButton = ModeButton("Mosaico", () => SetMosaic(true));
+            _focusButton = ModeButton("Destacada", () => SetMosaic(false));
+            modes.Children.Add(_mosaicButton);
+            modes.Children.Add(_focusButton);
+            Grid.SetColumn(modes, 1);
+            head.Children.Add(modes);
+            root.Children.Add(head);
+            _content = new Grid { Margin = new Thickness(8, 0, 8, 8) };
+            Grid.SetRow(_content, 1);
+            root.Children.Add(_content);
+            Content = root;
+
+            KeyDown += (s, e) => { if (e.Key == Key.Escape && _full.IsFull) { _full.Toggle(); e.Handled = true; } };
+            Deactivated += (s, e) => { foreach (ScreenViewerView view in _views) view.ReleaseInput(); };
+            Closed += (s, e) => { foreach (ScreenViewerView view in _views.ToArray()) view.Close(); _views.Clear(); };
+        }
+
+        public int Count { get { return _views.Count; } }
+        public bool IsMosaic { get { return _mosaic; } }
+        internal IList<ScreenViewerView> Views { get { return _views.AsReadOnly(); } }
+        internal ScreenViewerView Spotlight { get { return _spotlight; } }
+
+        /// <summary>Añade una pantalla; si es la segunda o más, se ven en mosaico.</summary>
+        public void Add(ScreenViewerView view)
+        {
+            _views.Add(view);
+            view.CloseRequested += () => Remove(view);
+            view.SpotlightRequested += () => { _spotlight = view; SetMosaic(false); };
+            view.FullRequested += () =>
+            {
+                _spotlight = view;
+                if (_views.Count > 1) _mosaic = false;
+                Layout();
+                _full.Toggle();
+            };
+            // Si una transmisión termina y hay otras, se retira sola al poco, como en Discord.
+            view.EndedChanged += () =>
+            {
+                if (_views.Count < 2) return;
+                DispatcherTimer later = new DispatcherTimer { Interval = TimeSpan.FromSeconds(4) };
+                later.Tick += (s, e) => { later.Stop(); if (_views.Contains(view) && _views.Count > 1) Remove(view); };
+                later.Start();
+            };
+            if (_spotlight == null) _spotlight = view;
+            Layout();
+        }
+
+        public void Remove(ScreenViewerView view)
+        {
+            if (!_views.Remove(view)) return;
+            Detach(view);
+            view.Close();
+            if (_spotlight == view) _spotlight = _views.FirstOrDefault();
+            if (_views.Count == 0) { Close(); return; }
+            Layout();
+        }
+
+        /// <summary>Para pruebas y para el botón: mosaico o una destacada.</summary>
+        internal void SetMosaic(bool mosaic)
+        {
+            _mosaic = mosaic;
+            Layout();
+        }
+
+        private void Layout()
+        {
+            foreach (ScreenViewerView view in _views) Detach(view);
+            _content.Children.Clear();
+            _content.RowDefinitions.Clear();
+            int count = _views.Count;
+            _count.Text = count == 1 ? "· 1 pantalla" : "· " + count + " pantallas";
+            bool mosaic = _mosaic || count < 2;
+            _mosaicButton.Visibility = _focusButton.Visibility = count > 1 ? Visibility.Visible : Visibility.Collapsed;
+            _mosaicButton.Background = _mosaic ? Theme.Color("#40FFFFFF") : Brushes.Transparent;
+            _focusButton.Background = !_mosaic ? Theme.Color("#40FFFFFF") : Brushes.Transparent;
+            if (mosaic)
+            {
+                int columns = (int)Math.Ceiling(Math.Sqrt(count));
+                int rows = (int)Math.Ceiling(count / (double)columns);
+                System.Windows.Controls.Primitives.UniformGrid grid = new System.Windows.Controls.Primitives.UniformGrid { Columns = columns, Rows = rows };
+                foreach (ScreenViewerView view in _views) grid.Children.Add(Tile(view, false));
+                _content.Children.Add(grid);
+                return;
+            }
+            ScreenViewerView main = _spotlight != null && _views.Contains(_spotlight) ? _spotlight : _views[0];
+            _content.RowDefinitions.Add(new RowDefinition());
+            _content.RowDefinitions.Add(new RowDefinition { Height = new GridLength(130) });
+            _content.Children.Add(Tile(main, false));
+            StackPanel strip = new StackPanel { Orientation = Orientation.Horizontal, HorizontalAlignment = HorizontalAlignment.Center };
+            foreach (ScreenViewerView view in _views)
+                if (view != main) strip.Children.Add(Tile(view, true));
+            ScrollViewer scroll = new ScrollViewer
+            {
+                Content = strip,
+                HorizontalScrollBarVisibility = ScrollBarVisibility.Auto,
+                VerticalScrollBarVisibility = ScrollBarVisibility.Disabled,
+                Margin = new Thickness(0, 6, 0, 0)
+            };
+            Grid.SetRow(scroll, 1);
+            _content.Children.Add(scroll);
+        }
+
+        private Border Tile(ScreenViewerView view, bool small)
+        {
+            Border tile = new Border
+            {
+                Margin = new Thickness(4),
+                CornerRadius = new CornerRadius(12),
+                BorderThickness = new Thickness(2),
+                BorderBrush = Brushes.Transparent,
+                Background = Theme.Color("#0F0A0B"),
+                ClipToBounds = true
+            };
+            view.Compact = small;
+            if (!small)
+            {
+                tile.Child = view;
+                return tile;
+            }
+            // Miniatura: la imagen y el nombre de quien comparte, como en Discord.
+            Grid face = new Grid();
+            face.Children.Add(view);
+            TextBlock name = Theme.Text(view.Sender, 11.5, Brushes.White, FontWeights.SemiBold);
+            name.TextTrimming = TextTrimming.CharacterEllipsis;
+            name.TextWrapping = TextWrapping.NoWrap;
+            face.Children.Add(new Border
+            {
+                Background = Theme.Color("#B3000000"),
+                CornerRadius = new CornerRadius(8),
+                Padding = new Thickness(8, 2, 8, 3),
+                Margin = new Thickness(6),
+                HorizontalAlignment = HorizontalAlignment.Left,
+                VerticalAlignment = VerticalAlignment.Bottom,
+                IsHitTestVisible = false,
+                Child = name
+            });
+            tile.Child = face;
+            {
+                tile.Width = 200;
+                tile.ToolTip = "Destacar a " + view.Sender;
+                tile.Cursor = Cursors.Hand;
+                // En la tira, un clic la destaca; no llega a la pantalla pequeña.
+                tile.PreviewMouseLeftButtonDown += (s, e) => { e.Handled = true; _spotlight = view; Layout(); };
+                tile.MouseEnter += (s, e) => tile.BorderBrush = Theme.Color("#80FFFFFF");
+                tile.MouseLeave += (s, e) => tile.BorderBrush = Brushes.Transparent;
+            }
+            return tile;
+        }
+
+        private static void Detach(ScreenViewerView view)
+        {
+            Border border = view.Parent as Border;
+            if (border != null) border.Child = null;
+            Panel panel = view.Parent as Panel;
+            if (panel != null) panel.Children.Remove(view);
+        }
+
+        private static Button ModeButton(string text, Action click)
+        {
+            Button button = Theme.Button(text, false);
+            button.MinHeight = 28;
+            button.FontSize = 12;
+            button.Foreground = Brushes.White;
+            button.BorderThickness = new Thickness(0);
+            button.Background = Brushes.Transparent;
+            button.Margin = new Thickness(4, 0, 0, 0);
+            button.Click += (s, e) => click();
+            return button;
         }
     }
 
@@ -1412,6 +1730,19 @@ namespace Lazo
                 _revokeButton.Click += (s, e) => revoke();
                 row.Children.Add(_revokeButton);
             }
+            if (overlay != null)
+            {
+                // Quien comparte puede quitar de una vez todos los dibujos sobre su pantalla, de cualquiera.
+                Button clear = Theme.Button("", false);
+                clear.Content = ClearLabel();
+                clear.MinHeight = 28;
+                clear.Margin = new Thickness(8, 0, 0, 0);
+                clear.ToolTip = "Borrar todos los dibujos de tu pantalla, también los de quienes miran";
+                clear.Visibility = Visibility.Collapsed;
+                clear.Click += (s, e) => overlay.Layer.ClearAll();
+                overlay.Layer.StrokesChanged += () => clear.Visibility = overlay.Layer.HasStrokes ? Visibility.Visible : Visibility.Collapsed;
+                row.Children.Add(clear);
+            }
             Button stopButton = Theme.Button("Detener", true);
             stopButton.MinHeight = 28;
             stopButton.Margin = new Thickness(14, 0, 0, 0);
@@ -1503,6 +1834,14 @@ namespace Lazo
             label.Children.Add(Icons.Make("pen", 14, on ? Theme.PrimaryText : Theme.Ink, 2));
             TextBlock text = new TextBlock { Text = on ? "Terminar" : "Dibujar", Margin = new Thickness(6, 0, 0, 0), VerticalAlignment = VerticalAlignment.Center };
             label.Children.Add(text);
+            return label;
+        }
+
+        private static UIElement ClearLabel()
+        {
+            StackPanel label = new StackPanel { Orientation = Orientation.Horizontal };
+            label.Children.Add(Icons.Make("trash", 14, Theme.Ink, 2));
+            label.Children.Add(new TextBlock { Text = "Borrar dibujos", Margin = new Thickness(6, 0, 0, 0), VerticalAlignment = VerticalAlignment.Center });
             return label;
         }
     }

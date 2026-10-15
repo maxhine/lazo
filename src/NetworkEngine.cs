@@ -114,7 +114,7 @@ namespace Lazo
         public const byte ChatKindTyping = 2;
         public const byte ChatKindPresence = 3;
         public const byte ChatKindNudge = 4;
-        private readonly string _receiveDirectory;
+        private volatile string _receiveDirectory;
         private readonly int _discoveryPort;
         private readonly int _transferPort;
         private readonly object _peerLock = new object();
@@ -136,10 +136,10 @@ namespace Lazo
 
         public NetworkEngine(string receiveDirectory = null, int discoveryPort = DiscoveryPort, int transferPort = TransferPort, string profileDirectory = null)
         {
-            _receiveDirectory = receiveDirectory ?? Path.Combine(GetDownloadsPath(), "Lazo");
             _discoveryPort = discoveryPort;
             _transferPort = transferPort;
             _profile = profileDirectory ?? Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "Lazo");
+            _receiveDirectory = receiveDirectory ?? SavedReceiveDirectory() ?? DefaultReceiveDirectory();
             _id = LoadId(_profile);
             _identity = DeviceIdentity.Load(_profile, _id);
             Pairings = new PairingStore(_profile);
@@ -449,6 +449,7 @@ namespace Lazo
                         case (byte)'D': ReadSignal(reader, writer, peerId); break;
                         case (byte)'S': await ReadScreen(client, stream, reader, writer, address, peerId).ConfigureAwait(false); break;
                         case (byte)'J': ReadJoin(reader, writer, peerId); break;
+                        case (byte)'Q': ReadShareRequest(reader, writer, peerId); break;
                     }
                 }
                 catch { /* Conexión no válida, cortada o rechazada. */ }
@@ -744,6 +745,38 @@ namespace Lazo
                     throw new InvalidOperationException(peer.Name + " tiene una versión de Lazo que no admite solicitudes para unirse.");
                 }
             }
+        }
+
+        /// <summary>Alguien me pide que comparta mi pantalla: identidad comprobada y nombre. Devuelve si se atiende.</summary>
+        public event Func<Guid, string, bool> ShareRequested;
+
+        /// <summary>
+        /// Pide a un compañero que comparta su pantalla. Si acepta, elige qué compartir y llega una invitación normal.
+        /// </summary>
+        public async Task<bool> RequestShareAsync(Peer peer)
+        {
+            using (SecureConnection connection = await OpenAsync(peer).ConfigureAwait(false))
+            {
+                BinaryWriter writer = new BinaryWriter(connection.Stream, Encoding.UTF8, true);
+                writer.Write((byte)'Q');
+                WriteText(writer, Label(), 80);
+                writer.Flush();
+                try { return await ReadByteAsync(connection.Stream, 7000).ConfigureAwait(false) == 1; }
+                catch (EndOfStreamException)
+                {
+                    throw new InvalidOperationException(peer.Name + " tiene una versión de Lazo que no admite pedirle que comparta.");
+                }
+            }
+        }
+
+        private void ReadShareRequest(BinaryReader reader, BinaryWriter writer, Guid id)
+        {
+            string name = CleanLabel(ReadText(reader, 80));
+            if (name.Length == 0) return;
+            Func<Guid, string, bool> handler = ShareRequested;
+            bool taken = handler != null && handler(id, name);
+            writer.Write((byte)(taken ? 1 : 0));
+            writer.Flush();
         }
 
         private void ReadJoin(BinaryReader reader, BinaryWriter writer, Guid id)
@@ -1042,6 +1075,43 @@ namespace Lazo
             string result = Path.Combine(folder, name);
             for (int i = 1; File.Exists(result); i++) result = Path.Combine(folder, stem + " (" + i + ")" + ext);
             return result;
+        }
+
+        /// <summary>Carpeta donde se guarda lo recibido. Se elige en Ajustes.</summary>
+        public string ReceiveDirectory { get { return _receiveDirectory; } }
+
+        public bool UsesDefaultReceiveDirectory
+        {
+            get { return string.Equals(Path.GetFullPath(_receiveDirectory).TrimEnd('\\'), Path.GetFullPath(DefaultReceiveDirectory()).TrimEnd('\\'), StringComparison.OrdinalIgnoreCase); }
+        }
+
+        /// <summary>Cambia la carpeta de recepción (null: la predeterminada, Descargas\Lazo). Lo que ya llega sigue donde iba.</summary>
+        public void SetReceiveDirectory(string folder)
+        {
+            string path = Path.Combine(_profile, "receive-folder.txt");
+            if (string.IsNullOrWhiteSpace(folder))
+            {
+                _receiveDirectory = DefaultReceiveDirectory();
+                try { File.Delete(path); } catch { }
+                return;
+            }
+            folder = Path.GetFullPath(folder);
+            Directory.CreateDirectory(folder);
+            _receiveDirectory = folder;
+            Directory.CreateDirectory(_profile);
+            File.WriteAllText(path, folder, Encoding.UTF8);
+        }
+
+        private string SavedReceiveDirectory()
+        {
+            try
+            {
+                string path = Path.Combine(_profile, "receive-folder.txt");
+                if (!File.Exists(path)) return null;
+                string folder = File.ReadAllText(path, Encoding.UTF8).Trim();
+                return folder.Length > 0 && Path.IsPathRooted(folder) ? folder : null;
+            }
+            catch { return null; }
         }
 
         internal static string DefaultReceiveDirectory()

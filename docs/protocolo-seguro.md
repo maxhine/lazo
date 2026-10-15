@@ -79,6 +79,7 @@ El cliente aplica la misma regla: si conocía al servidor y la clave es otra, ci
 | `D` | Señal | `texto` nombre · `u8` tipo (2 escribiendo, 3 presencia, 4 zumbido) · `texto` cuerpo | `u8` 1 |
 | `S` | Pantalla | `texto` nombre · `texto` origen (≤ 400) | `u8` 1 acepta / 0; si acepta, sigue el flujo de pantalla |
 | `J` | Pedir unirse (posterior a 0.5.0) | `texto` nombre (≤ 80) | `u8` 1 se atiende (está compartiendo) / 0. Si quien comparte acepta, envía después una operación `S` normal |
+| `Q` | Pedir que comparta (posterior a 0.5.0) | `texto` nombre (≤ 80) | `u8` 1 se atiende / 0. Si acepta, elige qué compartir y envía una operación `S` normal; quien lo pidió la abre sin volver a preguntar durante 3 min |
 
 `LAZO3P` se anuncia junto con los demás mientras se comparte, y una vez vacío al dejar de hacerlo; quien deja de recibirlo 8 s retira a ese equipo de «Compartiendo ahora». Solo sirve para listar: unirse pasa por `J`, autenticado, y lo decide quien comparte. Los equipos 0.5.0 lo ignoran; si reciben `J`, cierran sin responder.
 

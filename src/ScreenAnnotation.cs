@@ -266,6 +266,18 @@ namespace Lazo
         {
             if (!_model.Apply(op)) return;
             Render(op);
+            RaiseStrokes();
+        }
+
+        /// <summary>Cambió el número de trazos (propios o llegados de la red).</summary>
+        public event Action StrokesChanged;
+
+        public bool HasStrokes { get { return _shapes.Count > 0; } }
+
+        private void RaiseStrokes()
+        {
+            Action handler = StrokesChanged;
+            if (handler != null) handler();
         }
 
         /// <summary>Borra los trazos hechos en este equipo y avisa de cada borrado.</summary>
@@ -290,6 +302,7 @@ namespace Lazo
         {
             if (!_model.Apply(op)) return false;
             Render(op);
+            RaiseStrokes();
             Action<AnnotationOp> handler = Local;
             if (handler != null) handler(op);
             return true;
