@@ -164,7 +164,8 @@ namespace Lazo
         private readonly FileStream _file;
         private readonly double _lat0, _lon0, _dLat, _dLon;
         private readonly int _rows, _cols;
-        private readonly Dictionary<int, float[]> _cache = new Dictionary<int, float[]>();
+        // Filas ya leídas; se leen una vez y luego las consultan todos los hilos sin bloquear.
+        private float[][] _loaded;
 
         public GeoidGrid(string path)
         {
@@ -175,6 +176,15 @@ namespace Lazo
             _rows = BigInt(header, 32); _cols = BigInt(header, 36);
             if (_rows < 2 || _cols < 2 || _dLat <= 0 || _dLon <= 0 || 40L + (long)_rows * _cols * 4 > _file.Length)
                 throw new InvalidDataException("La malla del geoide no es un .gtx válido.");
+            _loaded = new float[_rows][];
+        }
+
+        /// <summary>Lee de una vez las filas entre dos latitudes (la franja de la nube), antes de repartir el trabajo.</summary>
+        public void Prepare(double latMin, double latMax)
+        {
+            int from = Math.Max(0, (int)Math.Floor((latMin - _lat0) / _dLat));
+            int to = Math.Min(_rows - 1, (int)Math.Ceiling((latMax - _lat0) / _dLat) + 1);
+            for (int row = from; row <= to; row++) Row(row);
         }
 
         /// <summary>Busca egm08_25.gtx donde suelen dejarlo iTwin Capture, PROJ y QGIS.</summary>
@@ -210,21 +220,25 @@ namespace Lazo
 
         private float[] Row(int row)
         {
-            float[] values;
-            if (_cache.TryGetValue(row, out values)) return values;
-            byte[] raw = new byte[_cols * 4];
-            _file.Position = 40L + (long)row * _cols * 4;
-            int done = 0;
-            while (done < raw.Length) { int read = _file.Read(raw, done, raw.Length - done); if (read <= 0) break; done += read; }
-            values = new float[_cols];
-            for (int i = 0; i < _cols; i++)
+            float[] values = _loaded[row];
+            if (values != null) return values;
+            lock (_file)
             {
-                byte[] value = { raw[i * 4 + 3], raw[i * 4 + 2], raw[i * 4 + 1], raw[i * 4] };
-                values[i] = BitConverter.ToSingle(value, 0);
+                if (_loaded[row] != null) return _loaded[row];
+                byte[] raw = new byte[_cols * 4];
+                _file.Position = 40L + (long)row * _cols * 4;
+                int done = 0;
+                while (done < raw.Length) { int read = _file.Read(raw, done, raw.Length - done); if (read <= 0) break; done += read; }
+                values = new float[_cols];
+                byte[] value = new byte[4];
+                for (int i = 0; i < _cols; i++)
+                {
+                    value[0] = raw[i * 4 + 3]; value[1] = raw[i * 4 + 2]; value[2] = raw[i * 4 + 1]; value[3] = raw[i * 4];
+                    values[i] = BitConverter.ToSingle(value, 0);
+                }
+                _loaded[row] = values;
+                return values;
             }
-            if (_cache.Count > 64) _cache.Clear();
-            _cache[row] = values;
-            return values;
         }
 
         private static double BigDouble(byte[] data, int at)

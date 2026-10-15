@@ -119,7 +119,39 @@ internal static class PointCloudSmoke
             unknown.Inputs.Add(bogota);
             ok &= Check(PointCloudConverter.Validate(unknown) != null, "un sistema que ReCap no conoce se rechaza (ReCap lo ignoraría en silencio)");
         }
+
+        // En paralelo: un LAS de 3 millones de puntos partido en tramos, convertidos a la vez y montados en un .rcp.
+        string big = Path.Combine(folder, "grande.las");
+        WriteLas(big, 1800, 1000400, 1001100, 3116);
+        long saved = PointCloudConverter.ParallelThreshold;
+        PointCloudConverter.ParallelThreshold = 0;
+        try
+        {
+            PointCloudJob split = new PointCloudJob { OutputFolder = output, Name = "En paralelo", SourceCs = CoordinateLibrary.Available ? "MAGNA.Columbia-Bogota" : null };
+            split.Inputs.Add(big);
+            PointCloudResult parallel = await PointCloudConverter.ConvertAsync(decap, split, null, CancellationToken.None);
+            string[] parts = Directory.Exists(Path.Combine(output, "En paralelo Support")) ? Directory.GetFiles(Path.Combine(output, "En paralelo Support"), "*.rcs") : new string[0];
+            ok &= Check(parallel.Ok && parts.Length > 1 && parts.All(p => Path.GetFileName(p).StartsWith("grande parte ")),
+                "proyecto en paralelo: " + parts.Length + " partes en la carpeta Support (" + parallel.Message + ")");
+            ok &= Check(!CoordinateLibrary.Available || ProjectXml(parallel.Output).Contains("<CoordinateSystem Value=\"MAGNA.Columbia-Bogota\""),
+                "el proyecto armado conserva su sistema de coordenadas");
+            ok &= Check(!Directory.GetDirectories(output, ".lazo-*").Any(), "no quedan temporales");
+
+            PointCloudJob nationalSplit = new PointCloudJob { OutputFolder = output, Name = "ON en paralelo", LazoFrom = from, LazoTo = LazoProjection.ById("on") };
+            nationalSplit.Inputs.Add(big);
+            PointCloudResult on2 = await PointCloudConverter.ConvertAsync(decap, nationalSplit, null, CancellationToken.None);
+            ok &= Check(on2.Ok && Directory.GetFiles(Path.Combine(output, "ON en paralelo Support"), "*.rcs").Length > 1,
+                "reproyección a Origen Nacional en paralelo (" + on2.Message + ")");
+        }
+        finally { PointCloudConverter.ParallelThreshold = saved; }
         return ok;
+    }
+
+    private static string ProjectXml(string rcp)
+    {
+        using (System.IO.Compression.ZipArchive zip = System.IO.Compression.ZipFile.OpenRead(rcp))
+        using (StreamReader reader = new StreamReader(zip.Entries.First(e => e.FullName.EndsWith(".xml")).Open()))
+            return reader.ReadToEnd();
     }
 
     /// <summary>Primer punto de un LAS, en coordenadas reales.</summary>
