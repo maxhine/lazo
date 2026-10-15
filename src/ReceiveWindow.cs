@@ -34,17 +34,21 @@ namespace Lazo
         private readonly DispatcherTimer _timeout;
         private readonly string _sender;
         private readonly System.Net.IPAddress _address;
+        private readonly Guid _peerId;
         private bool _takeAll;
         private bool _closing;
         public Guid OfferId { get; private set; }
         public string PeerName { get { return _sender; } }
         public System.Net.IPAddress PeerAddress { get { return _address; } }
+        /// <summary>Identificador autenticado de quien envía.</summary>
+        public Guid PeerId { get { return _peerId; } }
 
         public ReceiveWindow(Offer offer, Action<bool> respond)
         {
             OfferId = offer.Id;
             _sender = offer.Sender;
             _address = offer.Address;
+            _peerId = offer.PeerId;
             Title = "Lazo · archivo entrante";
             Width = 360;
             Height = 132;
@@ -160,8 +164,7 @@ namespace Lazo
 
         public bool CanAbsorb(Offer offer)
         {
-            if (_closing || offer == null || _address == null || offer.Address == null) return false;
-            if (!offer.Address.Equals(_address)) return false;
+            if (_closing || offer == null || offer.PeerId != _peerId) return false;
             if (!_takeAll) return true;
             return _items.Any(item => item.Decided && !item.Done);
         }
@@ -340,11 +343,17 @@ namespace Lazo
                         UseShellExecute = true
                     });
                 else
+                {
+                    // Lo que puede ejecutar código no se abre con un clic: se confirma y Windows lo revisa por la marca de origen.
+                    if (MarkOfTheWeb.IsRisky(path) && MessageBox.Show(
+                        Path.GetFileName(path) + " puede ejecutar programas en este equipo. Ábrelo solo si confías en " + _sender + " y lo esperabas.\n\n¿Abrirlo de todas formas?",
+                        "Lazo · archivo ejecutable", MessageBoxButton.YesNo, MessageBoxImage.Warning, MessageBoxResult.No) != MessageBoxResult.Yes) return;
                     System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo
                     {
                         FileName = path,
                         UseShellExecute = true
                     });
+                }
                 CloseAnimated();
             }
             catch (Exception ex)

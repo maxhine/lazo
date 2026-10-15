@@ -59,9 +59,12 @@ internal static class ScreenSmoke
         else source = ScreenSources.Screens()[0];
         Console.WriteLine("Fuente: " + source.Label + " " + source.Detail);
 
-        using (NetworkEngine viewerSide = new NetworkEngine(Path.Combine(output, "inbox"), FreeUdp(), port))
-        using (NetworkEngine sharer = new NetworkEngine(Path.Combine(output, "inbox2"), FreeUdp(), FreePort()))
+        using (NetworkEngine viewerSide = new NetworkEngine(Path.Combine(output, "inbox"), FreeUdp(), port, Path.Combine(output, "perfil-visor")))
+        using (NetworkEngine sharer = new NetworkEngine(Path.Combine(output, "inbox2"), FreeUdp(), FreePort(), Path.Combine(output, "perfil-emisor")))
         {
+            // Los dos confirman el código de emparejamiento automáticamente.
+            viewerSide.PairingPrompt += request => Task.FromResult(true);
+            sharer.PairingPrompt += request => Task.FromResult(true);
             ScreenViewerWindow window = null;
             viewerSide.ScreenOffered += invite =>
             {
@@ -79,7 +82,7 @@ internal static class ScreenSmoke
             session.Notice += text => Console.WriteLine("Aviso: " + text);
             bool ended = false;
             session.Ended += () => ended = true;
-            session.Invite(new Peer { Id = Guid.NewGuid(), Name = "Visor", Address = local, Port = port });
+            session.Invite(new Peer { Id = viewerSide.SelfId, Name = "Visor", Address = local, Port = port });
             session.Start();
             double best = 0;
             for (int second = 1; second <= 6; second++)

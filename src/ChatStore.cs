@@ -51,6 +51,17 @@ namespace Lazo
             catch { }
         }
 
+        /// <summary>
+        /// Mensaje de otra persona. Si imita las marcas internas («FILE», «NUDGE»), se neutraliza: si no,
+        /// alguien podría hacer pasar un texto por una tarjeta de archivo que apunta a cualquier ruta del equipo.
+        /// </summary>
+        public static void AppendIncoming(Guid id, string name, string text)
+        {
+            text = Clean(text);
+            if (text.StartsWith("FILE") || text == "NUDGE") text = "\u2063" + text;
+            Append(id, name, false, text);
+        }
+
         public static void MarkRead(Guid id)
         {
             try

@@ -184,6 +184,7 @@ namespace Lazo
                 _network.ChatReceived += OnChatReceived;
                 _network.ChatSignal += OnChatSignal;
                 _network.ScreenOffered += OnScreenOffered;
+                _network.PairingPrompt += OnPairingPrompt;
                 Updater.CheckInBackground(text => Dispatcher.BeginInvoke((Action)(() => SetStatus(text))),
                     () => Dispatcher.BeginInvoke((Action)(() => { _exiting = true; Application.Current.Shutdown(); })));
                 try { _network.Start(); }
@@ -1332,6 +1333,7 @@ namespace Lazo
             };
             panel.Children.Add(checkUpdates);
             panel.Children.Add(updateState);
+            AddPairedDevices(panel);
             // Espacio a la derecha para que la barra de desplazamiento no tape los controles.
             panel.Margin = new Thickness(0, 0, 12, 0);
             ScrollViewer scroll = new ScrollViewer
@@ -1354,6 +1356,81 @@ namespace Lazo
                 Margin = new Thickness(0, 40, 8, 0),
                 Child = scroll
             }, 290);
+        }
+
+        /// <summary>
+        /// Equipos conocidos y huella propia. Lazo recuerda la clave de cada equipo al primer contacto;
+        /// verificar con el código es opcional y olvidar uno hace que se vuelva a recordar en el siguiente contacto.
+        /// </summary>
+        private void AddPairedDevices(StackPanel panel)
+        {
+            TextBlock label = Theme.Label("Equipos conocidos");
+            label.Margin = new Thickness(0, 16, 0, 0);
+            panel.Children.Add(label);
+            TextBlock help = Theme.Text("Lazo recuerda cada equipo la primera vez que se conectan y avisa si su identidad cambia. Verificar el código con la otra persona es opcional.", 11, Theme.Muted);
+            help.TextWrapping = TextWrapping.Wrap;
+            panel.Children.Add(help);
+            TextBlock own = Theme.Text("Huella de este equipo: " + LazoCrypto.ShortFingerprint(_network.SelfFingerprint), 11, Theme.Muted);
+            own.Margin = new Thickness(0, 2, 0, 4);
+            panel.Children.Add(own);
+            foreach (PairedDevice device in _network.Pairings.All())
+            {
+                Grid row = new Grid { Margin = new Thickness(0, 4, 0, 0) };
+                row.ColumnDefinitions.Add(new ColumnDefinition());
+                row.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+                StackPanel words = new StackPanel { VerticalAlignment = VerticalAlignment.Center };
+                TextBlock name = Theme.Text(device.Name + (device.Verified ? "  ✓" : ""), 12, Theme.Ink, FontWeights.SemiBold);
+                name.TextTrimming = TextTrimming.CharacterEllipsis;
+                name.ToolTip = device.Verified ? "Verificado con código" : "Conocido, sin verificar";
+                words.Children.Add(name);
+                words.Children.Add(Theme.Text(LazoCrypto.ShortFingerprint(device.Fingerprint), 10.5, Theme.Muted));
+                row.Children.Add(words);
+                StackPanel actions = new StackPanel { Orientation = Orientation.Horizontal };
+                string id = device.Id;
+                string deviceName = device.Name;
+                Peer online = _peers.FirstOrDefault(p => p.Id.ToString("D") == id && p.Paired);
+                if (!device.Verified && online != null)
+                {
+                    Button verify = Theme.Button("Verificar", false);
+                    verify.MinHeight = 28;
+                    verify.ToolTip = "Comparar un código de 6 cifras con la otra persona";
+                    verify.Click += async (s, e) =>
+                    {
+                        verify.IsEnabled = false;
+                        try { ShowToast(await _network.VerifyAsync(online) ? deviceName + " quedó verificado" : "No se verificó"); }
+                        catch (Exception ex) { ShowToast(ex.Message); }
+                        verify.IsEnabled = true;
+                    };
+                    actions.Children.Add(verify);
+                }
+                Button forget = Theme.Button("Olvidar", false);
+                forget.MinHeight = 28;
+                forget.Margin = new Thickness(6, 0, 0, 0);
+                forget.ToolTip = "Úsalo si reinstaló Lazo: su nueva identidad se recordará en el siguiente contacto";
+                forget.Click += (s, e) => { _network.Pairings.Remove(id); panel.Children.Remove(row); };
+                actions.Children.Add(forget);
+                Grid.SetColumn(actions, 1);
+                row.Children.Add(actions);
+                panel.Children.Add(row);
+            }
+        }
+
+        private readonly List<PairingWindow> _pairings = new List<PairingWindow>();
+
+        /// <summary>Muestra el código de verificación y devuelve si la persona confirma que coincide.</summary>
+        private Task<bool> OnPairingPrompt(PairingRequest request)
+        {
+            TaskCompletionSource<bool> result = new TaskCompletionSource<bool>();
+            Dispatcher.BeginInvoke((Action)(() =>
+            {
+                PairingWindow window = new PairingWindow(request, _pairings.Count + _inbox.Count);
+                _pairings.Add(window);
+                window.Closed += (s, e) => _pairings.Remove(window);
+                window.Result.ContinueWith(t => result.TrySetResult(t.Status == TaskStatus.RanToCompletion && t.Result));
+                window.Show();
+                if (!request.Incoming) window.Activate();
+            }));
+            return result.Task;
         }
 
         private Border StylePanel(Border card, double width)
@@ -2673,7 +2750,7 @@ namespace Lazo
         {
             Dispatcher.BeginInvoke((Action)(() =>
             {
-                ChatStore.Append(id, name, false, text);
+                ChatStore.AppendIncoming(id, name, text);
                 if (_chatPanel != null) _chatPanel.Incoming(id, name, text);
                 if (_chatPanel == null || !_chatPanel.Viewing(id)) NotifyChat(name, text);
                 RefreshChatDot();
@@ -2830,13 +2907,15 @@ namespace Lazo
                 if (!string.IsNullOrEmpty(path) && window != null)
                 {
                     TransferLog.Add("in", window.PeerName, Path.GetFileName(path), path);
-                    Peer peer = _peers.FirstOrDefault(item => item.Address != null && window.PeerAddress != null && item.Address.Equals(window.PeerAddress));
-                    if (peer == null) peer = _peers.FirstOrDefault(item => string.Equals(item.Name, window.PeerName, StringComparison.OrdinalIgnoreCase));
-                    if (peer != null)
+                    // Se asocia por la identidad comprobada en el saludo, nunca por la IP o el nombre.
+                    Guid peerId = window.PeerId;
+                    if (peerId != Guid.Empty)
                     {
-                        ChatStore.AppendFile(peer.Id, peer.Name, false, path);
+                        Peer peer = _peers.FirstOrDefault(item => item.Id == peerId);
+                        string name = peer != null ? peer.Name : window.PeerName;
+                        ChatStore.AppendFile(peerId, name, false, path);
                         if (_chatPanel != null) _chatPanel.RefreshOpen();
-                        if (_chatPanel == null || !_chatPanel.Viewing(peer.Id)) NotifyChat(peer.Name, "Archivo · " + Path.GetFileName(path));
+                        if (_chatPanel == null || !_chatPanel.Viewing(peerId)) NotifyChat(name, "Archivo · " + Path.GetFileName(path));
                     }
                 }
             }));
@@ -3076,6 +3155,8 @@ namespace Lazo
         private ShareSource _shareSource;
         private readonly HashSet<Guid> _shareTargets = new HashSet<Guid>();
         private ShareBarWindow _shareBar;
+        private ScreenOverlayWindow _shareOverlay;
+        private readonly List<PermissionPromptWindow> _sharePrompts = new List<PermissionPromptWindow>();
 
         private Border ShareCard()
         {
@@ -3371,11 +3452,20 @@ namespace Lazo
             session.Notice += text => Dispatcher.BeginInvoke((Action)(() => ShowToast(text)));
             session.Changed += () => Dispatcher.BeginInvoke((Action)(() => { if (_share == session) UpdateShareStatus(); }));
             session.Ended += () => Dispatcher.BeginInvoke((Action)(() => OnShareEnded(session)));
+            // Trazos y permisos: la capa de dibujo va antes que la barra para que la barra quede encima.
+            ScreenOverlayWindow overlay = new ScreenOverlayWindow(_shareSource);
+            overlay.Layer.Local += op => session.Annotate(op);
+            session.Annotated += op => Dispatcher.BeginInvoke((Action)(() => { if (_shareOverlay == overlay) overlay.Layer.Apply(op); }));
+            session.PermissionRequested += (viewerId, name, kind) => Dispatcher.BeginInvoke((Action)(() => AskSharePermission(session, viewerId, name, kind)));
+            session.ViewerLeft += viewerId => Dispatcher.BeginInvoke((Action)(() => DismissPrompts(viewerId)));
+            overlay.DrawingChanged += drawing => session.InputPaused = drawing;
+            _shareOverlay = overlay;
             _share = session;
             _shareInvited.Clear();
             foreach (Peer peer in targets) { session.Invite(peer); _shareInvited.Add(peer.Id); }
             session.Start();
-            _shareBar = new ShareBarWindow(StopShare);
+            overlay.Show();
+            _shareBar = new ShareBarWindow(StopShare, overlay, session.RevokeAll);
             _shareBar.Show();
             UpdateShareStatus();
             RefreshShareCard();
@@ -3495,7 +3585,12 @@ namespace Lazo
             string text = "Compartiendo " + _share.Source.Label;
             if (text.Length > 46) text = text.Substring(0, 45) + "…";
             text += names.Length == 0 ? " · esperando…" : " · " + (names.Length == 1 ? names[0] : names.Length + " personas") + " · " + Math.Round(_share.Fps) + " fps";
-            if (_shareBar != null) _shareBar.Update(text);
+            string controller = _share.Controller;
+            if (controller != null) text += " · controla " + controller;
+            bool control = _share.ControlActive;
+            // Con alguien controlando no se dibuja: los clics remotos acabarían en la capa de dibujo.
+            if (control && _shareOverlay != null && _shareOverlay.Drawing) _shareOverlay.SetDrawing(false);
+            if (_shareBar != null) { _shareBar.Update(text); _shareBar.SetGranted(_share.AnyGranted); _shareBar.SetDrawAllowed(!control); }
             if (_shareOpen) RefreshShareCard();
         }
 
@@ -3509,10 +3604,42 @@ namespace Lazo
             if (_share != session) return;
             _share = null;
             if (_shareBar != null) { _shareBar.Close(); _shareBar = null; }
+            if (_shareOverlay != null) { _shareOverlay.Close(); _shareOverlay = null; }
+            foreach (PermissionPromptWindow prompt in _sharePrompts.ToArray()) prompt.Dismiss();
+            _sharePrompts.Clear();
             _shareInvited.Clear();
             RefreshShareCard();
             if (_chatPanel != null) _chatPanel.RefreshOpen();
             ShowToast("Dejaste de compartir la pantalla");
+        }
+
+        /// <summary>Alguien que mira pide dibujar o controlar: decide quien comparte.</summary>
+        private void AskSharePermission(ScreenShareSession session, int viewerId, string name, byte kind)
+        {
+            if (_share != session) { session.Answer(viewerId, kind, false); return; }
+            PermissionPromptWindow prompt = null;
+            prompt = new PermissionPromptWindow(viewerId, name, kind, _sharePrompts.Count, (accept, full) =>
+            {
+                _sharePrompts.Remove(prompt);
+                RestackPrompts();
+                session.Answer(viewerId, kind, accept, full);
+                if (!accept) return;
+                if (kind != SharePermission.Control) ShowToast(name + " puede dibujar en tu pantalla");
+                else ShowToast(full ? name + " tiene el control total del equipo" : name + " puede controlar la ventana activa");
+            });
+            _sharePrompts.Add(prompt);
+            prompt.Show();
+        }
+
+        /// <summary>Quien pidió permiso dejó de mirar: sus avisos se cierran sin conceder nada.</summary>
+        private void DismissPrompts(int viewerId)
+        {
+            foreach (PermissionPromptWindow prompt in _sharePrompts.Where(p => p.ViewerId == viewerId).ToArray()) prompt.Dismiss();
+        }
+
+        private void RestackPrompts()
+        {
+            for (int i = 0; i < _sharePrompts.Count; i++) _sharePrompts[i].Restack(i);
         }
 
         private Task<IScreenSink> OnScreenOffered(ScreenInvite invite)

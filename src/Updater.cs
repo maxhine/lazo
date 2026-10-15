@@ -12,6 +12,11 @@ namespace Lazo
     internal static class Updater
     {
         public const string Repo = "maxhine/lazo";
+        /// <summary>
+        /// Clave pública P-256 (X || Y) que firma las versiones. La privada no está en el repositorio: solo en el
+        /// equipo que publica (~/.lazo/release-signing-key.pem). Cada instalador lleva al lado su firma «.sig».
+        /// </summary>
+        internal const string ReleaseKey = "8a3ce980b63d00c676ebe200b094a90f5c8d78a4614bf7b99fc0560bd7e505325a9f09929f4adaaa7fdcfada9cbfcb929737b3595f69175aed94c0485367df89";
         private static readonly Version Current = Assembly.GetExecutingAssembly().GetName().Version;
 
         public static bool Enabled { get; private set; }
@@ -63,6 +68,10 @@ namespace Lazo
                     });
                     shutdown();
                 }
+                catch (UpdateRejectedException ex)
+                {
+                    report(ex.Message);
+                }
                 catch
                 {
                     report("No se pudo comprobar.");
@@ -83,9 +92,45 @@ namespace Lazo
             if (!asset.Success) return null;
             string url = asset.Groups[1].Value.Replace("\\u0026", "&");
             if (!Allowed(url)) return null;
-            string file = System.IO.Path.Combine(System.IO.Path.GetTempPath(), "Lazo-Setup-" + remote + ".exe");
-            using (WebClient client = Client()) client.DownloadFile(url, file);
+            Match signature = Regex.Match(json, "\"browser_download_url\"\\s*:\\s*\"(https:[^\"]*Lazo-Setup-[^\"]+\\.exe\\.sig)\"");
+            if (!signature.Success) throw new UpdateRejectedException("La actualización no está firmada; no se instaló.");
+            string sigUrl = signature.Groups[1].Value.Replace("\\u0026", "&");
+            if (!Allowed(sigUrl)) return null;
+            // Carpeta propia: otro programa no puede cambiar el instalador entre la comprobación y la ejecución.
+            string folder = System.IO.Path.Combine(System.IO.Path.GetTempPath(), "Lazo-update-" + Guid.NewGuid().ToString("N"));
+            Directory.CreateDirectory(folder);
+            string file = System.IO.Path.Combine(folder, "Lazo-Setup-" + remote + ".exe");
+            string sig;
+            using (WebClient client = Client())
+            {
+                client.DownloadFile(url, file);
+                sig = client.DownloadString(sigUrl);
+            }
+            if (!Verify(file, sig))
+            {
+                try { File.Delete(file); } catch { }
+                throw new UpdateRejectedException("La firma de la actualización no es válida; no se instaló.");
+            }
             return file;
+        }
+
+        /// <summary>Firma ECDSA P-256 (DER en base64, como la produce openssl) del SHA-256 del archivo.</summary>
+        internal static bool Verify(string file, string signatureBase64)
+        {
+            try
+            {
+                byte[] der = Convert.FromBase64String(signatureBase64.Trim());
+                byte[] raw = LazoCrypto.DerToP1363(der);
+                byte[] hash;
+                using (FileStream input = File.OpenRead(file)) hash = System.Security.Cryptography.SHA256.Create().ComputeHash(input);
+                return raw != null && LazoCrypto.Verify(LazoCrypto.FromHex(ReleaseKey), hash, raw);
+            }
+            catch { return false; }
+        }
+
+        private sealed class UpdateRejectedException : Exception
+        {
+            public UpdateRejectedException(string message) : base(message) { }
         }
 
         private static WebClient Client()

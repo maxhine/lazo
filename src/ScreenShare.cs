@@ -18,18 +18,27 @@ using System.Windows.Threading;
 namespace Lazo
 {
     /// <summary>
-    /// Transmisión de pantalla hacia uno o varios compañeros.
-    /// Protocolo tras aceptar LAZOS: 'S' ancho alto · 'F' cursorX cursorY n [x y w h len jpeg]… · 'K' · 'E'.
+    /// Transmisión de pantalla hacia uno o varios compañeros, por el canal cifrado LAZO3 (docs/protocolo-seguro.md).
+    /// Emisor → visor: 'S' ancho alto · 'F' cursorX cursorY n [x y w h len jpeg]… · 'K' · 'E' ·
+    /// 'H' versión · 'P' permisos · 'D' rechazo · 'A' len trazo.
+    /// Visor → emisor: 'H' versión · 'R' permiso · 'A' len trazo · 'I' entrada.
     /// El ritmo lo marca el receptor más lento: no hay colas, así que la latencia se mantiene mínima.
     /// </summary>
     internal sealed class ScreenShareSession
     {
         private sealed class Viewer
         {
+            public int Id;
             public string Name;
-            public TcpClient Client;
-            public NetworkStream Stream;
+            public SecureConnection Connection;
+            public Stream Stream;
+            public readonly object WriteLock = new object();
+            public volatile bool Capable;
+            public volatile byte Granted;
+            public readonly HashSet<byte> Asked = new HashSet<byte>();
         }
+
+        public const byte BackChannelVersion = 1;
 
         private readonly NetworkEngine _network;
         private readonly object _lock = new object();
@@ -37,21 +46,63 @@ namespace Lazo
         private volatile bool _running = true;
         private int _key = 1;
         private int _pending;
+        private int _nextViewer;
         private Thread _worker;
+        // Permisos, trazos y entrada remota se procesan en orden en un solo hilo, fuera de la interfaz.
+        private readonly System.Collections.Concurrent.BlockingCollection<Action> _control = new System.Collections.Concurrent.BlockingCollection<Action>();
+        private readonly AnnotationModel _annotations = new AnnotationModel();
+        // Autor de cada trazo: 0 es quien comparte. Quien mira solo puede tocar los suyos.
+        private readonly Dictionary<int, int> _owners = new Dictionary<int, int>();
+        private readonly RemoteInputInjector _injector;
 
         public ShareSource Source { get; private set; }
         public double Fps { get; private set; }
         public double Mbps { get; private set; }
         public double WorkMs { get; private set; }
         public double CaptureMs { get; private set; }
+        /// <summary>Mientras quien comparte dibuja, la entrada remota se descarta: el clic acabaría en la capa de dibujo.</summary>
+        public volatile bool InputPaused;
         public event Action Changed;
         public event Action<string> Notice;
         public event Action Ended;
+        /// <summary>Alguien que mira pide un permiso: id del visor, nombre y <see cref="SharePermission"/>.</summary>
+        public event Action<int, string, byte> PermissionRequested;
+        /// <summary>Alguien dejó de mirar; sus avisos de permiso pendientes ya no sirven.</summary>
+        public event Action<int> ViewerLeft;
+        /// <summary>Trazo hecho por alguien que mira, ya validado; hay que pintarlo en la superposición.</summary>
+        public event Action<AnnotationOp> Annotated;
 
         public ScreenShareSession(NetworkEngine network, ShareSource source)
         {
             _network = network;
             Source = source;
+            _injector = new RemoteInputInjector(source);
+            Thread control = new Thread(ControlLoop) { IsBackground = true, Name = "Lazo screen control" };
+            control.Start();
+        }
+
+        /// <summary>Quién controla ahora el equipo y en qué modo, o null.</summary>
+        public string Controller
+        {
+            get
+            {
+                lock (_lock)
+                {
+                    Viewer v = _viewers.FirstOrDefault(x => (x.Granted & SharePermission.Control) != 0);
+                    if (v == null) return null;
+                    return v.Name + ((v.Granted & SharePermission.FullControl) != 0 ? " (control total)" : " (ventana activa)");
+                }
+            }
+        }
+
+        public bool ControlActive
+        {
+            get { lock (_lock) return _viewers.Any(v => (v.Granted & SharePermission.Control) != 0); }
+        }
+
+        public bool AnyGranted
+        {
+            get { lock (_lock) return _viewers.Any(v => v.Granted != 0); }
         }
 
         public string[] ViewerNames()
@@ -69,9 +120,11 @@ namespace Lazo
             {
                 try
                 {
-                    TcpClient client = await _network.OpenScreenAsync(peer, Source.Label).ConfigureAwait(false);
-                    if (!_running) { client.Close(); return; }
-                    lock (_lock) _viewers.Add(new Viewer { Name = peer.Name, Client = client, Stream = client.GetStream() });
+                    SecureConnection connection = await _network.OpenScreenAsync(peer, Source.Label).ConfigureAwait(false);
+                    if (!_running) { connection.Dispose(); return; }
+                    Viewer viewer = new Viewer { Id = Interlocked.Increment(ref _nextViewer), Name = peer.Name, Connection = connection, Stream = connection.Stream };
+                    lock (_lock) _viewers.Add(viewer);
+                    new Thread(() => ReadBack(viewer)) { IsBackground = true, Name = "Lazo screen back-channel" }.Start();
                     Interlocked.Exchange(ref _key, 1);
                     Say(peer.Name + " está viendo tu pantalla");
                 }
@@ -91,6 +144,225 @@ namespace Lazo
         }
 
         public void Stop() { _running = false; }
+
+        // ── Canal de retorno: permisos, trazos y control remoto ─────────────
+
+        /// <summary>Trazo hecho por quien comparte; ya está pintado en su superposición.</summary>
+        public void Annotate(AnnotationOp op)
+        {
+            Post(() =>
+            {
+                if (!_annotations.Apply(op)) return;
+                Track(op, 0);
+                Relay(op, null);
+            });
+        }
+
+        private void Track(AnnotationOp op, int owner)
+        {
+            if (op.Kind == AnnotationOp.Begin) _owners[op.Id] = owner;
+            else if (op.Kind == AnnotationOp.Erase) _owners.Remove(op.Id);
+            else if (op.Kind == AnnotationOp.Clear) _owners.Clear();
+        }
+
+        /// <summary>
+        /// Respuesta de quien comparte a una petición de permiso. Para el control, <paramref name="full"/>
+        /// concede el equipo completo; si no, solo la ventana activa.
+        /// </summary>
+        public void Answer(int viewerId, byte kind, bool accept, bool full = false)
+        {
+            Post(() =>
+            {
+                Viewer viewer = Find(viewerId);
+                if (viewer == null) return;
+                lock (viewer.Asked) viewer.Asked.Remove(kind);
+                if (accept && kind == SharePermission.Control && ControllerOther(viewer) != null) accept = false;
+                if (!accept) { Write(viewer, new[] { (byte)'D', kind }); return; }
+                byte granted = (byte)(viewer.Granted | kind);
+                if (kind == SharePermission.Control)
+                {
+                    granted = full ? (byte)(granted | SharePermission.FullControl) : (byte)(granted & ~SharePermission.FullControl);
+                    _injector.Configure(full);
+                }
+                SetGranted(viewer, granted);
+            });
+        }
+
+        /// <summary>Quita el permiso de dibujar y el control a todos.</summary>
+        public void RevokeAll()
+        {
+            Post(() =>
+            {
+                Viewer[] all;
+                lock (_lock) all = _viewers.ToArray();
+                foreach (Viewer viewer in all) if (viewer.Granted != 0) SetGranted(viewer, 0);
+            });
+        }
+
+        private void SetGranted(Viewer viewer, byte granted)
+        {
+            if ((granted & SharePermission.Control) == 0) granted = (byte)(granted & ~SharePermission.FullControl);
+            bool hadControl = (viewer.Granted & SharePermission.Control) != 0;
+            viewer.Granted = granted;
+            if (hadControl && (granted & SharePermission.Control) == 0) _injector.ReleaseAll();
+            Write(viewer, new[] { (byte)'P', granted });
+            Raise(Changed);
+        }
+
+        private Viewer ControllerOther(Viewer except)
+        {
+            lock (_lock) return _viewers.FirstOrDefault(v => v != except && (v.Granted & SharePermission.Control) != 0);
+        }
+
+        private Viewer Find(int id)
+        {
+            lock (_lock) return _viewers.FirstOrDefault(v => v.Id == id);
+        }
+
+        private void Post(Action work)
+        {
+            try { _control.Add(work); } catch (InvalidOperationException) { }
+        }
+
+        private void ControlLoop()
+        {
+            Native.EnterPerMonitorDpi();
+            foreach (Action work in _control.GetConsumingEnumerable())
+            {
+                try { work(); }
+                catch (Exception ex) { Debug.WriteLine("Lazo control: " + ex.Message); }
+            }
+        }
+
+        /// <summary>Envía un trazo a todos los que entienden el canal de retorno, salvo a quien lo hizo.</summary>
+        private void Relay(AnnotationOp op, Viewer except)
+        {
+            byte[] packet = Framed((byte)'A', op.ToBytes());
+            Viewer[] targets;
+            lock (_lock) targets = _viewers.Where(v => v.Capable && v != except).ToArray();
+            foreach (Viewer viewer in targets) Write(viewer, packet);
+        }
+
+        internal static byte[] Framed(byte type, byte[] payload)
+        {
+            byte[] packet = new byte[3 + payload.Length];
+            packet[0] = type;
+            packet[1] = (byte)payload.Length;
+            packet[2] = (byte)(payload.Length >> 8);
+            Buffer.BlockCopy(payload, 0, packet, 3, payload.Length);
+            return packet;
+        }
+
+        private void Write(Viewer viewer, byte[] packet)
+        {
+            WriteTo(viewer, packet, packet.Length);
+        }
+
+        /// <summary>Un trazo de quien mira: solo puede crear trazos nuevos y cambiar o borrar los suyos.</summary>
+        private void ApplyFromViewer(Viewer viewer, AnnotationOp op)
+        {
+            if ((viewer.Granted & SharePermission.Draw) == 0 || op.Kind == AnnotationOp.Clear) return;
+            int owner;
+            if (op.Kind != AnnotationOp.Begin && (!_owners.TryGetValue(op.Id, out owner) || owner != viewer.Id)) return;
+            if (!_annotations.Apply(op))
+            {
+                // Rechazado (id repetido o límite): se le quita a quien lo dibujó para que no vea algo que nadie más ve.
+                if (op.Kind == AnnotationOp.Begin && !_owners.ContainsKey(op.Id))
+                    Write(viewer, Framed((byte)'A', new AnnotationOp { Kind = AnnotationOp.Erase, Id = op.Id }.ToBytes()));
+                return;
+            }
+            Track(op, viewer.Id);
+            Relay(op, viewer);
+            Action<AnnotationOp> handler = Annotated;
+            if (handler != null) handler(op);
+        }
+
+        /// <summary>Lee lo que envía cada visor hasta que se cierre la conexión.</summary>
+        private void ReadBack(Viewer viewer)
+        {
+            try
+            {
+                BinaryReader reader = new BinaryReader(viewer.Stream);
+                while (_running)
+                {
+                    byte type = reader.ReadByte();
+                    if (type == (byte)'H')
+                    {
+                        reader.ReadByte();
+                        Post(() =>
+                        {
+                            if (viewer.Capable) return;
+                            // Saludo, permisos actuales y los trazos que ya hay, en ese orden.
+                            Write(viewer, new[] { (byte)'H', BackChannelVersion });
+                            Write(viewer, new[] { (byte)'P', viewer.Granted });
+                            foreach (AnnotationOp op in _annotations.Snapshot()) Write(viewer, Framed((byte)'A', op.ToBytes()));
+                            viewer.Capable = true;
+                        });
+                    }
+                    else if (type == (byte)'R')
+                    {
+                        byte kind = reader.ReadByte();
+                        Post(() => Request(viewer, kind));
+                    }
+                    else if (type == (byte)'A')
+                    {
+                        int length = reader.ReadUInt16();
+                        byte[] data = reader.ReadBytes(length);
+                        if (data.Length != length) break;
+                        AnnotationOp op = AnnotationOp.Parse(data);
+                        if (op == null) continue;
+                        Post(() => ApplyFromViewer(viewer, op));
+                    }
+                    else if (type == (byte)'I')
+                    {
+                        RemoteInputEvent input;
+                        if (!RemoteInputEvent.Read(reader, out input)) break;
+                        Post(() =>
+                        {
+                            if ((viewer.Granted & SharePermission.Control) == 0 || !_running || InputPaused) return;
+                            _injector.Apply(input);
+                        });
+                    }
+                    else break;
+                }
+            }
+            catch { }
+            finally
+            {
+                Post(() =>
+                {
+                    if ((viewer.Granted & SharePermission.Control) != 0) _injector.ReleaseAll();
+                    viewer.Granted = 0;
+                    viewer.Capable = false;
+                    lock (viewer.Asked) viewer.Asked.Clear();
+                    Action<int> left = ViewerLeft;
+                    if (left != null) left(viewer.Id);
+                    Raise(Changed);
+                });
+            }
+        }
+
+        private void Request(Viewer viewer, byte kind)
+        {
+            if ((kind & SharePermission.Release) != 0)
+            {
+                byte which = (byte)(kind & ~SharePermission.Release);
+                if ((viewer.Granted & which) != 0) SetGranted(viewer, (byte)(viewer.Granted & ~which));
+                return;
+            }
+            if (kind != SharePermission.Draw && kind != SharePermission.Control) return;
+            if ((viewer.Granted & kind) != 0) { Write(viewer, new[] { (byte)'P', viewer.Granted }); return; }
+            if (kind == SharePermission.Control && ControllerOther(viewer) != null)
+            {
+                Write(viewer, new[] { (byte)'D', kind });
+                Say(viewer.Name + " pidió el control, pero ya lo tiene otra persona.");
+                return;
+            }
+            lock (viewer.Asked) if (!viewer.Asked.Add(kind)) return;
+            Action<int, string, byte> handler = PermissionRequested;
+            if (handler != null) handler(viewer.Id, viewer.Name, kind);
+            else Answer(viewer.Id, kind, false);
+        }
 
         private volatile bool _idle;
         private volatile bool _sourceGone;
@@ -202,6 +474,8 @@ namespace Lazo
             finally
             {
                 _running = false;
+                _control.CompleteAdding();
+                _injector.ReleaseAll();
                 if (grabber != null) grabber.Join(2000);
                 timeEndPeriod(1);
                 if (slots != null) foreach (FrameCapturer slot in slots) if (slot != null) slot.Dispose();
@@ -210,8 +484,8 @@ namespace Lazo
                 lock (_lock) { rest = _viewers.ToArray(); _viewers.Clear(); }
                 foreach (Viewer viewer in rest)
                 {
-                    try { viewer.Stream.Write(new[] { (byte)'E' }, 0, 1); } catch { }
-                    try { viewer.Client.Close(); } catch { }
+                    try { lock (viewer.WriteLock) { viewer.Stream.Write(new[] { (byte)'E' }, 0, 1); viewer.Stream.Flush(); } } catch { }
+                    viewer.Connection.Dispose();
                 }
                 Raise(Ended);
             }
@@ -248,19 +522,24 @@ namespace Lazo
 
         private void Send(Viewer[] targets, byte[] buffer, int length)
         {
-            Action<Viewer> write = viewer =>
-            {
-                try { viewer.Stream.Write(buffer, 0, length); }
-                catch
-                {
-                    lock (_lock) _viewers.Remove(viewer);
-                    try { viewer.Client.Close(); } catch { }
-                    Say(viewer.Name + " dejó de ver tu pantalla");
-                    Raise(Changed);
-                }
-            };
+            Action<Viewer> write = viewer => WriteTo(viewer, buffer, length);
             if (targets.Length == 1) write(targets[0]);
             else Parallel.ForEach(targets, write);
+        }
+
+        /// <summary>Fotogramas y paquetes de control comparten la conexión; cada escritura va entera.</summary>
+        private void WriteTo(Viewer viewer, byte[] buffer, int length)
+        {
+            try { lock (viewer.WriteLock) { viewer.Stream.Write(buffer, 0, length); viewer.Stream.Flush(); } }
+            catch
+            {
+                bool removed;
+                lock (_lock) removed = _viewers.Remove(viewer);
+                viewer.Connection.Dispose();
+                if (!removed) return;
+                Say(viewer.Name + " dejó de ver tu pantalla");
+                Raise(Changed);
+            }
         }
 
         private void Say(string text)
@@ -298,11 +577,18 @@ namespace Lazo
         public void Run(Stream network)
         {
             Dispatcher ui = _window.Dispatcher;
-            ui.Invoke((Action)(() => _window.Closed += (s, e) =>
+            ScreenBackChannel back = new ScreenBackChannel(network);
+            ui.Invoke((Action)(() =>
             {
-                _closed = true;
-                try { network.Close(); } catch { }
+                _window.Closed += (s, e) =>
+                {
+                    _closed = true;
+                    try { network.Close(); } catch { }
+                };
+                _window.Attach(back);
             }));
+            // Las versiones anteriores ignoran el saludo; solo si responden se ofrecen dibujar y controlar.
+            back.Send(new[] { (byte)'H', ScreenShareSession.BackChannelVersion });
             string reason = "La transmisión terminó.";
             try
             {
@@ -313,6 +599,28 @@ namespace Lazo
                     byte type = reader.ReadByte();
                     if (type == (byte)'K') continue;
                     if (type == (byte)'E') break;
+                    if (type == (byte)'H')
+                    {
+                        reader.ReadByte();
+                        ui.BeginInvoke((Action)(() => _window.BackChannelReady()));
+                        continue;
+                    }
+                    if (type == (byte)'P' || type == (byte)'D')
+                    {
+                        byte value = reader.ReadByte();
+                        bool denied = type == (byte)'D';
+                        ui.BeginInvoke((Action)(() => { if (denied) _window.Denied(value); else _window.SetGranted(value); }));
+                        continue;
+                    }
+                    if (type == (byte)'A')
+                    {
+                        int length = reader.ReadUInt16();
+                        byte[] data = reader.ReadBytes(length);
+                        if (data.Length != length) throw new EndOfStreamException();
+                        AnnotationOp op = AnnotationOp.Parse(data);
+                        if (op != null) ui.BeginInvoke((Action)(() => _window.Layer.Apply(op)));
+                        continue;
+                    }
                     if (type == (byte)'S')
                     {
                         width = reader.ReadInt32();
@@ -348,6 +656,7 @@ namespace Lazo
             }
             finally
             {
+                back.Close();
                 if (!_closed)
                 {
                     string text = reason;
@@ -378,6 +687,8 @@ namespace Lazo
 
     internal sealed class ScreenViewerWindow : Window
     {
+        private enum ViewerMode { Watch, Draw, Control }
+
         internal struct Patch
         {
             public int X, Y, W, H;
@@ -392,6 +703,19 @@ namespace Lazo
         private readonly Border _bar;
         private readonly string _title;
         private readonly DispatcherTimer _idle;
+        private readonly Button _drawButton;
+        private readonly Button _controlButton;
+        private readonly AnnotationToolbar _tools;
+        private readonly Border _hintBox;
+        private readonly TextBlock _hint;
+        private readonly DispatcherTimer _hintTimer;
+        private readonly HashSet<int> _keysDown = new HashSet<int>();
+        private readonly HashSet<byte> _buttonsDown = new HashSet<byte>();
+        private ScreenBackChannel _back;
+        private byte _granted;
+        private byte _asking;
+        private ViewerMode _mode;
+        private ushort _lastX = ushort.MaxValue, _lastY = ushort.MaxValue;
         private WriteableBitmap _bitmap;
         private int _frames;
         private DateTime _statStart = DateTime.UtcNow;
@@ -426,9 +750,17 @@ namespace Lazo
             };
             Canvas overlay = new Canvas { IsHitTestVisible = false };
             overlay.Children.Add(_cursor);
+            Layer = new AnnotationLayer { OnlyMine = true };
+            Layer.Local += op => { if (_back != null) _back.Send(ScreenShareSession.Framed((byte)'A', op.ToBytes())); };
             _surface = new Grid();
             _surface.Children.Add(_image);
+            _surface.Children.Add(Layer);
             _surface.Children.Add(overlay);
+            _surface.MouseDown += OnSurfaceDown;
+            _surface.MouseUp += OnSurfaceUp;
+            _surface.MouseMove += OnSurfaceMove;
+            _surface.MouseWheel += OnSurfaceWheel;
+            _surface.LostMouseCapture += (s, e) => ReleaseButtons();
             root.Children.Add(new Viewbox { Child = _surface, Stretch = Stretch.Uniform });
 
             _center = Theme.Text("Conectando…", 15, Theme.Color("#C9B4B4"));
@@ -442,8 +774,23 @@ namespace Lazo
             _status.TextWrapping = TextWrapping.NoWrap;
             _status.VerticalAlignment = VerticalAlignment.Center;
             pill.Children.Add(_status);
+            _drawButton = BarButton("pen", "Dibujar sobre la pantalla (pide permiso)", OnDrawClick);
+            _drawButton.Visibility = Visibility.Collapsed;
+            pill.Children.Add(_drawButton);
+            _controlButton = BarButton("pointer", "Controlar el equipo (pide permiso)", OnControlClick);
+            _controlButton.Visibility = Visibility.Collapsed;
+            pill.Children.Add(_controlButton);
             pill.Children.Add(BarButton("expand", "Pantalla completa (F11)", ToggleFull));
             pill.Children.Add(BarButton("close", "Cerrar", Close));
+            _tools = new AnnotationToolbar(Layer, "Borrar mis trazos", () => Layer.EraseMine())
+            {
+                HorizontalAlignment = HorizontalAlignment.Center,
+                Margin = new Thickness(0, 4, 0, 2),
+                Visibility = Visibility.Collapsed
+            };
+            StackPanel barRows = new StackPanel();
+            barRows.Children.Add(pill);
+            barRows.Children.Add(_tools);
             _bar = new Border
             {
                 Background = Theme.Color("#CC2A0E12"),
@@ -452,12 +799,33 @@ namespace Lazo
                 HorizontalAlignment = HorizontalAlignment.Center,
                 VerticalAlignment = VerticalAlignment.Top,
                 Margin = new Thickness(0, 12, 0, 0),
-                Child = pill
+                Child = barRows
             };
             root.Children.Add(_bar);
 
+            _hint = Theme.Text("", 12.5, Brushes.White, FontWeights.SemiBold);
+            _hint.TextWrapping = TextWrapping.NoWrap;
+            _hintBox = new Border
+            {
+                Background = Theme.Color("#E62A0E12"),
+                CornerRadius = new CornerRadius(16),
+                Padding = new Thickness(14, 7, 14, 7),
+                HorizontalAlignment = HorizontalAlignment.Center,
+                VerticalAlignment = VerticalAlignment.Bottom,
+                Margin = new Thickness(0, 0, 0, 18),
+                IsHitTestVisible = false,
+                Opacity = 0,
+                Child = _hint
+            };
+            root.Children.Add(_hintBox);
+            _hintTimer = new DispatcherTimer { Interval = TimeSpan.FromSeconds(3.5) };
+            _hintTimer.Tick += (s, e) => { _hintTimer.Stop(); Fade(_hintBox, 0); };
+            PreviewKeyDown += OnPreviewKey;
+            PreviewKeyUp += OnPreviewKey;
+            Deactivated += (s, e) => { ReleaseKeys(); ReleaseButtons(); };
+
             _idle = new DispatcherTimer { Interval = TimeSpan.FromSeconds(2.5) };
-            _idle.Tick += (s, e) => { _idle.Stop(); if (_bitmap != null) Fade(_bar, 0); };
+            _idle.Tick += (s, e) => { _idle.Stop(); if (_bitmap != null && _mode != ViewerMode.Draw) Fade(_bar, 0); };
             MouseMove += (s, e) => { Fade(_bar, 1); _idle.Stop(); _idle.Start(); };
             MouseLeftButtonDown += (s, e) => { if (e.ClickCount == 2) ToggleFull(); };
             KeyDown += (s, e) =>
@@ -483,7 +851,7 @@ namespace Lazo
             ControlTemplate template = new ControlTemplate(typeof(Button));
             FrameworkElementFactory frame = new FrameworkElementFactory(typeof(Border));
             frame.Name = "face";
-            frame.SetValue(Border.BackgroundProperty, Brushes.Transparent);
+            frame.SetValue(Border.BackgroundProperty, new TemplateBindingExtension(Button.BackgroundProperty));
             frame.SetValue(Border.CornerRadiusProperty, new CornerRadius(15));
             FrameworkElementFactory content = new FrameworkElementFactory(typeof(ContentPresenter));
             content.SetValue(ContentPresenter.HorizontalAlignmentProperty, HorizontalAlignment.Center);
@@ -573,8 +941,218 @@ namespace Lazo
             }
         }
 
+        internal AnnotationLayer Layer { get; private set; }
+
+        internal void Attach(ScreenBackChannel back)
+        {
+            _back = back;
+        }
+
+        /// <summary>Quien comparte entiende el canal de retorno: se ofrecen dibujar y controlar.</summary>
+        internal void BackChannelReady()
+        {
+            if (_back == null) return;
+            _drawButton.Visibility = Visibility.Visible;
+            _controlButton.Visibility = Visibility.Visible;
+        }
+
+        internal void SetGranted(byte granted)
+        {
+            byte gained = (byte)(granted & ~_granted);
+            _granted = granted;
+            if (_mode == ViewerMode.Draw && (granted & SharePermission.Draw) == 0) { SetMode(ViewerMode.Watch); Hint("Ya no puedes dibujar."); }
+            if (_mode == ViewerMode.Control && (granted & SharePermission.Control) == 0) { SetMode(ViewerMode.Watch); Hint("Ya no controlas el equipo."); }
+            // Al conceder lo que se pidió, se entra directamente en ese modo.
+            if ((gained & _asking & SharePermission.Control) != 0)
+            {
+                SetMode(ViewerMode.Control);
+                Hint((granted & SharePermission.FullControl) != 0
+                    ? "Tienes el control total del equipo. Pulsa el mismo botón para soltarlo."
+                    : "Controlas la ventana activa. Pulsa el mismo botón para soltarlo.");
+            }
+            else if ((gained & _asking & SharePermission.Draw) != 0) { SetMode(ViewerMode.Draw); Hint("Ya puedes dibujar."); }
+            _asking = (byte)(_asking & ~gained);
+            SyncButtons();
+        }
+
+        internal void Denied(byte kind)
+        {
+            _asking = (byte)(_asking & ~kind);
+            Hint(kind == SharePermission.Control ? "No se concedió el control." : "No se concedió permiso para dibujar.");
+            SyncButtons();
+        }
+
+        private void OnDrawClick()
+        {
+            if ((_granted & SharePermission.Draw) != 0) { SetMode(_mode == ViewerMode.Draw ? ViewerMode.Watch : ViewerMode.Draw); return; }
+            Ask(SharePermission.Draw, "Pidiendo permiso para dibujar…");
+        }
+
+        private void OnControlClick()
+        {
+            if ((_granted & SharePermission.Control) != 0)
+            {
+                // Soltar el control lo devuelve a quien comparte.
+                SetMode(ViewerMode.Watch);
+                if (_back != null) _back.Send(new[] { (byte)'R', (byte)(SharePermission.Control | SharePermission.Release) });
+                return;
+            }
+            Ask(SharePermission.Control, "Pidiendo el control del equipo…");
+        }
+
+        /// <summary>Para pruebas: lo mismo que pulsar Dibujar o Controlar sin permiso.</summary>
+        internal void Request(byte kind)
+        {
+            Ask(kind, "Pidiendo permiso…");
+        }
+
+        /// <summary>Para pruebas: lo mismo que pulsar el botón de control (pedirlo o soltarlo).</summary>
+        internal void ToggleControl()
+        {
+            OnControlClick();
+        }
+
+        internal byte Granted { get { return _granted; } }
+        internal bool CanAsk { get { return _drawButton.Visibility == Visibility.Visible; } }
+
+        private void Ask(byte kind, string text)
+        {
+            if (_back == null || (_asking & kind) != 0) return;
+            _asking |= kind;
+            _back.Send(new[] { (byte)'R', kind });
+            Hint(text);
+            SyncButtons();
+        }
+
+        private void SetMode(ViewerMode mode)
+        {
+            if (_mode == ViewerMode.Control && mode != ViewerMode.Control) { ReleaseKeys(); ReleaseButtons(); }
+            _mode = mode;
+            Layer.Drawing = mode == ViewerMode.Draw;
+            _tools.Visibility = mode == ViewerMode.Draw ? Visibility.Visible : Visibility.Collapsed;
+            _image.Cursor = mode == ViewerMode.Control ? Cursors.Arrow : null;
+            if (mode != ViewerMode.Watch) { Fade(_bar, 1); Focus(); }
+            SyncButtons();
+        }
+
+        private void SyncButtons()
+        {
+            Brush active = Theme.Color("#55FFFFFF");
+            _drawButton.Background = _mode == ViewerMode.Draw ? active : Brushes.Transparent;
+            _controlButton.Background = _mode == ViewerMode.Control ? active : Brushes.Transparent;
+            _drawButton.Opacity = (_asking & SharePermission.Draw) != 0 ? 0.5 : 1;
+            _controlButton.Opacity = (_asking & SharePermission.Control) != 0 ? 0.5 : 1;
+            _drawButton.ToolTip = (_granted & SharePermission.Draw) != 0 ? (_mode == ViewerMode.Draw ? "Dejar de dibujar" : "Dibujar") : "Dibujar sobre la pantalla (pide permiso)";
+            _controlButton.ToolTip = (_granted & SharePermission.Control) != 0 ? "Soltar el control" : "Controlar el equipo (pide permiso)";
+        }
+
+        private void Hint(string text)
+        {
+            _hint.Text = text;
+            Fade(_hintBox, 1);
+            _hintTimer.Stop();
+            _hintTimer.Start();
+        }
+
+        // ── Control remoto: mouse y teclado van a quien comparte ─────────────
+
+        private bool Controlling { get { return _mode == ViewerMode.Control && _back != null && _bitmap != null; } }
+
+        private bool Position(MouseEventArgs e, out ushort x, out ushort y)
+        {
+            Point p = e.GetPosition(_surface);
+            x = AnnotationOp.Norm(p.X / Math.Max(1, _surface.Width));
+            y = AnnotationOp.Norm(p.Y / Math.Max(1, _surface.Height));
+            return p.X >= 0 && p.Y >= 0 && p.X <= _surface.Width && p.Y <= _surface.Height;
+        }
+
+        private static byte ButtonCode(MouseButton button)
+        {
+            return button == MouseButton.Left ? (byte)1 : button == MouseButton.Right ? (byte)2 : button == MouseButton.Middle ? (byte)3 : (byte)0;
+        }
+
+        private void OnSurfaceDown(object sender, MouseButtonEventArgs e)
+        {
+            if (!Controlling) return;
+            e.Handled = true;
+            byte code = ButtonCode(e.ChangedButton);
+            ushort x, y;
+            Position(e, out x, out y);
+            if (code == 0) return;
+            _surface.CaptureMouse();
+            _buttonsDown.Add(code);
+            _back.Send(new RemoteInputEvent { Type = RemoteInputEvent.Down, Button = code, X = x, Y = y }.ToBytes());
+        }
+
+        private void OnSurfaceUp(object sender, MouseButtonEventArgs e)
+        {
+            if (!Controlling) return;
+            e.Handled = true;
+            byte code = ButtonCode(e.ChangedButton);
+            ushort x, y;
+            Position(e, out x, out y);
+            if (code == 0 || !_buttonsDown.Remove(code)) return;
+            _back.Send(new RemoteInputEvent { Type = RemoteInputEvent.Up, Button = code, X = x, Y = y }.ToBytes());
+            if (_buttonsDown.Count == 0 && _surface.IsMouseCaptured) _surface.ReleaseMouseCapture();
+        }
+
+        private void OnSurfaceMove(object sender, MouseEventArgs e)
+        {
+            if (!Controlling) return;
+            ushort x, y;
+            if (!Position(e, out x, out y) && _buttonsDown.Count == 0) return;
+            if (x == _lastX && y == _lastY) return;
+            _lastX = x; _lastY = y;
+            _back.Send(new RemoteInputEvent { Type = RemoteInputEvent.Move, X = x, Y = y }.ToBytes());
+        }
+
+        private void OnSurfaceWheel(object sender, MouseWheelEventArgs e)
+        {
+            if (!Controlling) return;
+            e.Handled = true;
+            ushort x, y;
+            Position(e, out x, out y);
+            _back.Send(new RemoteInputEvent { Type = RemoteInputEvent.Wheel, Delta = (short)Math.Max(short.MinValue, Math.Min(short.MaxValue, e.Delta)), X = x, Y = y }.ToBytes());
+        }
+
+        private void OnPreviewKey(object sender, KeyEventArgs e)
+        {
+            if (!Controlling) return;
+            Key key = e.Key == Key.System ? e.SystemKey : e.Key;
+            if (key == Key.DeadCharProcessed) key = e.DeadCharProcessedKey;
+            if (key == Key.ImeProcessed) key = e.ImeProcessedKey;
+            // F11 sigue siendo de esta ventana: pantalla completa.
+            if (key == Key.F11) return;
+            e.Handled = true;
+            int vk = KeyInterop.VirtualKeyFromKey(key);
+            if (vk <= 0 || vk > 0xFE) return;
+            bool down = e.IsDown;
+            if (down) _keysDown.Add(vk);
+            else if (!_keysDown.Remove(vk)) return;
+            _back.Send(new RemoteInputEvent { Type = down ? RemoteInputEvent.KeyDown : RemoteInputEvent.KeyUp, Key = (ushort)vk }.ToBytes());
+        }
+
+        private void ReleaseKeys()
+        {
+            if (_back != null)
+                foreach (int vk in _keysDown) _back.Send(new RemoteInputEvent { Type = RemoteInputEvent.KeyUp, Key = (ushort)vk }.ToBytes());
+            _keysDown.Clear();
+        }
+
+        private void ReleaseButtons()
+        {
+            if (_back != null)
+                foreach (byte code in _buttonsDown) _back.Send(new RemoteInputEvent { Type = RemoteInputEvent.Up, Button = code, X = _lastX, Y = _lastY }.ToBytes());
+            _buttonsDown.Clear();
+            if (_surface.IsMouseCaptured) _surface.ReleaseMouseCapture();
+        }
+
         public void Ended(string reason)
         {
+            SetMode(ViewerMode.Watch);
+            _drawButton.Visibility = Visibility.Collapsed;
+            _controlButton.Visibility = Visibility.Collapsed;
+            _back = null;
             _center.Text = reason;
             _center.Visibility = Visibility.Visible;
             _center.Foreground = Brushes.White;
@@ -669,9 +1247,19 @@ namespace Lazo
     internal sealed class ShareBarWindow : Window
     {
         private readonly TextBlock _text;
+        private readonly ScreenOverlayWindow _overlay;
+        private readonly Button _drawButton;
+        private readonly Button _revokeButton;
+        private readonly AnnotationToolbar _tools;
 
-        public ShareBarWindow(Action stop)
+        public ShareBarWindow(Action stop) : this(stop, null, null)
         {
+        }
+
+        /// <summary>Con <paramref name="overlay"/>, la barra permite dibujar; con <paramref name="revoke"/>, quitar permisos.</summary>
+        public ShareBarWindow(Action stop, ScreenOverlayWindow overlay, Action revoke)
+        {
+            _overlay = overlay;
             Title = "Lazo · compartiendo";
             SizeToContent = SizeToContent.WidthAndHeight;
             WindowStyle = WindowStyle.None;
@@ -691,22 +1279,61 @@ namespace Lazo
             _text.TextWrapping = TextWrapping.NoWrap;
             _text.VerticalAlignment = VerticalAlignment.Center;
             row.Children.Add(_text);
+            if (overlay != null)
+            {
+                _drawButton = Theme.Button("Dibujar", false);
+                _drawButton.MinHeight = 28;
+                _drawButton.Margin = new Thickness(14, 0, 0, 0);
+                _drawButton.Content = DrawLabel(false);
+                _drawButton.ToolTip = "Escribir sobre la pantalla (Esc para terminar)";
+                _drawButton.Click += (s, e) => ToggleDrawing();
+                row.Children.Add(_drawButton);
+                overlay.DrawingEnded += () => SyncDrawing();
+            }
+            if (revoke != null)
+            {
+                _revokeButton = Theme.Button("Quitar permisos", false);
+                _revokeButton.MinHeight = 28;
+                _revokeButton.Margin = new Thickness(8, 0, 0, 0);
+                _revokeButton.ToolTip = "Nadie podrá dibujar ni controlar tu equipo hasta que vuelvas a permitirlo";
+                _revokeButton.Visibility = Visibility.Collapsed;
+                _revokeButton.Click += (s, e) => revoke();
+                row.Children.Add(_revokeButton);
+            }
             Button stopButton = Theme.Button("Detener", true);
             stopButton.MinHeight = 28;
             stopButton.Margin = new Thickness(14, 0, 0, 0);
             { stopButton.Background = Theme.Danger; stopButton.BorderBrush = Theme.Danger; stopButton.Foreground = Brushes.White; }
             stopButton.Click += (s, e) => stop();
             row.Children.Add(stopButton);
+            StackPanel rows = new StackPanel();
+            rows.Children.Add(row);
+            if (overlay != null)
+            {
+                _tools = new AnnotationToolbar(overlay.Layer, "Borrar todos los trazos", () => overlay.Layer.ClearAll())
+                {
+                    HorizontalAlignment = HorizontalAlignment.Center,
+                    Margin = new Thickness(0, 6, 9, 2),
+                    Visibility = Visibility.Collapsed,
+                    Cursor = Cursors.Arrow
+                };
+                rows.Children.Add(_tools);
+            }
             Border shell = new Border
             {
                 Margin = new Thickness(6),
                 Background = Theme.Color("#F22A0E12"),
                 CornerRadius = new CornerRadius(20),
                 Padding = new Thickness(14, 5, 5, 5),
-                Child = row,
+                Child = rows,
                 Cursor = Cursors.SizeAll
             };
-            shell.MouseLeftButtonDown += (s, e) => { try { DragMove(); } catch { } };
+            shell.MouseLeftButtonDown += (s, e) =>
+            {
+                // Las herramientas reciben el clic; arrastrar solo desde el resto de la barra.
+                if (_tools != null && _tools.IsMouseOver) return;
+                try { DragMove(); } catch { }
+            };
             Content = shell;
             SourceInitialized += (s, e) =>
             {
@@ -723,6 +1350,48 @@ namespace Lazo
         public void Update(string text)
         {
             _text.Text = text;
+        }
+
+        /// <summary>Mientras alguien controla el equipo, quien comparte no puede activar el dibujo.</summary>
+        public void SetDrawAllowed(bool allowed)
+        {
+            if (_drawButton == null) return;
+            _drawButton.IsEnabled = allowed;
+            _drawButton.ToolTip = allowed ? "Escribir sobre la pantalla (Esc para terminar)" : "Quita el control para poder dibujar";
+        }
+
+        /// <summary>Muestra «Quitar permisos» mientras alguien puede dibujar o controlar.</summary>
+        public void SetGranted(bool any)
+        {
+            if (_revokeButton != null) _revokeButton.Visibility = any ? Visibility.Visible : Visibility.Collapsed;
+        }
+
+        private void ToggleDrawing()
+        {
+            if (_overlay == null) return;
+            _overlay.SetDrawing(!_overlay.Drawing);
+            SyncDrawing();
+            // Al activarse, la capa de dibujo sube; la barra debe quedar encima para poder usarla.
+            if (_overlay.Drawing) WindowOrder.RaiseTopmost(this);
+        }
+
+        private void SyncDrawing()
+        {
+            if (_drawButton == null) return;
+            bool on = _overlay.Drawing;
+            _drawButton.Content = DrawLabel(on);
+            _drawButton.Background = on ? Theme.Primary : Theme.SoftSurface;
+            _drawButton.Foreground = on ? Theme.PrimaryText : Theme.Ink;
+            _tools.Visibility = on ? Visibility.Visible : Visibility.Collapsed;
+        }
+
+        private static UIElement DrawLabel(bool on)
+        {
+            StackPanel label = new StackPanel { Orientation = Orientation.Horizontal };
+            label.Children.Add(Icons.Make("pen", 14, on ? Theme.PrimaryText : Theme.Ink, 2));
+            TextBlock text = new TextBlock { Text = on ? "Terminar" : "Dibujar", Margin = new Thickness(6, 0, 0, 0), VerticalAlignment = VerticalAlignment.Center };
+            label.Children.Add(text);
+            return label;
         }
     }
 }

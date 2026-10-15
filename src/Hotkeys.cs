@@ -66,6 +66,8 @@ namespace Lazo
                 if (down || up)
                 {
                     KbdLlHookStruct data = (KbdLlHookStruct)Marshal.PtrToStructure(lParam, typeof(KbdLlHookStruct));
+                    // La entrada inyectada (control remoto, macros) no abre Lazo: solo el teclado real.
+                    if ((data.Flags & 0x10) != 0) return CallNextHookEx(_hook, code, wParam, lParam);
                     bool leftAlt = data.VkCode == 0xA4 || (data.VkCode == 0x12 && (data.Flags & 0x01) == 0);
                     long now = Environment.TickCount & int.MaxValue;
                     if (leftAlt)
