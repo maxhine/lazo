@@ -121,7 +121,7 @@ enum ToastPanel {
 
 // MARK: - Emparejamiento
 
-/// Las dos personas ven el mismo código de 6 cifras y lo confirman. Si no coincide, alguien se hace pasar por el otro equipo.
+/// Verificación opcional: las dos personas ven el mismo código y lo confirman. Si no coincide, alguien se interpuso en la red.
 final class PairingState: ObservableObject {
     @Published var status = ""
     @Published var decided = false
@@ -143,9 +143,9 @@ enum PairingPanel {
         let code = request.code
         let view = Card {
             VStack(alignment: .leading, spacing: 6) {
-                Text(request.incoming ? "\(request.peerName) quiere emparejarse con este equipo" : "Emparejar con \(request.peerName)")
+                Text(request.incoming ? "\(request.peerName) quiere verificar la conexión con este equipo" : "Verificar a \(request.peerName)")
                     .font(.lazo(13, .semibold))
-                Text("Comprueba que en el otro equipo aparece exactamente el mismo código. Si no coincide, cancela.")
+                Text("Comprueba con la otra persona que ve exactamente el mismo código. Si no coincide, cancela: alguien se interpuso en la red.")
                     .font(.lazo(11.5)).opacity(0.7).fixedSize(horizontal: false, vertical: true)
                 Text(String(code.prefix(3)) + " " + String(code.suffix(3)))
                     .font(.system(size: 34, weight: .semibold, design: .rounded)).monospacedDigit()
@@ -169,11 +169,11 @@ enum PairingPanel {
         request.onRemote { yes in
             DispatchQueue.main.async {
                 if !yes {
-                    state.status = answered ? "No se emparejaron." : "\(request.peerName) canceló."
+                    state.status = answered ? "No se verificó." : "\(request.peerName) canceló."
                     finish(false)
                     close()
                 } else if answered {
-                    state.status = "Equipos emparejados."
+                    state.status = "Equipo verificado."
                     close()
                 } else {
                     state.status = "\(request.peerName) ya confirmó."

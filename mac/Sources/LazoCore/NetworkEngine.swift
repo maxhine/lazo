@@ -10,9 +10,11 @@ public struct Peer: Identifiable, Equatable {
     public var seen: Date
     /// Huella que anuncia (sin verificar hasta conectar).
     public var fingerprint: String
-    /// Emparejado y con la misma huella que la guardada.
+    /// Conocido (ya hubo contacto) y con la misma huella que la guardada.
     public var paired = false
-    /// Emparejado antes pero ahora anuncia otra clave: no se le envía nada.
+    /// Además, las dos personas confirmaron el código de verificación.
+    public var verified = false
+    /// Conocido antes pero ahora anuncia otra clave: no se le envía nada.
     public var identityChanged = false
 
     public init(id: String, name: String, address: String, port: Int, fingerprint: String) {
@@ -52,7 +54,7 @@ public protocol ScreenSink: AnyObject {
     func run(_ stream: SecureStream)
 }
 
-/// Petición de emparejamiento: las dos personas comparan el mismo código de 6 cifras.
+/// Verificación opcional: las dos personas comparan el mismo código de 6 cifras.
 public final class PairingRequest {
     public let peerId: String
     public let peerName: String
@@ -95,11 +97,13 @@ public final class SecureConnection {
     public let socket: TCPSocket
     public let stream: SecureStream
     public let peerId: String
+    let session: SecureSession
 
-    init(socket: TCPSocket, stream: SecureStream, peerId: String) {
+    init(socket: TCPSocket, session: SecureSession) {
         self.socket = socket
-        self.stream = stream
-        self.peerId = peerId
+        self.session = session
+        self.stream = session.stream
+        self.peerId = session.peerId
     }
 
     public func close() { socket.close() }
@@ -111,7 +115,7 @@ public final class NetworkEngine {
     public static let transferPort = 48352
     public static let chatKindText: UInt8 = 1, chatKindTyping: UInt8 = 2, chatKindPresence: UInt8 = 3, chatKindNudge: UInt8 = 4
     static let maxFileSize: Int64 = 20 * 1024 * 1024 * 1024
-    private static let statusUnpaired: UInt8 = 0, statusPaired: UInt8 = 1, statusMismatch: UInt8 = 2
+    private static let statusKnown: UInt8 = 1, statusMismatch: UInt8 = 2
 
     public let selfId: String
     public let identity: DeviceIdentity
@@ -142,7 +146,7 @@ public final class NetworkEngine {
     public var chatReceived: ((String, String, String) -> Void)?
     public var chatSignal: ((String, String, UInt8, String) -> Void)?
     public var screenOffered: ((ScreenInvite, @escaping (ScreenSink?) -> Void) -> Void)?
-    /// Muestra el código; llamar a la respuesta con true si la persona confirma que coincide.
+    /// Verificación: muestra el código; llamar a la respuesta con true si la persona confirma que coincide.
     public var pairingPrompt: ((PairingRequest, @escaping (Bool) -> Void) -> Void)?
 
     public static var defaultProfile: URL {
@@ -264,6 +268,7 @@ public final class NetworkEngine {
             var copy = peer
             let paired = pairings.get(peer.id)
             copy.paired = paired != nil && paired!.fingerprint == peer.fingerprint
+            copy.verified = copy.paired && paired!.isVerified
             copy.identityChanged = paired != nil && paired!.fingerprint != peer.fingerprint
             return copy
         }.sorted { $0.name.localizedCaseInsensitiveCompare($1.name) == .orderedAscending }
@@ -284,21 +289,25 @@ public final class NetworkEngine {
             guard try socket.readExactly(5) == LazoCrypto.ascii("LAZO3") else { return }
             let session = try SecureSession.accept(socket, me: identity)
             let known = pairings.get(session.peerId)
-            var status = known == nil ? Self.statusUnpaired : known!.fingerprint == session.peerFingerprint ? Self.statusPaired : Self.statusMismatch
             let stream = session.stream
-            try stream.writeByte(status)
+            if let known, known.fingerprint != session.peerFingerprint {
+                try stream.writeByte(Self.statusMismatch)
+                try stream.flush()
+                return
+            }
+            // Primer contacto: se recuerda su clave sin preguntar (como SSH). Si un día cambia, se rechaza.
+            if known == nil { pairings.set(id: session.peerId, fingerprint: session.peerFingerprint, name: nameOf(session.peerId)) }
+            try stream.writeByte(Self.statusKnown)
             try stream.flush()
-            if status == Self.statusMismatch { return }
             socket.setReadTimeout(120)
             let input = BinaryIn(stream)
-            var op = try input.u8()
+            let op = try input.u8()
             if op == UInt8(ascii: "P") {
+                // Verificación opcional con código: solo marca el equipo como verificado.
                 let name = Labels.clean(try input.text(max: 80))
-                guard !name.isEmpty, pairIncoming(session, name: name) else { return }
-                status = Self.statusPaired
-                op = try input.u8()
+                if !name.isEmpty { _ = verifyIncoming(session, name: name) }
+                return
             }
-            guard status == Self.statusPaired else { return }
             switch op {
             case UInt8(ascii: "F"): try receiveFile(socket, session, input)
             case UInt8(ascii: "C"): try readChat(session, input)
@@ -311,7 +320,12 @@ public final class NetworkEngine {
         }
     }
 
-    private func pairIncoming(_ session: SecureSession, name: String) -> Bool {
+    private func nameOf(_ id: String) -> String {
+        peerLock.lock(); defer { peerLock.unlock() }
+        return peers[id]?.name ?? "Equipo"
+    }
+
+    private func verifyIncoming(_ session: SecureSession, name: String) -> Bool {
         pairLock.lock()
         var asked = (pairingAsked[session.peerId] ?? []).filter { Date().timeIntervalSince($0) < 300 }
         if pairingOpen.contains(session.peerId) || asked.count >= 3 {
@@ -326,7 +340,7 @@ public final class NetworkEngine {
         pairLock.unlock()
         defer { pairLock.lock(); pairingOpen.remove(session.peerId); pairLock.unlock() }
         let ok = exchangePairing(session, name: name, incoming: true)
-        if ok { pairings.set(id: session.peerId, fingerprint: session.peerFingerprint, name: name) }
+        if ok { pairings.markVerified(session.peerId, name: name) }
         return ok
     }
 
@@ -359,11 +373,10 @@ public final class NetworkEngine {
 
     // MARK: Cliente
 
-    /// Conecta, comprueba la identidad y, si hace falta y `interactive`, empareja antes de seguir.
-    func open(_ peer: Peer, interactive: Bool, connectTimeout: TimeInterval = 7) throws -> SecureConnection {
+    /// Conecta y comprueba la identidad. La primera vez se recuerda la clave; si después cambia, se rechaza.
+    func open(_ peer: Peer, connectTimeout: TimeInterval = 7) throws -> SecureConnection {
         guard IPv4.isLocalSubnet(peer.address) else { throw LazoError.refused("El compañero ya no está en la misma subred.") }
         let known = pairings.get(peer.id)
-        if known == nil && !interactive { throw LazoError.pairingRequired("Primero hay que emparejar los equipos.") }
         let socket = try TCPSocket.connect(host: peer.address, port: peer.port, timeout: connectTimeout)
         do {
             socket.setReadTimeout(SecureSession.handshakeTimeout)
@@ -371,35 +384,33 @@ public final class NetworkEngine {
             let session = try SecureSession.connect(socket, me: identity)
             guard session.peerId == peer.id else { throw LazoError.refused("Respondió un equipo distinto del esperado.") }
             if let known, known.fingerprint != session.peerFingerprint {
-                throw LazoError.refused("La identidad de \(peer.name) cambió. Si reinstaló Lazo, quítalo de los equipos emparejados y vuelve a emparejar.")
+                throw LazoError.identityChanged("La identidad de \(peer.name) cambió. Si reinstaló Lazo, olvídalo en Ajustes › Equipos conocidos.")
             }
             let status = try session.stream.readByte()
             if status == Self.statusMismatch {
-                throw LazoError.refused("\(peer.name) tiene guardada otra identidad de este equipo. Debe quitarlo de sus equipos emparejados.")
+                throw LazoError.identityChanged("\(peer.name) tiene guardada otra identidad de este equipo. Debe olvidarlo en sus Ajustes.")
             }
-            guard status == Self.statusPaired || status == Self.statusUnpaired else { throw LazoError.closed }
-            if status != Self.statusPaired || known == nil {
-                guard interactive else { throw LazoError.pairingRequired("Primero hay que emparejar los equipos.") }
-                socket.setReadTimeout(120)
-                var out = BinaryOut()
-                out.u8(UInt8(ascii: "P"))
-                try out.text(Labels.clean(displayName()), max: 80)
-                try out.send(session.stream)
-                guard exchangePairing(session, name: peer.name, incoming: false) else {
-                    throw LazoError.pairingRequired("No se emparejaron los equipos.")
-                }
-                pairings.set(id: peer.id, fingerprint: session.peerFingerprint, name: peer.name)
-            }
+            guard status == Self.statusKnown else { throw LazoError.closed }
+            if known == nil { pairings.set(id: peer.id, fingerprint: session.peerFingerprint, name: peer.name) }
             socket.setReadTimeout(120)
-            return SecureConnection(socket: socket, stream: session.stream, peerId: session.peerId)
+            return SecureConnection(socket: socket, session: session)
         } catch {
             socket.close()
             throw error
         }
     }
 
-    public func pair(_ peer: Peer) throws {
-        try open(peer, interactive: true).close()
+    /// Verificación opcional: las dos personas comparan un código de 6 cifras. Devuelve false si se cancela o no coincide.
+    public func verify(_ peer: Peer) throws -> Bool {
+        let connection = try open(peer)
+        defer { connection.close() }
+        var out = BinaryOut()
+        out.u8(UInt8(ascii: "P"))
+        try out.text(Labels.clean(displayName()), max: 80)
+        try out.send(connection.stream)
+        let ok = exchangePairing(connection.session, name: peer.name, incoming: false)
+        if ok { pairings.markVerified(peer.id, name: peer.name) }
+        return ok
     }
 
     // MARK: Chat y señales
@@ -408,7 +419,7 @@ public final class NetworkEngine {
         var text = raw.trimmingCharacters(in: .whitespacesAndNewlines)
         if text.isEmpty { return }
         if text.count > 2000 { text = String(text.prefix(2000)) }
-        let connection = try open(peer, interactive: true)
+        let connection = try open(peer)
         defer { connection.close() }
         var out = BinaryOut()
         out.u8(UInt8(ascii: "C"))
@@ -430,7 +441,7 @@ public final class NetworkEngine {
 
     /// Escribiendo, presencia y zumbido. Nunca pide emparejar.
     public func sendSignal(_ peer: Peer, kind: UInt8, body: String) {
-        guard peer.paired, let connection = try? open(peer, interactive: false, connectTimeout: 4) else { return }
+        guard peer.paired, let connection = try? open(peer, connectTimeout: 4) else { return }
         defer { connection.close() }
         var out = BinaryOut()
         out.u8(UInt8(ascii: "D"))
@@ -461,7 +472,7 @@ public final class NetworkEngine {
 
     /// Invita a ver la pantalla. Devuelve la conexión abierta si acepta.
     public func openScreen(_ peer: Peer, source: String) throws -> SecureConnection {
-        let connection = try open(peer, interactive: true)
+        let connection = try open(peer)
         do {
             connection.socket.noDelay = true
             connection.socket.setBuffers(send: 1 << 20, receive: 1 << 16)
@@ -510,7 +521,7 @@ public final class NetworkEngine {
         let attributes = try FileManager.default.attributesOfItem(atPath: file.path)
         let size = (attributes[.size] as? NSNumber)?.int64Value ?? 0
         guard size <= Self.maxFileSize else { throw LazoError.refused("Límite: 20 GB por archivo.") }
-        let connection = try open(peer, interactive: true)
+        let connection = try open(peer)
         defer { connection.close() }
         let stream = connection.stream
         let preview = ImagePreview.jpeg(for: file)

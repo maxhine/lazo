@@ -93,11 +93,12 @@ final class AppModel: ObservableObject {
         }
     }
 
-    func pair(_ peer: Peer) {
+    /// Verificación opcional con código de 6 cifras.
+    func verify(_ peer: Peer) {
         Task.detached { [engine] in
             do {
-                try engine.pair(peer)
-                await MainActor.run { AppModel.shared.say("Emparejado con \(peer.name)") }
+                let ok = try engine.verify(peer)
+                await MainActor.run { AppModel.shared.say(ok ? "\(peer.name) quedó verificado" : "No se verificó") }
             } catch {
                 await MainActor.run { AppModel.shared.say(error.localizedDescription) }
             }

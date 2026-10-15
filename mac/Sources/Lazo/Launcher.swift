@@ -468,13 +468,11 @@ struct PeerCircle: View {
                 .overlay(alignment: .topTrailing) {
                     if peer.identityChanged {
                         Image(systemName: "exclamationmark.triangle.fill").foregroundStyle(.orange).font(.system(size: size * 0.24))
-                    } else if !peer.paired {
-                        Image(systemName: "lock.open").font(.system(size: size * 0.2)).padding(3).background(Circle().fill(prefs.palette.soft))
                     }
                 }
         }
         .buttonStyle(.plain)
-        .help(peer.identityChanged ? "\(peer.name): su identidad cambió" : peer.paired ? peer.name : "\(peer.name) · sin emparejar: al enviar se confirmará un código")
+        .help(peer.identityChanged ? "\(peer.name): su identidad cambió" : peer.verified ? peer.name + " · verificado" : peer.name)
         .onHover { hover = $0 }
         .onDrop(of: [.fileURL], isTargeted: $dropping) { providers in
             Drop.files(providers) { urls in model.send(urls, to: peer) }
@@ -502,7 +500,7 @@ struct DeviceTile: View {
         .frame(width: 118)
         .contextMenu {
             Button("Abrir chat") { LauncherController.shared.openChat(peer.id) }
-            if !peer.paired { Button("Emparejar…") { model.pair(peer) } }
+            if peer.paired && !peer.verified { Button("Verificar código…") { model.verify(peer) } }
         }
     }
 }

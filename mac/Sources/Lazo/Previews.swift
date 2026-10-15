@@ -75,8 +75,8 @@ private struct PairingStateView: View {
     var body: some View {
         Card {
             VStack(alignment: .leading, spacing: 6) {
-                Text(incoming ? "\(name) quiere emparejarse con este equipo" : "Emparejar con \(name)").font(.lazo(13, .semibold))
-                Text("Comprueba que en el otro equipo aparece exactamente el mismo código. Si no coincide, cancela.").font(.lazo(11.5)).opacity(0.7)
+                Text(incoming ? "\(name) quiere verificar la conexión con este equipo" : "Verificar a \(name)").font(.lazo(13, .semibold))
+                Text("Comprueba con la otra persona que ve exactamente el mismo código. Si no coincide, cancela: alguien se interpuso en la red.").font(.lazo(11.5)).opacity(0.7)
                 Text(String(code.prefix(3)) + " " + String(code.suffix(3))).font(.system(size: 34, weight: .semibold, design: .rounded)).frame(maxWidth: .infinity).padding(.top, 8)
                 Text("Huella 3B8C 82FE 8143 77B0").font(.lazo(10.5)).opacity(0.6).frame(maxWidth: .infinity)
                 HStack { Spacer(); PillButton(title: "Cancelar") {}; PillButton(title: "Coincide", primary: true) {} }.padding(.top, 6)

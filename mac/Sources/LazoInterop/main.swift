@@ -62,7 +62,11 @@ case "self":
     do { try a.send(peer, file: file, progress: nil) } catch { fail(error.localizedDescription) }
     _ = done.wait(timeout: .now() + 10)
     guard let received, (try? Data(contentsOf: received)) == payload else { fail("archivo Mac → Mac") }
-    ok("Mac → Mac cifrado (\(payload.count) bytes), código \(codes.first ?? "?") igual en los dos: \(Set(codes).count == 1)")
+    ok("Mac → Mac cifrado al primer contacto, sin código (\(payload.count) bytes, avisos: \(codes.count))")
+    let verified = (try? a.verify(peer)) ?? false
+    Thread.sleep(forTimeInterval: 0.3)
+    guard verified, codes.count == 2, Set(codes).count == 1, a.pairings.get(b.selfId)?.isVerified == true, b.pairings.get(a.selfId)?.isVerified == true else { fail("verificación opcional") }
+    ok("verificación opcional: mismo código \(codes[0]) en los dos y ambos marcados")
     b.stop()
 
 default:

@@ -138,11 +138,15 @@ public final class DeviceIdentity {
 public struct PairedDevice: Codable, Equatable {
     public let id: String
     public let fingerprint: String
-    public let name: String
+    public var name: String
     public let since: Date
+    /// Las dos personas confirmaron el código de 6 cifras (opcional en el archivo para leer versiones previas).
+    public var verified: Bool?
+    public var isVerified: Bool { verified ?? false }
 }
 
-/// Equipos emparejados: identificador → huella. Solo se guardan tras confirmar el código.
+/// Equipos conocidos: identificador → huella. Se guardan al primer contacto (como SSH) y quedan
+/// verificados si las dos personas confirman el código de 6 cifras.
 public final class PairingStore {
     private let path: URL
     private let lock = NSLock()
@@ -169,6 +173,17 @@ public final class PairingStore {
     public func set(id: String, fingerprint: String, name: String) {
         lock.lock()
         devices[id.lowercased()] = PairedDevice(id: id.lowercased(), fingerprint: fingerprint, name: Labels.clean(name), since: Date())
+        save()
+        lock.unlock()
+        changed?()
+    }
+
+    public func markVerified(_ id: String, name: String) {
+        lock.lock()
+        guard var device = devices[id.lowercased()] else { lock.unlock(); return }
+        device.verified = true
+        if !name.isEmpty { device.name = Labels.clean(name) }
+        devices[id.lowercased()] = device
         save()
         lock.unlock()
         changed?()

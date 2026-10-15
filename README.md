@@ -1,6 +1,6 @@
 # Lazo
 
-Aplicación para enviar archivos directamente entre equipos Windows 10 y 11 y Mac con Apple Silicon (macOS 14 o posterior) de una misma subred privada. Todo el tráfico va cifrado y solo entre equipos emparejados. Funciona en segundo plano desde la bandeja y se abre con **doble Alt izquierdo** o **Ctrl+Alt+L**. La ventana emerge desde la base de la pantalla donde está el cursor al abrir y queda centrada horizontalmente. La alerta de recepción aparece abajo a la derecha, sin robar el foco, y muestra un previo si el archivo es una imagen. Al terminar, ofrece **Mostrar en carpeta** y **Abrir**, y permanece visible hasta elegir una opción o cerrar.
+Aplicación para enviar archivos directamente entre equipos Windows 10 y 11 y Mac con Apple Silicon (macOS 14 o posterior) de una misma subred privada. Todo el tráfico va cifrado y cada equipo demuestra quién es. Funciona en segundo plano desde la bandeja y se abre con **doble Alt izquierdo** o **Ctrl+Alt+L**. La ventana emerge desde la base de la pantalla donde está el cursor al abrir y queda centrada horizontalmente. La alerta de recepción aparece abajo a la derecha, sin robar el foco, y muestra un previo si el archivo es una imagen. Al terminar, ofrece **Mostrar en carpeta** y **Abrir**, y permanece visible hasta elegir una opción o cerrar.
 
 Tu ícono aparece en la cabecera de Minimal y Standard y abre tu perfil al pulsarlo. La foto se muestra ampliada en Ajustes y se actualiza inmediatamente al cambiarla. El engranaje de la esquina superior derecha abre los ajustes y guarda la elección. El panel permanece abierto mientras se cambian las opciones. La ventana se arrastra; Escape o un clic fuera la cierra. El nombre que ven los demás es el del usuario, y se puede cambiar en ajustes. Ahí también se elige si Lazo abre con Windows, si busca actualizaciones en GitHub (`maxhine/lazo`) y se cambia o quita la foto de perfil. La imagen se recorta al centro, se reduce a 96 × 96 píxeles en escala de grises y se comparte con los equipos de la subred; sin foto se muestran las iniciales. El acercamiento del cursor al borde de la pantalla ya no abre ninguna ventana.
 
@@ -38,12 +38,13 @@ También puede generarse un paquete portable con `scripts/package.ps1`, pero el 
 
 Cerrar la ventana principal la oculta en la bandeja. **Salir** en el menú de la bandeja detiene Lazo.
 
-## Seguridad y emparejamiento
+## Seguridad
 
 Desde la versión 0.5.0 Lazo usa el protocolo **LAZO3** ([especificación](docs/protocolo-seguro.md)): cada equipo tiene una clave propia, cada conexión se cifra (AES-256 con HMAC-SHA256 y claves efímeras ECDH P-256) y cada equipo demuestra quién es con una firma. No es compatible con 0.4.x: hay que actualizar todos los equipos.
 
-- **Emparejar**: la primera vez que envías algo a alguien, los dos ven el mismo código de 6 cifras y pulsan **Coincide**. Si el código no coincide, alguien se hace pasar por el otro equipo: cancela. Sin emparejar no llega ningún archivo, mensaje ni pantalla.
-- Si un equipo emparejado aparece con otra clave (por ejemplo, tras reinstalar), Lazo no le envía nada hasta que lo quites en **Ajustes › Equipos emparejados** y vuelvas a emparejar.
+- **Sin códigos para usarlo**: la primera vez que dos equipos se conectan, cada uno recuerda la clave del otro (como SSH) y se envía, chatea o comparte sin pasos extra. Quien recibe sigue aceptando cada archivo, pantalla o control.
+- Si un equipo conocido aparece con otra clave (por ejemplo, tras reinstalar), Lazo no le envía nada y avisa. Se resuelve con **Olvidar** en **Ajustes › Equipos conocidos**.
+- **Verificar (opcional)**: en esa misma lista, **Verificar** muestra a las dos personas un código de 6 cifras; si coincide, nadie se interpuso en la red durante el primer contacto y el equipo queda marcado con ✓.
 - Lo recibido lleva la marca de origen de internet (Windows) o de cuarentena (macOS), y los ejecutables piden confirmación antes de abrirse.
 - Las actualizaciones solo se instalan si traen una firma válida de la clave de publicación (`scripts/sign-release.sh`).
 
@@ -59,7 +60,7 @@ Instala **`dist/Lazo-0.5.0-mac.dmg`**: ábrelo y arrastra Lazo a Aplicaciones. V
 
 La pantalla compartida usa el mismo puerto TCP `48352` (protocolo `LAZOS`): captura GDI sincronizada con el refresco de Windows, comparación por bloques de 128 × 64 contra el último fotograma enviado y JPEG solo de lo que cambió, con reenvío nítido cuando una zona se queda quieta. Las fuentes de más de 2560 × 1600 se reducen. Ritmo hasta 60 fps; con la pantalla quieta, el consumo de red es casi nulo. Las ventanas se capturan aunque estén tapadas; si se minimizan, la imagen se congela hasta restaurarlas.
 
-Dibujar y controlar usan la misma conexión en sentido inverso. El visor saluda al empezar y solo si quien comparte responde aparecen sus botones, así que se puede mezclar con versiones anteriores: un visor antiguo sigue viendo la pantalla sin estas opciones y un emisor antiguo ignora el saludo. Los trazos viajan como vectores con coordenadas relativas a lo compartido; en el equipo que comparte se pintan en una capa transparente que no entra en la captura. El control remoto reproduce mouse y teclado con `SendInput`, limitado al área compartida; al quitar el control se sueltan las teclas y botones que hubieran quedado pulsados. Windows no deja que esa entrada llegue a ventanas que corren como administrador (por ejemplo, avisos de UAC) si Lazo no lo está. Este canal va cifrado como el resto y solo entre equipos emparejados; aun así, concede el control solo a quien conoces.
+Dibujar y controlar usan la misma conexión en sentido inverso. El visor saluda al empezar y solo si quien comparte responde aparecen sus botones, así que se puede mezclar con versiones anteriores: un visor antiguo sigue viendo la pantalla sin estas opciones y un emisor antiguo ignora el saludo. Los trazos viajan como vectores con coordenadas relativas a lo compartido; en el equipo que comparte se pintan en una capa transparente que no entra en la captura. El control remoto reproduce mouse y teclado con `SendInput`, limitado al área compartida; al quitar el control se sueltan las teclas y botones que hubieran quedado pulsados. Windows no deja que esa entrada llegue a ventanas que corren como administrador (por ejemplo, avisos de UAC) si Lazo no lo está. Este canal va cifrado como el resto; aun así, concede el control solo a quien conoces.
 
 Lazo anuncia su presencia (nombre y huella de su clave) por UDP `48351` y transfiere por TCP `48352`. Los nombres aparecen solo si **ambos equipos tienen Lazo abierto**, están en la misma subred IPv4 privada y el firewall permite la conexión. No usa carpetas compartidas ni permisos SMB. Una red Wi‑Fi con aislamiento entre clientes puede impedir el descubrimiento.
 
@@ -94,6 +95,6 @@ En un Mac (requiere Swift y `brew install dotnet`):
 ## Alcance de esta versión
 
 - Un archivo por envío, hasta 20 GB; una recepción activa a la vez.
-- El tráfico va cifrado y autenticado entre equipos emparejados. El anuncio de presencia por UDP no está firmado: un equipo puede aparecer en la lista con cualquier nombre, pero no recibe ni envía nada sin que confirmes el código.
+- El tráfico va cifrado y autenticado entre equipos emparejados. El anuncio de presencia por UDP no está firmado: un equipo puede aparecer en la lista con cualquier nombre. Nada llega sin que lo aceptes y, si quieres estar seguro de quién es, verifica el código.
 - Doble Alt deja intacto el comportamiento normal de Alt en otras aplicaciones; alguna puede activar su menú tras el primer toque. `Ctrl+Alt+L` queda como alternativa.
 - Instaladores para Windows (`.exe`) y para Mac con Apple Silicon (`.dmg`). La actualización automática exige una firma válida.

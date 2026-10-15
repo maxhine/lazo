@@ -190,28 +190,31 @@ struct PermissionsSection: View {
     }
 }
 
-/// Equipos emparejados y huella propia. Olvidar uno obliga a confirmar el código de nuevo.
+/// Equipos conocidos y huella propia. Se recuerdan al primer contacto; verificar con el código es opcional.
 struct PairedSection: View {
     @ObservedObject var model = AppModel.shared
 
     var body: some View {
         VStack(alignment: .leading, spacing: 4) {
-            SectionLabel(text: "Equipos emparejados")
+            SectionLabel(text: "Equipos conocidos")
+            Text("Lazo recuerda cada equipo la primera vez que se conectan y avisa si su identidad cambia. Verificar el código con la otra persona es opcional.")
+                .font(.lazo(11)).opacity(0.65).fixedSize(horizontal: false, vertical: true)
             Text("Huella de este Mac: " + LazoCrypto.shortFingerprint(model.engine.identity.fingerprint)).font(.lazo(10.5)).opacity(0.6)
-            let devices = model.engine.pairings.all()
-            if devices.isEmpty {
-                Text("Ninguno todavía. Al enviar algo a alguien por primera vez, los dos confirman un código de 6 cifras.")
-                    .font(.lazo(11)).opacity(0.65).fixedSize(horizontal: false, vertical: true)
-            }
-            ForEach(devices, id: \.id) { device in
+            ForEach(model.engine.pairings.all(), id: \.id) { device in
                 HStack {
                     VStack(alignment: .leading, spacing: 1) {
-                        Text(device.name).font(.lazo(12.5, .medium))
+                        HStack(spacing: 4) {
+                            Text(device.name).font(.lazo(12.5, .medium))
+                            if device.isVerified { Image(systemName: "checkmark.seal.fill").font(.system(size: 11)).help("Verificado con código") }
+                        }
                         Text(LazoCrypto.shortFingerprint(device.fingerprint)).font(.lazo(10.5)).opacity(0.6)
                     }
                     Spacer()
+                    if !device.isVerified, let peer = model.peer(device.id), peer.paired {
+                        PillButton(title: "Verificar") { model.verify(peer) }.help("Comparar un código de 6 cifras con la otra persona")
+                    }
                     PillButton(title: "Olvidar") { model.engine.pairings.remove(device.id) }
-                        .help("Habrá que volver a confirmar el código para enviarle algo")
+                        .help("Úsalo si reinstaló Lazo: su nueva identidad se recordará en el siguiente contacto")
                 }
             }
         }

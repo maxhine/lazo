@@ -6,13 +6,13 @@ public enum LazoError: Error, LocalizedError {
     case timeout(String)
     case invalid(String)
     case refused(String)
-    case pairingRequired(String)
+    case identityChanged(String)
     case system(String)
 
     public var errorDescription: String? {
         switch self {
         case .closed: return "Se perdió la conexión."
-        case .timeout(let text), .invalid(let text), .refused(let text), .pairingRequired(let text), .system(let text): return text
+        case .timeout(let text), .invalid(let text), .refused(let text), .identityChanged(let text), .system(let text): return text
         }
     }
 }
