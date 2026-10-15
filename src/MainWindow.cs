@@ -394,7 +394,7 @@ namespace Lazo
             RefreshDots();
             ApplyBodyMargin();
             RefreshDevices();
-            if (_bodyHost != null && _chatOpen) _bodyHost.Visibility = Visibility.Collapsed;
+            if (_bodyHost != null && (_chatOpen || _toolsOpen)) _bodyHost.Visibility = Visibility.Collapsed;
             if (IsVisible) EnableGlass();
         }
 
@@ -1550,7 +1550,6 @@ namespace Lazo
             if (_historyOpen) return 270;
             if (_eyeCareOpen) return 300;
             if (_shareOpen) return 300;
-            if (_toolsOpen) return 320;
             return 0;
         }
 
@@ -1937,9 +1936,9 @@ namespace Lazo
             }
             if (_shareCard != null) Theme.Reveal(_shareCard, _shareOpen, 28);
             if (_toolsCard != null) Theme.Reveal(_toolsCard, _toolsOpen, 28);
-            if (_bodyHost != null) Theme.Reveal(_bodyHost, !_chatOpen, 0);
+            if (_bodyHost != null) Theme.Reveal(_bodyHost, !_chatOpen && !_toolsOpen, 0);
             if (_resultsRow != null && Theme.IsMinimal)
-                _resultsRow.Height = HasResults() ? new GridLength(1, GridUnitType.Star) : new GridLength(0);
+                _resultsRow.Height = HasResults() && !_toolsOpen ? new GridLength(1, GridUnitType.Star) : new GridLength(0);
             ApplyBodyMargin();
             UpdateNav();
             ApplySize(false);
@@ -1996,7 +1995,6 @@ namespace Lazo
                 if (_settingsOpen) height = Math.Max(height, 560);
                 else if (_historyOpen) height = Math.Max(height, 380);
                 else if (_shareOpen) height = Math.Max(height, 500);
-                else if (_toolsOpen) height = Math.Max(height, 560);
             }
             else
             {
@@ -2007,11 +2005,12 @@ namespace Lazo
                 else height = 104;
                 if (_settingsOpen || _historyOpen) width = 360;
                 if (_shareOpen) { width = 380; height = 540; }
-                if (_toolsOpen) { width = 400; height = 580; }
                 if (_historyOpen && !results && !_settingsOpen) height = 280;
             }
             if (_chatOpen)
                 FitChat(ref width, ref height);
+            else if (_toolsOpen)
+                FitTools(ref width, ref height);
             else if (_eyeCareOpen)
             {
                 FitEyeCare(ref width, ref height);

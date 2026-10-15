@@ -64,22 +64,32 @@ namespace Lazo
         private string _cloudPicker;
         private readonly string _geoid = GeoidGrid.Find();
 
+        /// <summary>Utilidades ocupa el área principal, como el chat: el inicio (equipos) se oculta mientras está abierta.</summary>
         private Border ToolsCard()
         {
-            return StylePanel(new Border
+            return Theme.Glass(new Border
             {
-                Background = Theme.CardSurface,
-                BorderBrush = Theme.Line,
-                BorderThickness = new Thickness(1),
-                CornerRadius = new CornerRadius(10),
-                Padding = new Thickness(12, 10, 12, 8),
-                Width = 360,
-                HorizontalAlignment = HorizontalAlignment.Right,
-                VerticalAlignment = Theme.IsMinimal ? VerticalAlignment.Stretch : VerticalAlignment.Top,
-                Margin = Theme.IsMinimal ? new Thickness(8, 40, 8, 8) : new Thickness(0, 40, 8, 0),
+                Background = Theme.OverlaySurface,
+                CornerRadius = new CornerRadius(24),
+                Padding = new Thickness(20, 16, 8, 12),
+                Margin = Theme.IsMinimal ? new Thickness(8, 40, 8, 8) : new Thickness(SidebarWidth + 10, HeaderHeight - 6, 12, 12),
+                HorizontalAlignment = HorizontalAlignment.Stretch,
+                VerticalAlignment = VerticalAlignment.Stretch,
                 Child = ToolsContent()
-            }, 320);
+            });
         }
+
+        /// <summary>Tamaño de la ventana con Utilidades abierta: amplia, para el asistente a dos columnas.</summary>
+        private void FitTools(ref double width, ref double height)
+        {
+            double maxWidth, maxHeight;
+            ScreenLimits(out maxWidth, out maxHeight);
+            width = Math.Min(maxWidth, Theme.IsMinimal ? 700 : 940);
+            height = Math.Min(maxHeight, Theme.IsMinimal ? 640 : 660);
+        }
+
+        /// <summary>Con espacio, el asistente va a dos columnas; en Minimal, a una.</summary>
+        private bool ToolsWide { get { return !Theme.IsMinimal; } }
 
         private void RefreshToolsCard()
         {
@@ -94,17 +104,25 @@ namespace Lazo
         private UIElement ToolsContent()
         {
             StackPanel panel = new StackPanel();
-            Grid head = new Grid { Margin = new Thickness(0, 0, 0, 10) };
+            Grid head = new Grid { Margin = new Thickness(0, 0, 0, 14) };
             head.ColumnDefinitions.Add(new ColumnDefinition());
             head.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
-            TextBlock title = Theme.Text("Utilidades", 16, Theme.Ink, FontWeights.SemiBold);
-            title.VerticalAlignment = VerticalAlignment.Center;
-            head.Children.Add(title);
+            StackPanel words = new StackPanel { VerticalAlignment = VerticalAlignment.Center };
+            words.Children.Add(Theme.Text("Utilidades", 21, Theme.Ink, FontWeights.SemiBold));
+            words.Children.Add(Theme.Text("Herramientas de trabajo para el equipo", 12, Theme.Muted));
+            head.Children.Add(words);
             Button close = IconButton("close", () => TogglePanel("tools"));
-            close.ToolTip = "Cerrar";
+            close.ToolTip = "Volver al inicio";
+            close.VerticalAlignment = VerticalAlignment.Top;
             Grid.SetColumn(close, 1);
             head.Children.Add(close);
             panel.Children.Add(head);
+
+            // Galería: cada utilidad nueva se suma aquí como una tarjeta más.
+            WrapPanel gallery = new WrapPanel { Margin = new Thickness(0, 0, 0, 8) };
+            gallery.Children.Add(ToolTile(CloudGlyph(), "Nube de puntos a ReCap", "LAS, LAZ o E57 a .rcp o .rcs, con su sistema de coordenadas", true, () => { }));
+            panel.Children.Add(gallery);
+            panel.Children.Add(new Border { Height = 1, Background = Theme.Line, Margin = new Thickness(0, 0, 12, 12) });
             panel.Children.Add(PointCloudTool());
             return Scroll(panel);
         }
@@ -114,20 +132,8 @@ namespace Lazo
         private UIElement PointCloudTool()
         {
             StackPanel tool = new StackPanel();
-            Grid head = new Grid();
-            head.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
-            head.ColumnDefinitions.Add(new ColumnDefinition());
-            Border badge = new Border { Width = 36, Height = 36, CornerRadius = new CornerRadius(10), Background = Theme.SoftSurface, Child = CloudGlyph() };
-            head.Children.Add(badge);
-            StackPanel words = new StackPanel { Margin = new Thickness(10, 0, 0, 0), VerticalAlignment = VerticalAlignment.Center };
-            words.Children.Add(Theme.Text("Nube de puntos a ReCap", 13.5, Theme.Ink, FontWeights.SemiBold));
-            TextBlock what = Theme.Text("LAS, LAZ o E57 a proyecto .rcp o nube .rcs", 11, Theme.Muted);
-            what.TextWrapping = TextWrapping.Wrap;
-            words.Children.Add(what);
-            Grid.SetColumn(words, 1);
-            head.Children.Add(words);
-            tool.Children.Add(head);
-
+            StackPanel left = new StackPanel();
+            StackPanel right = new StackPanel();
             if (!_deCapLooked && !_preview) { _deCap = PointCloudConverter.FindDeCap(); _deCapLooked = true; }
             if (_deCap == null && !_preview)
             {
@@ -139,38 +145,38 @@ namespace Lazo
             }
 
             bool running = _cloudRun != null;
-            tool.Children.Add(CloudDrop(running));
+            left.Children.Add(CloudDrop(running));
             if (_cloudFiles.Count > 0)
             {
                 StackPanel list = new StackPanel { Margin = new Thickness(0, 6, 0, 0) };
                 foreach (string file in _cloudFiles) list.Children.Add(CloudFileRow(file, running));
-                tool.Children.Add(list);
+                left.Children.Add(list);
             }
 
             TextBlock outputLabel = Theme.Label("Resultado");
             outputLabel.Margin = new Thickness(0, 12, 0, 6);
-            tool.Children.Add(outputLabel);
+            left.Children.Add(outputLabel);
             UIElement mode = Segment("Proyecto .rcp", "Nube única .rcs", !_cloudUnify,
                 () => { _cloudUnify = false; RefreshToolsCard(); }, () => { _cloudUnify = true; RefreshToolsCard(); });
             ((FrameworkElement)mode).IsEnabled = !running;
-            tool.Children.Add(mode);
+            left.Children.Add(mode);
             TextBlock modeHelp = Theme.Text(_cloudUnify
                 ? "Todos los archivos en un solo .rcs, para Revit, AutoCAD o Navisworks."
                 : "Un proyecto .rcp con un .rcs por escaneo, para abrir y organizar en ReCap.", 10.5, Theme.Muted);
             modeHelp.TextWrapping = TextWrapping.Wrap;
             modeHelp.Margin = new Thickness(0, 4, 0, 0);
-            tool.Children.Add(modeHelp);
+            left.Children.Add(modeHelp);
 
             TextBlock nameLabel = Theme.Label("Nombre");
             nameLabel.Margin = new Thickness(0, 12, 0, 4);
-            tool.Children.Add(nameLabel);
+            left.Children.Add(nameLabel);
             TextBox name = CloudBox(_cloudName, running);
             name.TextChanged += (s, e) => _cloudName = name.Text;
-            tool.Children.Add(name);
+            left.Children.Add(name);
 
             TextBlock folderLabel = Theme.Label("Guardar en");
             folderLabel.Margin = new Thickness(0, 12, 0, 4);
-            tool.Children.Add(folderLabel);
+            left.Children.Add(folderLabel);
             Grid folderRow = new Grid();
             folderRow.ColumnDefinitions.Add(new ColumnDefinition());
             folderRow.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
@@ -188,25 +194,25 @@ namespace Lazo
             pick.Click += (s, e) => PickCloudFolder();
             Grid.SetColumn(pick, 1);
             folderRow.Children.Add(pick);
-            tool.Children.Add(folderRow);
+            left.Children.Add(folderRow);
 
             TextBlock unitsLabel = Theme.Label("Unidades del archivo");
             unitsLabel.Margin = new Thickness(0, 12, 0, 4);
-            tool.Children.Add(unitsLabel);
+            right.Children.Add(unitsLabel);
             WrapPanel units = new WrapPanel();
             for (int i = 0; i < PointCloudConverter.UnitNames.Length; i++)
             {
                 int unit = i;
                 units.Children.Add(CloudChip(PointCloudConverter.UnitNames[i], _cloudUnit == i, !running, () => { _cloudUnit = unit; RefreshToolsCard(); }));
             }
-            tool.Children.Add(units);
+            right.Children.Add(units);
             TextBlock unitsHelp = Theme.Text("Solo cuenta para LAS y LAZ; E57 ya guarda sus unidades.", 10.5, Theme.Muted);
             unitsHelp.Margin = new Thickness(0, 2, 0, 0);
-            tool.Children.Add(unitsHelp);
+            right.Children.Add(unitsHelp);
 
             TextBlock decimationLabel = Theme.Label("Reducir puntos (opcional)");
             decimationLabel.Margin = new Thickness(0, 12, 0, 4);
-            tool.Children.Add(decimationLabel);
+            right.Children.Add(decimationLabel);
             Grid decimationRow = new Grid();
             decimationRow.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(90) });
             decimationRow.ColumnDefinitions.Add(new ColumnDefinition());
@@ -219,11 +225,59 @@ namespace Lazo
             decimationHelp.TextWrapping = TextWrapping.Wrap;
             Grid.SetColumn(decimationHelp, 1);
             decimationRow.Children.Add(decimationHelp);
-            tool.Children.Add(decimationRow);
+            right.Children.Add(decimationRow);
 
-            tool.Children.Add(CloudProjection(running));
+            right.Children.Add(CloudProjection(running));
+
+            // Dos columnas con espacio (archivos y salida | unidades y coordenadas); una sola en Minimal.
+            Grid columns = new Grid();
+            if (ToolsWide)
+            {
+                columns.ColumnDefinitions.Add(new ColumnDefinition());
+                columns.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(28) });
+                columns.ColumnDefinitions.Add(new ColumnDefinition());
+                Grid.SetColumn(right, 2);
+            }
+            else
+            {
+                columns.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
+                columns.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
+                Grid.SetRow(right, 1);
+            }
+            columns.Children.Add(left);
+            columns.Children.Add(right);
+            tool.Children.Add(columns);
             tool.Children.Add(CloudFooter(running));
             return tool;
+        }
+
+        /// <summary>Una utilidad en la galería: ícono, nombre y para qué sirve.</summary>
+        private Button ToolTile(UIElement glyph, string title, string detail, bool selected, Action click)
+        {
+            Grid row = new Grid();
+            row.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+            row.ColumnDefinitions.Add(new ColumnDefinition());
+            row.Children.Add(new Border { Width = 40, Height = 40, CornerRadius = new CornerRadius(12), Background = Theme.SoftSurface, Child = glyph });
+            StackPanel words = new StackPanel { Margin = new Thickness(12, 0, 0, 0), VerticalAlignment = VerticalAlignment.Center };
+            words.Children.Add(Theme.Text(title, 13.5, Theme.Ink, FontWeights.SemiBold));
+            TextBlock small = Theme.Text(detail, 11, Theme.Muted);
+            small.TextWrapping = TextWrapping.Wrap;
+            words.Children.Add(small);
+            Grid.SetColumn(words, 1);
+            row.Children.Add(words);
+            Border face = new Border
+            {
+                Width = 300,
+                Padding = new Thickness(12, 10, 14, 10),
+                CornerRadius = new CornerRadius(16),
+                BorderThickness = new Thickness(1.5),
+                BorderBrush = selected ? Theme.SelectionFill : Theme.Line,
+                Background = selected ? Theme.SoftSurface : Brushes.Transparent,
+                Child = row
+            };
+            Button button = Plain(face, click);
+            button.Margin = new Thickness(0, 0, 10, 10);
+            return button;
         }
 
         // ── Sistema de coordenadas ─────────────────────────────────────────
