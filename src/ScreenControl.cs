@@ -19,6 +19,8 @@ namespace Lazo
         public const byte Control = 2;
         /// <summary>Junto con <see cref="Control"/>: control total del equipo. Sin él, solo la ventana activa.</summary>
         public const byte FullControl = 4;
+        /// <summary>Solo para el aviso local: alguien que no mira pide unirse. No viaja en el canal de retorno.</summary>
+        public const byte Watch = 0x20;
         /// <summary>Se suma al tipo de una petición para renunciar a ese permiso.</summary>
         public const byte Release = 0x80;
     }
@@ -46,15 +48,16 @@ namespace Lazo
             lock (_queue)
             {
                 if (_closed) return;
-                if (IsMove(packet) && _queue.Last != null && IsMove(_queue.Last.Value)) _queue.Last.Value = packet;
+                if (IsMove(packet) && _queue.Last != null && IsMove(_queue.Last.Value) && _queue.Last.Value[0] == packet[0]) _queue.Last.Value = packet;
                 else _queue.AddLast(packet);
                 System.Threading.Monitor.Pulse(_queue);
             }
         }
 
+        /// <summary>Movimientos que se pueden sustituir por el último: del mouse controlado o del puntero colaborativo.</summary>
         private static bool IsMove(byte[] packet)
         {
-            return packet.Length >= 2 && packet[0] == (byte)'I' && packet[1] == RemoteInputEvent.Move;
+            return packet.Length >= 2 && ((packet[0] == (byte)'I' && packet[1] == RemoteInputEvent.Move) || packet[0] == (byte)'M');
         }
 
         public void Close()
@@ -438,6 +441,8 @@ namespace Lazo
         private bool _placedOnce;
 
         public AnnotationLayer Layer { get; private set; }
+        /// <summary>Punteros con nombre de quienes miran y dibujan o controlan.</summary>
+        public PointerLayer Pointers { get; private set; }
         public event Action DrawingEnded;
         public event Action<bool> DrawingChanged;
 
@@ -457,7 +462,11 @@ namespace Lazo
             Width = 1;
             Height = 1;
             Layer = new AnnotationLayer();
-            Content = Layer;
+            Pointers = new PointerLayer();
+            Grid content = new Grid();
+            content.Children.Add(Layer);
+            content.Children.Add(Pointers);
+            Content = content;
             _follow = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(source.IsWindow ? 120 : 1000) };
             _follow.Tick += (s, e) => Follow();
             SourceInitialized += (s, e) =>
@@ -563,6 +572,7 @@ namespace Lazo
             ViewerId = viewerId;
             _respond = respond;
             bool control = kind == SharePermission.Control;
+            bool watch = kind == SharePermission.Watch;
             Title = "Lazo · permiso";
             Width = control ? 430 : 380;
             SizeToContent = SizeToContent.Height;
@@ -585,12 +595,13 @@ namespace Lazo
                 Height = 40,
                 CornerRadius = new CornerRadius(20),
                 Background = control ? Theme.Danger : Theme.Primary,
-                Child = Icons.Make(control ? "pointer" : "pen", 20, control ? Brushes.White : Theme.PrimaryText, 2)
+                Child = Icons.Make(control ? "pointer" : watch ? "eye" : "pen", 20, control ? Brushes.White : Theme.PrimaryText, 2)
             });
             StackPanel words = new StackPanel { Margin = new Thickness(12, 0, 0, 0), VerticalAlignment = VerticalAlignment.Center };
-            words.Children.Add(Theme.Text(viewer + (control ? " quiere controlar tu equipo" : " quiere dibujar en tu pantalla"), 13, Theme.Ink, FontWeights.SemiBold));
+            words.Children.Add(Theme.Text(viewer + (control ? " quiere controlar tu equipo" : watch ? " quiere ver tu pantalla" : " quiere dibujar en tu pantalla"), 13, Theme.Ink, FontWeights.SemiBold));
             words.Children.Add(Theme.Text(control
                 ? "Ventana activa: solo la ventana que compartes (o la que tienes al frente). Control total: mouse y teclado en todo el equipo, incluidas las teclas de Windows. Quítalo cuando quieras desde la barra superior."
+                : watch ? "Verá lo mismo que los demás que miran. Puedes dejar de compartir cuando quieras."
                 : "Sus trazos aparecerán sobre tu pantalla y los verán todos los que miran.", 11.5, Theme.Muted));
             Grid.SetColumn(words, 1);
             head.Children.Add(words);

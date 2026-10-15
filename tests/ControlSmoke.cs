@@ -98,6 +98,8 @@ internal static class ControlSmoke
             session.PermissionRequested += (id, name, kind) => { asked |= kind; session.Answer(id, kind, true, kind == SharePermission.Control && fullNext); };
             bool ended = false;
             session.Ended += () => ended = true;
+            PointerUpdate pointer = null;
+            session.PointerMoved += update => pointer = update;
             session.Invite(new Peer { Id = viewerSide.SelfId, Name = "Visor", Address = local, Port = port });
             session.Start();
 
@@ -122,6 +124,11 @@ internal static class ControlSmoke
             window.Layer.EraseMine();
             ok &= Check(await Until(() => hostLayer.Children.Count == 1, 3000), "borrar los trazos propios se refleja en quien comparte");
 
+            // Mientras dibuja, su puntero llega a quien comparte con su nombre.
+            window.MovePointer(0.25, 0.5);
+            ok &= Check(await Until(() => pointer != null && pointer.Visible && pointer.Name == "Visor" && Math.Abs(pointer.X / 65535.0 - 0.25) < 0.01, 3000),
+                "el puntero de quien dibuja llega a quien comparte con su nombre");
+
             window.Request(SharePermission.Control);
             ok &= Check(await Until(() => (window.Granted & SharePermission.Control) != 0 && session.Controller == "Visor (ventana activa)", 3000)
                 && (window.Granted & SharePermission.FullControl) == 0,
@@ -137,6 +144,10 @@ internal static class ControlSmoke
 
             session.RevokeAll();
             ok &= Check(await Until(() => window.Granted == 0 && session.Controller == null && !session.AnyGranted, 3000), "quitar permisos llega al visor");
+            ok &= Check(await Until(() => pointer != null && !pointer.Visible, 3000), "sin permisos, su puntero desaparece");
+            window.MovePointer(0.6, 0.6);
+            await Task.Delay(500);
+            ok &= Check(!pointer.Visible, "sin permisos no se envía el puntero");
 
             // Sin permiso, un trazo del visor se ignora. (El borrado anterior ya contó como operación del visor.)
             int acceptedBefore = fromViewer;

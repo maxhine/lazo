@@ -128,6 +128,36 @@ internal static class NetworkSmoke
             await Task.Delay(300);
             Check(chat == "hola por canal cifrado" && chatFrom == sender.SelfId, "chat con la identidad real");
 
+            // Quién está compartiendo (anuncio LAZO3P) y pedir unirse por el canal cifrado.
+            using (UdpClient announcer = new UdpClient(new IPEndPoint(local, 0)))
+            {
+                Action<string> announce = label =>
+                {
+                    byte[] packet = Encoding.UTF8.GetBytes("LAZO3P|" + sender.SelfId + "|" + label);
+                    announcer.Send(packet, packet.Length, new IPEndPoint(local, receiverUdp));
+                };
+                TaskCompletionSource<bool> live = new TaskCompletionSource<bool>(), over = new TaskCompletionSource<bool>();
+                receiver.PeersChanged += peers =>
+                {
+                    Peer peer = peers.FirstOrDefault(p => p.Id == sender.SelfId);
+                    if (peer == null) return;
+                    if (peer.Sharing == "Pantalla 1") live.TrySetResult(true);
+                    else if (peer.Sharing == null && live.Task.IsCompleted) over.TrySetResult(true);
+                };
+                announce("Pantalla 1");
+                await Expect(live.Task, 3000, "se ve quién está compartiendo y qué");
+                announce("");
+                await Expect(over.Task, 3000, "al dejar de compartir sale de la lista");
+            }
+            Guid joinFrom = Guid.Empty;
+            string joinName = null;
+            bool sharingNow = true;
+            receiver.JoinRequested += (id, name) => { joinFrom = id; joinName = name; return sharingNow; };
+            Check(await sender.RequestJoinAsync(target) && joinFrom == sender.SelfId && !string.IsNullOrEmpty(joinName),
+                "pedir unirse llega con la identidad comprobada");
+            sharingNow = false;
+            Check(!await sender.RequestJoinAsync(target), "si ya no comparte, la solicitud no se atiende");
+
             // Verificación opcional: si alguien cancela no queda verificado; si los dos confirman, sí.
             Check(!await sender.VerifyAsync(target) && !sender.Pairings.Get(receiver.SelfId.ToString("D")).Verified, "verificación cancelada no marca nada");
             acceptCode = true;

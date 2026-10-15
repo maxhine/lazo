@@ -38,6 +38,23 @@ namespace Lazo
                 alertApp.Run(new EyeCareAlertWindow(EyeCareBreakType.MicroBreak, 20));
                 return;
             }
+            if (Array.IndexOf(args, "--preview-pointers") >= 0)
+            {
+                // Punteros colaborativos sobre un fondo, para revisar su aspecto.
+                Theme.Load();
+                PointerLayer pointers = new PointerLayer();
+                System.Windows.Controls.Grid surface = new System.Windows.Controls.Grid { Background = Theme.Color("#EDEDED") };
+                surface.Children.Add(pointers);
+                System.Windows.Window window = new System.Windows.Window { Title = "Lazo punteros", Width = 640, Height = 400, Content = surface };
+                window.Loaded += (s, e) =>
+                {
+                    pointers.Move(1, "Bea", 0.55, 0.25, 0);
+                    pointers.Move(2, "Pedro", 0.22, 0.62, 1);
+                    pointers.Move(3, "Julián Garzón", 0.7, 0.6, 2);
+                };
+                new Application().Run(window);
+                return;
+            }
             bool previewReceive = Array.IndexOf(args, "--preview-receive") >= 0 ||
                                   Array.IndexOf(args, "--preview-receive-glass") >= 0;
             if (previewReceive)

@@ -20,8 +20,9 @@ namespace Lazo
     /// <summary>
     /// Transmisión de pantalla hacia uno o varios compañeros, por el canal cifrado LAZO3 (docs/protocolo-seguro.md).
     /// Emisor → visor: 'S' ancho alto · 'F' cursorX cursorY n [x y w h len jpeg]… · 'K' · 'E' ·
-    /// 'H' versión · 'P' permisos · 'D' rechazo · 'A' len trazo.
-    /// Visor → emisor: 'H' versión · 'R' permiso · 'A' len trazo · 'I' entrada.
+    /// 'H' versión · 'P' permisos · 'D' rechazo · 'A' len trazo · 'M' len puntero de otro visor (v2).
+    /// Visor → emisor: 'H' versión · 'R' permiso · 'A' len trazo · 'I' entrada · 'M' visible x y (v2).
+    /// Los paquetes 'M' solo se cruzan cuando los dos lados saludaron con la versión 2 o superior.
     /// El ritmo lo marca el receptor más lento: no hay colas, así que la latencia se mantiene mínima.
     /// </summary>
     internal sealed class ScreenShareSession
@@ -35,10 +36,15 @@ namespace Lazo
             public readonly object WriteLock = new object();
             public volatile bool Capable;
             public volatile byte Granted;
+            /// <summary>Versión del canal de retorno con la que saludó; desde la 2 entiende punteros.</summary>
+            public volatile byte Version;
+            public bool PointerShown;
             public readonly HashSet<byte> Asked = new HashSet<byte>();
         }
 
-        public const byte BackChannelVersion = 1;
+        public const byte BackChannelVersion = 2;
+        /// <summary>Primera versión del canal de retorno con punteros colaborativos ('M').</summary>
+        public const byte PointerVersion = 2;
 
         private readonly NetworkEngine _network;
         private readonly object _lock = new object();
@@ -71,6 +77,8 @@ namespace Lazo
         public event Action<int> ViewerLeft;
         /// <summary>Trazo hecho por alguien que mira, ya validado; hay que pintarlo en la superposición.</summary>
         public event Action<AnnotationOp> Annotated;
+        /// <summary>Puntero de alguien que dibuja o controla; hay que mostrarlo en la superposición.</summary>
+        public event Action<PointerUpdate> PointerMoved;
 
         public ScreenShareSession(NetworkEngine network, ShareSource source)
         {
@@ -205,8 +213,31 @@ namespace Lazo
             bool hadControl = (viewer.Granted & SharePermission.Control) != 0;
             viewer.Granted = granted;
             if (hadControl && (granted & SharePermission.Control) == 0) _injector.ReleaseAll();
+            if ((granted & (SharePermission.Draw | SharePermission.Control)) == 0) Pointer(viewer, false, 0, 0);
             Write(viewer, new[] { (byte)'P', granted });
             Raise(Changed);
+        }
+
+        /// <summary>
+        /// Puntero de quien mira: solo se muestra mientras puede dibujar o controlar. Se pinta en la superposición
+        /// de quien comparte y se reenvía a los demás visores que lo entienden.
+        /// </summary>
+        private void Pointer(Viewer viewer, bool visible, ushort x, ushort y)
+        {
+            if (visible && (viewer.Granted & (SharePermission.Draw | SharePermission.Control)) == 0) return;
+            if (!visible && !viewer.PointerShown) return;
+            viewer.PointerShown = visible;
+            PointerUpdate update = new PointerUpdate
+            {
+                Id = viewer.Id, Visible = visible, X = x, Y = y,
+                Color = (byte)((viewer.Id - 1) % PointerLayer.Palette.Length), Name = viewer.Name
+            };
+            Action<PointerUpdate> handler = PointerMoved;
+            if (handler != null) handler(update);
+            byte[] packet = Framed((byte)'M', update.ToBytes());
+            Viewer[] targets;
+            lock (_lock) targets = _viewers.Where(v => v.Capable && v != viewer && v.Version >= PointerVersion).ToArray();
+            foreach (Viewer target in targets) Write(target, packet);
         }
 
         private Viewer ControllerOther(Viewer except)
@@ -288,10 +319,11 @@ namespace Lazo
                     byte type = reader.ReadByte();
                     if (type == (byte)'H')
                     {
-                        reader.ReadByte();
+                        byte version = reader.ReadByte();
                         Post(() =>
                         {
                             if (viewer.Capable) return;
+                            viewer.Version = version;
                             // Saludo, permisos actuales y los trazos que ya hay, en ese orden.
                             Write(viewer, new[] { (byte)'H', BackChannelVersion });
                             Write(viewer, new[] { (byte)'P', viewer.Granted });
@@ -323,6 +355,12 @@ namespace Lazo
                             _injector.Apply(input);
                         });
                     }
+                    else if (type == (byte)'M')
+                    {
+                        bool visible = reader.ReadByte() != 0;
+                        ushort x = reader.ReadUInt16(), y = reader.ReadUInt16();
+                        Post(() => { if (viewer.Version >= PointerVersion) Pointer(viewer, visible, x, y); });
+                    }
                     else break;
                 }
             }
@@ -332,6 +370,7 @@ namespace Lazo
                 Post(() =>
                 {
                     if ((viewer.Granted & SharePermission.Control) != 0) _injector.ReleaseAll();
+                    Pointer(viewer, false, 0, 0);
                     viewer.Granted = 0;
                     viewer.Capable = false;
                     lock (viewer.Asked) viewer.Asked.Clear();
@@ -601,8 +640,17 @@ namespace Lazo
                     if (type == (byte)'E') break;
                     if (type == (byte)'H')
                     {
-                        reader.ReadByte();
-                        ui.BeginInvoke((Action)(() => _window.BackChannelReady()));
+                        byte version = reader.ReadByte();
+                        ui.BeginInvoke((Action)(() => _window.BackChannelReady(version)));
+                        continue;
+                    }
+                    if (type == (byte)'M')
+                    {
+                        int length = reader.ReadUInt16();
+                        byte[] data = reader.ReadBytes(length);
+                        if (data.Length != length) throw new EndOfStreamException();
+                        PointerUpdate update = PointerUpdate.Parse(data);
+                        if (update != null) ui.BeginInvoke((Action)(() => _window.Pointers.Apply(update)));
                         continue;
                     }
                     if (type == (byte)'P' || type == (byte)'D')
@@ -712,6 +760,10 @@ namespace Lazo
         private readonly HashSet<int> _keysDown = new HashSet<int>();
         private readonly HashSet<byte> _buttonsDown = new HashSet<byte>();
         private ScreenBackChannel _back;
+        private byte _sharerVersion;
+        private readonly DispatcherTimer _pointerTimer;
+        private bool _pointerPending, _pointerShown;
+        private ushort _pointerX, _pointerY;
         private byte _granted;
         private byte _asking;
         private ViewerMode _mode;
@@ -752,10 +804,17 @@ namespace Lazo
             overlay.Children.Add(_cursor);
             Layer = new AnnotationLayer { OnlyMine = true };
             Layer.Local += op => { if (_back != null) _back.Send(ScreenShareSession.Framed((byte)'A', op.ToBytes())); };
+            Pointers = new PointerLayer();
             _surface = new Grid();
             _surface.Children.Add(_image);
             _surface.Children.Add(Layer);
             _surface.Children.Add(overlay);
+            _surface.Children.Add(Pointers);
+            // Vista previa: llega aunque la capa de dibujo marque el movimiento como atendido.
+            _surface.PreviewMouseMove += (s, e) => TrackPointer(e);
+            _surface.MouseLeave += (s, e) => HidePointer();
+            _pointerTimer = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(33) };
+            _pointerTimer.Tick += (s, e) => FlushPointer();
             _surface.MouseDown += OnSurfaceDown;
             _surface.MouseUp += OnSurfaceUp;
             _surface.MouseMove += OnSurfaceMove;
@@ -900,6 +959,7 @@ namespace Lazo
             _surface.Width = width;
             _surface.Height = height;
             _cursor.LayoutTransform = new ScaleTransform(Math.Max(1, width / 1600.0), Math.Max(1, width / 1600.0));
+            Pointers.PointerScale = Math.Max(1, width / 1600.0);
             _center.Visibility = Visibility.Collapsed;
         }
 
@@ -942,6 +1002,8 @@ namespace Lazo
         }
 
         internal AnnotationLayer Layer { get; private set; }
+        /// <summary>Punteros con nombre de los demás que dibujan o controlan.</summary>
+        internal PointerLayer Pointers { get; private set; }
 
         internal void Attach(ScreenBackChannel back)
         {
@@ -949,9 +1011,10 @@ namespace Lazo
         }
 
         /// <summary>Quien comparte entiende el canal de retorno: se ofrecen dibujar y controlar.</summary>
-        internal void BackChannelReady()
+        internal void BackChannelReady(byte version)
         {
             if (_back == null) return;
+            _sharerVersion = version;
             _drawButton.Visibility = Visibility.Visible;
             _controlButton.Visibility = Visibility.Visible;
         }
@@ -1027,6 +1090,7 @@ namespace Lazo
         private void SetMode(ViewerMode mode)
         {
             if (_mode == ViewerMode.Control && mode != ViewerMode.Control) { ReleaseKeys(); ReleaseButtons(); }
+            if (mode == ViewerMode.Watch) HidePointer();
             _mode = mode;
             Layer.Drawing = mode == ViewerMode.Draw;
             _tools.Visibility = mode == ViewerMode.Draw ? Visibility.Visible : Visibility.Collapsed;
@@ -1052,6 +1116,53 @@ namespace Lazo
             Fade(_hintBox, 1);
             _hintTimer.Stop();
             _hintTimer.Start();
+        }
+
+        // ── Puntero colaborativo: mientras dibujo o controlo, los demás ven el mío con mi nombre ──
+
+        private bool SharesPointer { get { return _back != null && _bitmap != null && _sharerVersion >= ScreenShareSession.PointerVersion && _mode != ViewerMode.Watch; } }
+
+        private void TrackPointer(MouseEventArgs e)
+        {
+            if (!SharesPointer) return;
+            ushort x, y;
+            if (!Position(e, out x, out y)) { HidePointer(); return; }
+            _pointerX = x;
+            _pointerY = y;
+            _pointerPending = true;
+            // Como mucho unas 30 posiciones por segundo; la última siempre sale.
+            if (!_pointerTimer.IsEnabled) { FlushPointer(); _pointerTimer.Start(); }
+        }
+
+        private void FlushPointer()
+        {
+            if (!_pointerPending) { _pointerTimer.Stop(); return; }
+            _pointerPending = false;
+            if (!SharesPointer) return;
+            _pointerShown = true;
+            SendPointer(true, _pointerX, _pointerY);
+        }
+
+        private void HidePointer()
+        {
+            _pointerPending = false;
+            _pointerTimer.Stop();
+            if (!_pointerShown) return;
+            _pointerShown = false;
+            if (_back != null) SendPointer(false, 0, 0);
+        }
+
+        private void SendPointer(bool visible, ushort x, ushort y)
+        {
+            _back.Send(new[] { (byte)'M', (byte)(visible ? 1 : 0), (byte)x, (byte)(x >> 8), (byte)y, (byte)(y >> 8) });
+        }
+
+        /// <summary>Para pruebas: lo mismo que mover el mouse sobre la imagen en un punto normalizado.</summary>
+        internal void MovePointer(double x, double y)
+        {
+            if (!SharesPointer) return;
+            _pointerShown = true;
+            SendPointer(true, AnnotationOp.Norm(x), AnnotationOp.Norm(y));
         }
 
         // ── Control remoto: mouse y teclado van a quien comparte ─────────────
@@ -1157,6 +1268,7 @@ namespace Lazo
             _center.Visibility = Visibility.Visible;
             _center.Foreground = Brushes.White;
             _cursor.Visibility = Visibility.Collapsed;
+            Pointers.HideAll();
             _image.Opacity = 0.35;
             Fade(_bar, 1);
             _idle.Stop();

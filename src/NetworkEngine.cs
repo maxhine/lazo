@@ -29,6 +29,9 @@ namespace Lazo
         public bool Verified;
         /// <summary>Conocido antes, pero ahora anuncia otra clave: no se le envía nada.</summary>
         public bool IdentityChanged;
+        /// <summary>Qué está compartiendo ahora (anuncio LAZO3P), o null si no comparte.</summary>
+        public string Sharing;
+        public DateTime SharingSeenUtc;
         public override string ToString() { return Name + "  /  " + Address; }
     }
 
@@ -195,6 +198,21 @@ namespace Lazo
                         }
                         continue;
                     }
+                    if (fields.Length == 3 && fields[0] == "LAZO3P" && Guid.TryParse(fields[1], out id))
+                    {
+                        // Está compartiendo (o dejó de hacerlo, si el texto viene vacío). Solo sirve para listarlo:
+                        // unirse pasa por el canal cifrado y lo decide quien comparte.
+                        string sharing = CleanLabel(fields[2], 120);
+                        lock (_peerLock)
+                        {
+                            Peer peer;
+                            if (!_peers.TryGetValue(id, out peer) || !peer.Address.Equals(remote.Address)) continue;
+                            string now = sharing.Length == 0 ? null : sharing;
+                            peer.SharingSeenUtc = DateTime.UtcNow;
+                            if (peer.Sharing != now) { peer.Sharing = now; PublishPeers(); }
+                        }
+                        continue;
+                    }
                     if (data.Length > 600 || fields.Length != 5 || fields[0] != "LAZO3" ||
                         !Guid.TryParse(fields[1], out id) || id == _id ||
                         !int.TryParse(fields[3], out port) || port != _transferPort ||
@@ -211,7 +229,9 @@ namespace Lazo
                         _peers[id] = new Peer
                         {
                             Id = id, Name = name, Address = remote.Address, Port = port, SeenUtc = DateTime.UtcNow,
-                            Photo = previous == null ? "" : previous.Photo, Fingerprint = fingerprint
+                            Photo = previous == null ? "" : previous.Photo, Fingerprint = fingerprint,
+                            Sharing = previous == null ? null : previous.Sharing,
+                            SharingSeenUtc = previous == null ? DateTime.MinValue : previous.SharingSeenUtc
                         };
                         if (changed) PublishPeers();
                     }
@@ -242,18 +262,50 @@ namespace Lazo
                         _udp.Send(payload, payload.Length, new IPEndPoint(address, _discoveryPort));
                         _udp.Send(photo, photo.Length, new IPEndPoint(address, _discoveryPort));
                     }
+                    string sharing = _sharing;
+                    if (sharing != null) AnnounceSharing(sharing);
                     lock (_peerLock)
                     {
                         Guid[] stale = _peers.Where(p => (DateTime.UtcNow - p.Value.SeenUtc).TotalSeconds > 9)
                             .Select(p => p.Key).ToArray();
                         foreach (Guid key in stale) _peers.Remove(key);
-                        if (stale.Length > 0) PublishPeers();
+                        // Quien dejó de anunciar que comparte (se cerró de golpe, por ejemplo) sale de la lista.
+                        bool ended = false;
+                        foreach (Peer peer in _peers.Values)
+                            if (peer.Sharing != null && (DateTime.UtcNow - peer.SharingSeenUtc).TotalSeconds > 8) { peer.Sharing = null; ended = true; }
+                        if (stale.Length > 0 || ended) PublishPeers();
                     }
                 }
                 catch (ObjectDisposedException) { return; }
                 catch (SocketException) { /* Firewall o adaptador desconectado. Se reintenta. */ }
                 for (int i = 0; i < 25 && _running; i++) Thread.Sleep(100);
             }
+        }
+
+        private volatile string _sharing;
+
+        /// <summary>
+        /// Anuncia a la red qué se está compartiendo (null: ya no). Los demás lo ven en su panel y pueden pedir unirse.
+        /// </summary>
+        public void SetSharing(string label)
+        {
+            label = label == null ? null : CleanLabel(label, 120);
+            if (label != null && label.Length == 0) label = "Pantalla";
+            _sharing = label;
+            AnnounceSharing(label ?? "");
+        }
+
+        private void AnnounceSharing(string label)
+        {
+            if (_udp == null) return;
+            try
+            {
+                byte[] packet = Encoding.UTF8.GetBytes("LAZO3P|" + _id.ToString("D") + "|" + label);
+                foreach (IPAddress address in BroadcastAddresses())
+                    _udp.Send(packet, packet.Length, new IPEndPoint(address, _discoveryPort));
+            }
+            catch (ObjectDisposedException) { }
+            catch (SocketException) { }
         }
 
         /// <summary>Llamar con _peerLock tomado.</summary>
@@ -396,6 +448,7 @@ namespace Lazo
                         case (byte)'C': ReadChat(reader, writer, peerId); break;
                         case (byte)'D': ReadSignal(reader, writer, peerId); break;
                         case (byte)'S': await ReadScreen(client, stream, reader, writer, address, peerId).ConfigureAwait(false); break;
+                        case (byte)'J': ReadJoin(reader, writer, peerId); break;
                     }
                 }
                 catch { /* Conexión no válida, cortada o rechazada. */ }
@@ -666,6 +719,42 @@ namespace Lazo
         }
 
         public event Func<ScreenInvite, Task<IScreenSink>> ScreenOffered;
+
+        /// <summary>
+        /// Alguien pide unirse a la pantalla que comparto: identidad comprobada y nombre. Devuelve si la solicitud
+        /// se atiende (hay transmisión en curso); quien comparte decide después y, si acepta, le envía la invitación.
+        /// </summary>
+        public event Func<Guid, string, bool> JoinRequested;
+
+        /// <summary>
+        /// Pide a un compañero que está compartiendo su pantalla que nos deje verla. Devuelve false si ya no comparte.
+        /// Si acepta, llega una invitación normal de pantalla compartida.
+        /// </summary>
+        public async Task<bool> RequestJoinAsync(Peer peer)
+        {
+            using (SecureConnection connection = await OpenAsync(peer).ConfigureAwait(false))
+            {
+                BinaryWriter writer = new BinaryWriter(connection.Stream, Encoding.UTF8, true);
+                writer.Write((byte)'J');
+                WriteText(writer, Label(), 80);
+                writer.Flush();
+                try { return await ReadByteAsync(connection.Stream, 7000).ConfigureAwait(false) == 1; }
+                catch (EndOfStreamException)
+                {
+                    throw new InvalidOperationException(peer.Name + " tiene una versión de Lazo que no admite solicitudes para unirse.");
+                }
+            }
+        }
+
+        private void ReadJoin(BinaryReader reader, BinaryWriter writer, Guid id)
+        {
+            string name = CleanLabel(ReadText(reader, 80));
+            if (name.Length == 0) return;
+            Func<Guid, string, bool> handler = JoinRequested;
+            bool taken = handler != null && handler(id, name);
+            writer.Write((byte)(taken ? 1 : 0));
+            writer.Flush();
+        }
 
         // ── Archivos ─────────────────────────────────────────────────────
 

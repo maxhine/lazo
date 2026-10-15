@@ -18,6 +18,7 @@ Todos los enteros van en *little endian*, salvo donde se indique. `texto` es `u1
 ```
 LAZO3|<id>|<nombre>|<puerto TCP>|<huella>
 LAZO3A|<id>|<foto JPEG en base64, ≤ 12 000 bytes>
+LAZO3P|<id>|<qué comparte, ≤ 120>      (vacío: dejó de compartir)
 ```
 
 Cada 2,5 s por cada dirección de difusión privada. Se descarta todo lo que no venga de la subred IPv4 privada local. El anuncio no está firmado: solo sirve para listar equipos. La identidad se comprueba al conectar. Si la huella anunciada de un equipo conocido no coincide con la guardada, se muestra como **identidad cambiada** y no se le puede enviar nada.
@@ -77,6 +78,9 @@ El cliente aplica la misma regla: si conocía al servidor y la clave es otra, ci
 | `C` | Chat | `texto` nombre · `texto` mensaje (≤ 4 000 bytes, ≤ 2 000 caracteres) | `u8` 1 |
 | `D` | Señal | `texto` nombre · `u8` tipo (2 escribiendo, 3 presencia, 4 zumbido) · `texto` cuerpo | `u8` 1 |
 | `S` | Pantalla | `texto` nombre · `texto` origen (≤ 400) | `u8` 1 acepta / 0; si acepta, sigue el flujo de pantalla |
+| `J` | Pedir unirse (posterior a 0.5.0) | `texto` nombre (≤ 80) | `u8` 1 se atiende (está compartiendo) / 0. Si quien comparte acepta, envía después una operación `S` normal |
+
+`LAZO3P` se anuncia junto con los demás mientras se comparte, y una vez vacío al dejar de hacerlo; quien deja de recibirlo 8 s retira a ese equipo de «Compartiendo ahora». Solo sirve para listar: unirse pasa por `J`, autenticado, y lo decide quien comparte. Los equipos 0.5.0 lo ignoran; si reciben `J`, cierran sin responder.
 
 Una conexión lleva una sola operación.
 
@@ -93,7 +97,12 @@ Tras `S` aceptado, quien comparte (cliente) envía:
 - `K` (sigue viva) · `E` (fin)
 - `H` `u8` versión · `P` `u8` permisos · `D` `u8` permiso rechazado · `A` `u16` longitud + trazo
 
-Quien mira envía: `H` `u8` versión · `R` `u8` petición (con `0x80` = renunciar) · `A` `u16` longitud + trazo · `I` evento de entrada.
+Quien mira envía: `H` `u8` versión · `R` `u8` petición (con `0x80` = renunciar) · `A` `u16` longitud + trazo · `I` evento de entrada · `M` puntero (versión ≥ 2).
+
+Versiones del canal de retorno: `1` (0.5.0) y `2` (punteros colaborativos). Los paquetes `M` solo se cruzan si los dos lados saludaron con `2` o más; un lado de versión 1 nunca los recibe.
+
+- Quien mira → quien comparte: `M` `u8` visible · `u16` x · `u16` y (normalizadas). Solo mientras dibuja o controla; sin esos permisos se ignora.
+- Quien comparte → los demás que miran: `M` `u16` longitud + [`i32` id del visor · `u8` visible · `u16` x · `u16` y · `u8` color · nombre UTF‑8 (≤ 180 bytes)].
 
 Permisos: `1` dibujar · `2` control · `4` control total del equipo (solo junto con `2`; sin él, **Ventana activa**).
 
