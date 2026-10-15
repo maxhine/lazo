@@ -29,6 +29,17 @@ namespace Lazo
         private long _downTick;
         private long _lastTapTick;
 
+        // Estado de Ctrl y Alt izquierdo según el teclado físico (la entrada inyectada no cuenta).
+        private bool _ctrlDown;
+        private bool _leftAltDown;
+
+        /// <summary>
+        /// Atajos de emergencia: Ctrl + Alt izquierdo + letra, solo desde el teclado físico. Quien controla a distancia
+        /// no puede usarlos, y AltGr (Alt derecho, con el que se escribe @ en teclados latinoamericanos) no los activa.
+        /// Devuelve true si el atajo se usó; entonces la tecla no llega a la aplicación.
+        /// </summary>
+        public Func<char, bool> Chord;
+
         public bool AlternativeAvailable { get { return _registered; } }
         public bool DoubleAltAvailable { get { return _hook != IntPtr.Zero; } }
 
@@ -69,6 +80,14 @@ namespace Lazo
                     // La entrada inyectada (control remoto, macros) no abre Lazo: solo el teclado real.
                     if ((data.Flags & 0x10) != 0) return CallNextHookEx(_hook, code, wParam, lParam);
                     bool leftAlt = data.VkCode == 0xA4 || (data.VkCode == 0x12 && (data.Flags & 0x01) == 0);
+                    char letter = Feed(data.VkCode, data.ScanCode, data.Flags, down);
+                    if (letter != '\0')
+                    {
+                        Func<char, bool> chord = Chord;
+                        _otherKey = true;
+                        _lastTapTick = 0;
+                        if (chord != null && chord(letter)) return new IntPtr(1);
+                    }
                     long now = Environment.TickCount & int.MaxValue;
                     if (leftAlt)
                     {
@@ -101,6 +120,27 @@ namespace Lazo
                 }
             }
             return CallNextHookEx(_hook, code, wParam, lParam);
+        }
+
+        /// <summary>
+        /// Lleva la cuenta de Ctrl y Alt izquierdo físicos y devuelve la letra si esta pulsación completa
+        /// Ctrl + Alt izquierdo + letra; si no, '\0'. La entrada inyectada nunca cuenta.
+        /// </summary>
+        internal char Feed(int vk, int scan, int flags, bool down)
+        {
+            if ((flags & 0x10) != 0) return '\0';
+            bool leftAlt = vk == 0xA4 || (vk == 0x12 && (flags & 0x01) == 0);
+            // AltGr envía un Ctrl izquierdo falso (código de exploración 0x21D); no cuenta como Ctrl.
+            bool ctrl = (vk == 0x11 || vk == 0xA2 || vk == 0xA3) && scan != 0x21D;
+            if (ctrl) _ctrlDown = down;
+            if (leftAlt) _leftAltDown = down;
+            if (down && _ctrlDown && _leftAltDown && vk >= 0x41 && vk <= 0x5A) return (char)vk;
+            return '\0';
+        }
+
+        /// <summary>Para pruebas: solo la lógica de los atajos, sin gancho de teclado.</summary>
+        internal Hotkeys()
+        {
         }
 
         public void Dispose()

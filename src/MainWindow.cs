@@ -3091,9 +3091,41 @@ namespace Lazo
         private void SetupHotkeys()
         {
             _hotkeys = new Hotkeys(this, Toggle);
+            _hotkeys.Chord = OnShareChord;
             if (!_hotkeys.DoubleAltAvailable && !_hotkeys.AlternativeAvailable) SetStatus("Abre Lazo desde la bandeja.");
             else if (!_hotkeys.DoubleAltAvailable) SetStatus("Ctrl+Alt+L para abrir Lazo.");
             else if (!_hotkeys.AlternativeAvailable) SetStatus("Doble Alt para abrir Lazo.");
+        }
+
+        /// <summary>
+        /// Atajos de emergencia mientras comparto, desde el teclado físico (quien controla no puede usarlos):
+        /// Ctrl+Alt+Q quita permisos de dibujar y controlar · Ctrl+Alt+X deja de compartir ·
+        /// Ctrl+Alt+A acepta el último aviso (el control, solo en ventana activa) · Ctrl+Alt+R lo rechaza.
+        /// Corre en el gancho de teclado: decide al momento y deja el trabajo para después.
+        /// </summary>
+        private bool OnShareChord(char key)
+        {
+            ScreenShareSession session = _share;
+            switch (key)
+            {
+                case 'Q':
+                    if (session == null || !session.AnyGranted) return false;
+                    session.RevokeAll();
+                    Dispatcher.BeginInvoke((Action)(() => ShowToast("Quitaste todos los permisos (Ctrl+Alt+Q)")));
+                    return true;
+                case 'X':
+                    if (session == null) return false;
+                    Dispatcher.BeginInvoke((Action)StopShare);
+                    return true;
+                case 'A':
+                case 'R':
+                    if (_sharePrompts.Count == 0) return false;
+                    PermissionPromptWindow prompt = _sharePrompts[_sharePrompts.Count - 1];
+                    bool accept = key == 'A';
+                    Dispatcher.BeginInvoke((Action)(() => { if (accept) prompt.Accept(); else prompt.Dismiss(); }));
+                    return true;
+            }
+            return false;
         }
 
         private void Toggle() { if (IsVisible) HideAnimated(); else ShowAnimated(); }
@@ -3961,7 +3993,7 @@ namespace Lazo
                 session.Answer(viewerId, kind, accept, full);
                 if (!accept) return;
                 if (kind != SharePermission.Control) ShowToast(name + " puede dibujar en tu pantalla");
-                else ShowToast(full ? name + " tiene el control total del equipo" : name + " puede controlar la ventana activa");
+                else ShowToast(full ? name + " tiene el control total del equipo · Ctrl+Alt+Q para quitarlo" : name + " puede controlar la ventana activa · Ctrl+Alt+Q para quitarlo");
             });
             _sharePrompts.Add(prompt);
             prompt.Show();

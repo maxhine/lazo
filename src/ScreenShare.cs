@@ -1725,7 +1725,7 @@ namespace Lazo
                 _revokeButton = Theme.Button("Quitar permisos", false);
                 _revokeButton.MinHeight = 28;
                 _revokeButton.Margin = new Thickness(8, 0, 0, 0);
-                _revokeButton.ToolTip = "Nadie podrá dibujar ni controlar tu equipo hasta que vuelvas a permitirlo";
+                _revokeButton.ToolTip = "Nadie podrá dibujar ni controlar tu equipo hasta que vuelvas a permitirlo (Ctrl+Alt+Q)";
                 _revokeButton.Visibility = Visibility.Collapsed;
                 _revokeButton.Click += (s, e) => revoke();
                 row.Children.Add(_revokeButton);
@@ -1747,6 +1747,7 @@ namespace Lazo
             stopButton.MinHeight = 28;
             stopButton.Margin = new Thickness(14, 0, 0, 0);
             { stopButton.Background = Theme.Danger; stopButton.BorderBrush = Theme.Danger; stopButton.Foreground = Brushes.White; }
+            stopButton.ToolTip = "Dejar de compartir (Ctrl+Alt+X)";
             stopButton.Click += (s, e) => stop();
             row.Children.Add(stopButton);
             StackPanel rows = new StackPanel();

@@ -635,6 +635,13 @@ namespace Lazo
                 buttons.Children.Add(allow);
             }
             body.Children.Add(buttons);
+            TextBlock keys = Theme.Text(control
+                ? "Ctrl+Alt+A: ventana activa · Ctrl+Alt+R: rechazar · Ctrl+Alt+Q: quitar el control después"
+                : "Ctrl+Alt+A: aceptar · Ctrl+Alt+R: rechazar", 10.5, Theme.Muted);
+            keys.TextWrapping = TextWrapping.Wrap;
+            keys.HorizontalAlignment = HorizontalAlignment.Right;
+            keys.Margin = new Thickness(0, 8, 2, 0);
+            body.Children.Add(keys);
             Content = new Border
             {
                 Margin = new Thickness(10),
@@ -666,6 +673,12 @@ namespace Lazo
         public void Dismiss()
         {
             Answer(false, false);
+        }
+
+        /// <summary>Atajo Ctrl+Alt+A: acepta. Para el control, la opción prudente: solo la ventana activa.</summary>
+        public void Accept()
+        {
+            Answer(true, false);
         }
 
         private void Answer(bool accept, bool full)

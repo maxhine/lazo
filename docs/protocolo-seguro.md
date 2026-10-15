@@ -109,7 +109,7 @@ Permisos: `1` dibujar · `2` control · `4` control total del equipo (solo junto
 
 Evento `I`: `u8` tipo; `1` mover `u16 x` `u16 y`; `2`/`3` botón abajo/arriba `u8` botón (1 izq, 2 der, 3 centro) `u16 x` `u16 y`; `4` rueda `i16` delta `u16 x` `u16 y`; `5`/`6` tecla abajo/arriba `u16` código virtual de Windows. Coordenadas normalizadas 0–65535 sobre lo compartido. En macOS, ⌘ y ⌃ se envían como `VK_CONTROL` y ⌥ como `VK_MENU`; al recibir, `VK_CONTROL` se reproduce como ⌘.
 
-Trazos: `u8` tipo (1 empieza, 2 puntos, 3 borra, 4 borra todo) · `i32` id · [empieza: `u8` herramienta (1 lápiz, 2 marcador, 3 flecha, 4 recuadro) · `u32` color ARGB] · [empieza/puntos: `u16` n · n × (`u16` x · `u16` y)].
+Trazos: `u8` tipo (1 empieza, 2 puntos, 3 borra, 4 borra todo) · `i32` id · [empieza: `u8` herramienta (1 lápiz, 2 marcador, 3 flecha, 4 recuadro, 5 láser: quien lo traza lo borra para todos 1,2 s después de levantar el mouse; no se envía a quien se une tarde y las versiones sin láser lo descartan) · `u32` color ARGB] · [empieza/puntos: `u16` n · n × (`u16` x · `u16` y)].
 
 ### Modos de control
 
