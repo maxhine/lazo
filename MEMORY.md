@@ -2,9 +2,26 @@
 
 Proyecto local de SARCA para transferir archivos entre equipos Windows 10/11 de una misma subred.
 
-Última actualización: 2026-10-14
+Última actualización: 2026-10-15 (no acredita instalación en los equipos del equipo)
 
-## Estado documentado y siguiente paso
+## Estado actual (2026-10-15)
+
+- **Publicada 0.5.2 (Latest)**: PR maxhine/lazo#5 fusionada (`839ac7a`), tag `v0.5.2`, release https://github.com/maxhine/lazo/releases/tag/v0.5.2. `Lazo-Setup-0.5.2.exe` SHA-256 `39F6EE247460DC0D7BBFBF2F5726C26F45207E09876C0EC5E32873481B8270F5`; `Lazo-0.5.2.zip` `3C683E04288F085C0FC47EE5582DDFCDE452BACD9F8B888E7DC0CA723EAD215D`; digest de GitHub coincide. Incluye **Utilidades** y conversor de nubes de puntos a ReCap (ver abajo), carpeta de recepción elegible y barra lateral sin íconos montados.
+- **Publicada 0.5.1**: PR maxhine/lazo#4 (`0107d8d`), tag `v0.5.1`. Punteros colaborativos con nombre, «Compartiendo ahora» + Unirme, pedir que compartan, mosaico de pantallas (estilo Discord), láser, borrar dibujos del host, atajos de emergencia (Ctrl+Alt izquierdo + Q quitar permisos / X dejar de compartir / A aceptar / R rechazar; solo teclado físico, AltGr no cuenta), instalador WPF con tema Oscuro que relanza Lazo como usuario, tema Oscuro por defecto.
+- **0.5.0**: PR maxhine/lazo#2 (Julián Garzón + protocolo LAZO3 cifrado + mitigación de primer contacto contra el anuncio UDP) y maxhine/lazo#3 (app macOS) fusionadas; v0.5.0 quedó como versión previa (pre-release). Sustituye a «0.5.0 en preparación» del historial.
+- **Pendiente crítico: firmas `.sig`**. Desde 0.5 el actualizador solo instala versiones firmadas con la clave privada que está **solo** en el Mac de Jhon (`~/.lazo/release-signing-key.pem`). v0.5.1 y v0.5.2 se publicaron **sin** `.sig`: los equipos en 0.5.x no se actualizan solos hasta subirla (`scripts/sign-release.sh` + `gh release upload … .sig`); mientras tanto, instalar a mano. Los 0.4.x no piden firma.
+- Pendientes: prueba física entre dos equipos (pantalla compartida, control, mosaico); paridad en macOS (sigue en 0.5.0 sin las novedades de 0.5.1/0.5.2; Origen Nacional no implementado en Swift); E57 no probado con archivo real.
+- Siguiente paso: subir las firmas de v0.5.1/v0.5.2 desde el Mac.
+
+### Conversor de nubes (Utilidades) — hallazgos confirmados
+
+- RCS/RCP es formato cerrado: se usa `C:\Program Files\Autodesk\Autodesk ReCap\decap.exe --importWithLicense` (licencia de ReCap del equipo). DeCap termina con código 0 aunque falle: el resultado se decide por sus líneas `[P]`, `[R]`, `[E]` y por los archivos.
+- `--unify` genera un `.rcs` único sin `.rcp`; sin él, `.rcp` + un `.rcs` por escaneo en «<nombre> Support». Con `--unify`, DeCap **ignora** la reproyección (hay que hacer proyecto reproyectado y luego unificar).
+- Un código de sistema que ReCap no conoce se ignora **en silencio**: solo ofrecer claves de `%ProgramData%\Autodesk\Geospatial Coordinate Systems <versión>\Coordsys.CSD` (registros de 728 bytes: clave, grupo @96, unidad @192, descripción @584, EPSG @724).
+- **Origen Nacional (EPSG 9377) no existe** en la biblioteca de Autodesk (14.09–15.02): Lazo lo calcula (TM Krüger 6.º orden, GRS80, contrastada con Snyder < 1 mm), reescribe LAS/LAZ (LAZ con `laszip3.dll` de ReCap) y aplica EGM2008 con `egm08_25.gtx` (Documentos\Bentley\iTwin Capture Modeler). MAGNA-SIRGAS y MAGNA-SIRGAS 2018 se tratan sin desplazamiento de datum (como los `.prj` de iTwin Capture). Decisión de Jhon: sistemas destacados = sus tres `.prj` de iTwin Capture.
+- Rendimiento (i9-14900K, LAS 2,8 GB): DeCap lee con un núcleo; 8 DeCap en paralelo por tramos es el óptimo (16 no mejora). Proyecto 164 → 97 s; a Origen Nacional 615 → 129 s. Unir `.rcs` desde partes es más lento que DeCap directo **sin** reducción, y rápido **con** reducción. Varios DeCap a la vez pueden fallar con «Licensing Error»: arranque escalonado + reintento. Nube real de 52 GB con 50 mm convertida por Jhon en ~15 min.
+
+## Estado documentado y siguiente paso (historial anterior a 0.5)
 
 - **Publicada 0.4.16 (2026-10-08)**: commit `9147b2b` en `main` (avance rápido, sin force), tag `v0.4.16`, release https://github.com/maxhine/lazo/releases/tag/v0.4.16 marcada como última. `Lazo-Setup-0.4.16.exe` SHA-256 `7A1B6C6A526271F93ABED7A1A575C5F6A1A8A96E2E2D15A2556E347677CCA1C4`; `Lazo-0.4.16.zip` SHA-256 `88C6F61DCF5F09B49BD98ECA38D718C92375C2E6338499FAA5EDB0EA61DF2C96`; los digest de GitHub coinciden. Incluye rediseño Liquid Glass, temas Vino/Meet/Imagen, acento (también sugerido por la imagen), chat estilo Discord, pantalla compartida y arreglo de inicio con Windows. Pruebas sobre el binario publicado: build Release, `test-visual`, `test-everything`, `test-network`, `test-installer`; `test-screen` se ejecutó antes sobre el mismo código de pantalla compartida. Pendiente: prueba entre dos equipos físicos y en Windows 10.
 - Versión publicada documentada: 0.4.15, con apariencia Cálido y correcciones de reloj digital/análogo y conservación de borradores de chat ante fallos de envío. Se conservan Plano, Vidrio y Oscuro.
