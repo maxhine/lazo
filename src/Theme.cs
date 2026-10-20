@@ -547,6 +547,12 @@ namespace Lazo
             {
                 bool wasHidden = element.Visibility != Visibility.Visible;
                 element.Visibility = Visibility.Visible;
+                // Un cierre en curso sigue animando la opacidad: si no se suelta, volver a abrir en ese instante lo deja oculto.
+                if (!wasHidden)
+                {
+                    element.BeginAnimation(UIElement.OpacityProperty, null);
+                    shift.BeginAnimation(TranslateTransform.XProperty, null);
+                }
                 if (!wasHidden || !SystemParameters.ClientAreaAnimation) { element.Opacity = 1; shift.X = 0; return; }
                 element.BeginAnimation(UIElement.OpacityProperty, Animation(0, 1, 260));
                 shift.BeginAnimation(TranslateTransform.XProperty, Animation(offsetX, 0, 320));
