@@ -32,6 +32,7 @@ namespace Lazo
             {
                 if (arg.StartsWith("--preview-panel=")) MainWindow.PreviewPanel = arg.Substring(16);
                 if (arg.StartsWith("--preview-cloud=")) MainWindow.PreviewCloud = arg.Substring(16);
+                if (arg.StartsWith("--preview-xpace=")) MainWindow.PreviewXpace = arg.Substring(16);
             }
             if (Array.IndexOf(args, "--preview-share") >= 0) MainWindow.PreviewPanel = "share";
             if (Array.IndexOf(args, "--preview-eyecare-alert") >= 0)

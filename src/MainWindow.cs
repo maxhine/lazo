@@ -74,6 +74,8 @@ namespace Lazo
         internal static string PreviewPanel;
         /// <summary>Vista previa de Utilidades con una nube ya cargada (--preview-cloud=ruta).</summary>
         internal static string PreviewCloud;
+        /// <summary>Vista previa de Utilidades con Xpace analizando una carpeta (--preview-xpace=ruta).</summary>
+        internal static string PreviewXpace;
         private System.Windows.Shapes.Path _navShareIcon, _navToolsIcon;
         private TextBlock _sectionCount;
         private TextBlock _heroChip;
@@ -146,6 +148,7 @@ namespace Lazo
             {
                 if (PreviewCloud != null) { AddCloudFiles(new[] { PreviewCloud }); _cloudTarget = new CsChoice { Lazo = LazoProjection.ById("on-egm") }; }
                 _toolsOpen = true;
+                if (PreviewXpace != null) { _toolId = "xpace"; XpaceTool(); _xpace.Start(PreviewXpace); }
                 SyncChrome();
             }
             if (PreviewPanel == "chat") { _chatOpen = true; SyncChrome(); ChatThread first = ChatStore.Threads().OrderByDescending(t => t.When).FirstOrDefault(); if (first != null && _chatPanel != null) _chatPanel.Open(first.Id, first.Name); }

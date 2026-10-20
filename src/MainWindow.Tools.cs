@@ -17,6 +17,9 @@ namespace Lazo
     {
         private bool _toolsOpen;
         private Border _toolsCard;
+        /// <summary>Utilidad abierta: «cloud» (nubes de puntos) o «xpace» (espacio en disco).</summary>
+        private string _toolId = "cloud";
+        private XpaceSession _xpace;
 
         // Estado del conversor: sobrevive a que se cierre y se vuelva a abrir el panel.
         private readonly List<string> _cloudFiles = new List<string>();
@@ -125,14 +128,46 @@ namespace Lazo
 
             // Galería: cada utilidad nueva se suma aquí como una tarjeta más.
             WrapPanel gallery = new WrapPanel { Margin = new Thickness(0, 0, 0, 8) };
-            gallery.Children.Add(ToolTile(CloudGlyph(), "Nube de puntos a ReCap", "LAS, LAZ o E57 a .rcp o .rcs, con su sistema de coordenadas", true, () => { }));
+            gallery.Children.Add(ToolTile(CloudGlyph(), "Nube de puntos", "LAS, LAZ o E57 a ReCap, LAS, XYZ, PTS o CSV, con vista previa de la reducción", _toolId == "cloud", () => SelectTool("cloud")));
+            gallery.Children.Add(ToolTile(XpaceGlyph(), "Xpace", "Dónde se va el espacio en disco: carpetas, archivos grandes y tipos", _toolId == "xpace", () => SelectTool("xpace")));
             panel.Children.Add(gallery);
             panel.Children.Add(new Border { Height = 1, Background = Theme.Line, Margin = new Thickness(0, 0, 12, 12) });
-            panel.Children.Add(PointCloudTool());
+            panel.Children.Add(_toolId == "xpace" ? XpaceTool() : PointCloudTool());
             return Scroll(panel);
         }
 
         // ── Nubes de puntos a ReCap ───────────────────────────────────────
+
+        private void SelectTool(string id)
+        {
+            if (_toolId == id) return;
+            _toolId = id;
+            RefreshToolsCard();
+        }
+
+        private UIElement XpaceTool()
+        {
+            if (_xpace == null)
+            {
+                _xpace = new XpaceSession(Dispatcher);
+                _xpace.Changed += () => { if (_toolsOpen && _toolId == "xpace") RefreshToolsCard(); };
+            }
+            return new XpaceView(_xpace, text => ShowToast(text));
+        }
+
+        private UIElement XpaceGlyph()
+        {
+            Canvas map = new Canvas { Width = 20, Height = 20 };
+            double[][] boxes = { new[] { 2.0, 2, 9, 16 }, new[] { 12.0, 2, 6, 7 }, new[] { 12.0, 11, 6, 7 } };
+            foreach (double[] b in boxes)
+            {
+                System.Windows.Shapes.Rectangle box = new System.Windows.Shapes.Rectangle { Width = b[2], Height = b[3], Stroke = Theme.Ink, StrokeThickness = 1.6, RadiusX = 2, RadiusY = 2 };
+                Canvas.SetLeft(box, b[0]);
+                Canvas.SetTop(box, b[1]);
+                map.Children.Add(box);
+            }
+            return map;
+        }
 
         private UIElement PointCloudTool()
         {
