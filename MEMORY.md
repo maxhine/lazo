@@ -13,6 +13,11 @@ Proyecto local de SARCA para transferir archivos entre equipos Windows 10/11 de 
 - Pendientes: prueba física entre dos equipos (pantalla compartida, control, mosaico); paridad en macOS (sigue en 0.5.0 sin las novedades de 0.5.1/0.5.2; Origen Nacional no implementado en Swift); E57 no probado con archivo real.
 - Siguiente paso: subir las firmas de v0.5.1/v0.5.2 desde el Mac.
 
+### En desarrollo, sin publicar (2026-10-20): rama `feature/xpace-conversor`
+
+- **Conversor**: DeCap solo escribe `.rcp`/`.rcs` (`--help` no ofrece mÃ¡s), asÃ­ que los formatos **LAS, XYZ, PTS y CSV** los escribe Lazo (`CloudReaders.cs`: lectores LAS, LAZ con la LASzip de ReCap y E57 cartesiano; `CloudExport.cs`: reducciÃ³n por celdas, reproyecciÃ³n propia solo LAS/LAZ). La reducciÃ³n de esos formatos es por voxel (primer punto de cada celda), no idÃ©ntica a la de ReCap. E57 probado solo con un archivo sintÃ©tico propio, no con uno real. **Vista previa de la reducciÃ³n** (`CloudPreview.cs`, `MainWindow.CloudPreview.cs`): ventana de ~40Ã— la distancia sobre 1,5 M de puntos seguidos de la zona elegida (Inicio/Medio/Final), original vs reducida, planta o frente, ~25 ms. Es aproximada para ReCap.
+- **Xpace** (nueva utilidad, `XpaceScanner.cs`, `XpaceView.cs`, `XpaceMap.cs`): anÃ¡lisis paralelo con FindFirstFileEx, sin administrador y sin leer contenido; tamaÃ±o lÃ³gico; no sigue enlaces. Medido: C:\Program Files 555 k archivos en 1,2 s; C:\Users (OneDrive) 633 k en 13 s. Vistas: Mapa de Ã¡rbol (referencia visual de Jhon: treemap con migas y franja de indicadores), Lista, Archivos grandes, Tipos. Pendiente: recomendaciones de limpieza (cachÃ©s seguras para borrar), modo MFT con administrador, instalaciÃ³n real.
+- Pruebas nuevas: `scripts/test-cloudformats.ps1`, `scripts/test-xpace.ps1 [ruta]`; `test-pointcloud.ps1` sigue pasando con DeCap real.
 ### Conversor de nubes (Utilidades) — hallazgos confirmados
 
 - RCS/RCP es formato cerrado: se usa `C:\Program Files\Autodesk\Autodesk ReCap\decap.exe --importWithLicense` (licencia de ReCap del equipo). DeCap termina con código 0 aunque falle: el resultado se decide por sus líneas `[P]`, `[R]`, `[E]` y por los archivos.

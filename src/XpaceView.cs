@@ -22,7 +22,8 @@ namespace Lazo
         public bool Running;
         public XResult Result;
         public string Error;
-        public string Tab = "folders";
+        public string Tab = "map";
+        public XNode MapNode;
         public readonly HashSet<XNode> Expanded = new HashSet<XNode>();
         public double Offset;
         public string SelectedKey;
@@ -52,6 +53,7 @@ namespace Lazo
             Error = null;
             Result = null;
             Expanded.Clear();
+            MapNode = null;
             Offset = 0;
             SelectedKey = null;
             Running = true;
@@ -74,7 +76,7 @@ namespace Lazo
                     Running = false;
                     Result = result;
                     Error = error;
-                    if (result != null && !result.Cancelled) Expanded.Add(result.Root);
+                    if (result != null && !result.Cancelled) { Expanded.Add(result.Root); MapNode = result.Root; }
                     if (result != null && result.Cancelled) { Result = null; Error = "Análisis cancelado."; }
                     Raise();
                 }));
@@ -526,15 +528,34 @@ namespace Lazo
             // Resumen
             Border summary = new Border { Background = Theme.SoftSurface, CornerRadius = new CornerRadius(14), Padding = new Thickness(14, 10, 14, 10), Margin = new Thickness(0, 2, 0, 10) };
             StackPanel info = new StackPanel();
-            WrapPanel facts = new WrapPanel();
-            facts.Children.Add(Fact(XpaceList.SizeText(r.Bytes), "en total"));
-            facts.Children.Add(Fact(r.Files.ToString("N0", CultureInfo.CurrentCulture), "archivos"));
-            facts.Children.Add(Fact(r.Folders.ToString("N0", CultureInfo.CurrentCulture), "carpetas"));
-            facts.Children.Add(Fact(r.Elapsed.TotalSeconds.ToString("0.0", CultureInfo.CurrentCulture) + " s", "en analizar"));
-            info.Children.Add(facts);
+            Grid facts = new Grid();
             DriveInfo drive = null;
             try { drive = new DriveInfo(Path.GetPathRoot(r.Path)); } catch { }
-            if (drive != null && drive.IsReady && string.Equals(r.Path.TrimEnd('\\') + "\\", drive.RootDirectory.FullName, StringComparison.OrdinalIgnoreCase))
+            bool wholeDrive = drive != null && drive.IsReady && string.Equals(r.Path.TrimEnd('\\') + "\\", drive.RootDirectory.FullName, StringComparison.OrdinalIgnoreCase);
+            string[][] cells =
+            {
+                new[] { XpaceList.SizeText(r.Bytes), "Analizado" },
+                new[] { r.Files.ToString("N0", CultureInfo.CurrentCulture), "archivos" },
+                new[] { r.Folders.ToString("N0", CultureInfo.CurrentCulture), "carpetas" },
+                wholeDrive ? new[] { XpaceList.SizeText(drive.AvailableFreeSpace), "libres en el disco" } : new[] { r.Elapsed.TotalSeconds.ToString("0.0", CultureInfo.CurrentCulture) + " s", "en analizar" }
+            };
+            for (int i = 0; i < cells.Length; i++)
+            {
+                facts.ColumnDefinitions.Add(new ColumnDefinition());
+                StackPanel cell = new StackPanel { Margin = new Thickness(i == 0 ? 0 : 14, 0, 6, 0) };
+                cell.Children.Add(Theme.Text(cells[i][1], 10.5, Theme.Muted));
+                cell.Children.Add(Theme.Text(cells[i][0], 19, Theme.Ink, FontWeights.SemiBold));
+                Grid.SetColumn(cell, i);
+                facts.Children.Add(cell);
+                if (i > 0)
+                {
+                    Border divider = new Border { Width = 1, Background = Theme.Line, HorizontalAlignment = HorizontalAlignment.Left };
+                    Grid.SetColumn(divider, i);
+                    facts.Children.Add(divider);
+                }
+            }
+            info.Children.Add(facts);
+            if (wholeDrive)
             {
                 long used = drive.TotalSize - drive.AvailableFreeSpace;
                 info.Children.Add(Meter(used, drive.TotalSize, r.Bytes));
@@ -554,7 +575,7 @@ namespace Lazo
 
             // Vistas
             WrapPanel tabs = new WrapPanel { Margin = new Thickness(0, 0, 0, 8) };
-            string[][] views = { new[] { "folders", "Carpetas" }, new[] { "files", "Archivos grandes" }, new[] { "types", "Tipos de archivo" } };
+            string[][] views = { new[] { "map", "Mapa" }, new[] { "folders", "Lista" }, new[] { "files", "Archivos grandes" }, new[] { "types", "Tipos de archivo" } };
             foreach (string[] view in views)
             {
                 string id = view[0];
@@ -564,6 +585,11 @@ namespace Lazo
             }
             Children.Add(tabs);
 
+            if (_s.Tab == "map")
+            {
+                BuildMap();
+                return;
+            }
             _list = new XpaceList { Height = 330, Offset = _s.Offset };
             _list.Toggle += row =>
             {
@@ -583,12 +609,42 @@ namespace Lazo
             Children.Add(hint);
         }
 
-        private UIElement Fact(string value, string label)
+        /// <summary>Mapa de árbol con migas de pan: cada recuadro es una carpeta y un clic entra en ella.</summary>
+        private void BuildMap()
         {
-            StackPanel fact = new StackPanel { Margin = new Thickness(0, 0, 22, 0) };
-            fact.Children.Add(Theme.Text(value, 18, Theme.Ink, FontWeights.SemiBold));
-            fact.Children.Add(Theme.Text(label, 10.5, Theme.Muted));
-            return fact;
+            XNode node = _s.MapNode ?? _s.Result.Root;
+            List<XNode> chain = new List<XNode>();
+            for (XNode n = node; n != null; n = n.Parent) chain.Insert(0, n);
+            Grid crumbs = new Grid { Margin = new Thickness(2, 0, 2, 6) };
+            crumbs.ColumnDefinitions.Add(new ColumnDefinition());
+            crumbs.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+            WrapPanel trail = new WrapPanel { VerticalAlignment = VerticalAlignment.Center };
+            for (int i = 0; i < chain.Count; i++)
+            {
+                XNode target = chain[i];
+                bool last = i == chain.Count - 1;
+                TextBlock label = Theme.Text(i == 0 ? _s.Result.Path : target.Name, 12, last ? Theme.Ink : Theme.Muted, last ? FontWeights.SemiBold : FontWeights.Normal);
+                label.TextWrapping = TextWrapping.NoWrap;
+                label.Cursor = last ? Cursors.Arrow : Cursors.Hand;
+                if (!last) label.MouseLeftButtonDown += (s, e) => { _s.MapNode = target; Rebuild(); };
+                trail.Children.Add(label);
+                if (!last) trail.Children.Add(Theme.Text("  ›  ", 12, Theme.Muted));
+            }
+            crumbs.Children.Add(trail);
+            TextBlock total = Theme.Text(XpaceList.SizeText(node.Size), 12, Theme.Muted);
+            total.FontFamily = Theme.Mono;
+            Grid.SetColumn(total, 1);
+            crumbs.Children.Add(total);
+            Children.Add(crumbs);
+
+            XpaceMap map = new XpaceMap { Height = 340 };
+            map.Drill += child => { _s.MapNode = child; Rebuild(); };
+            map.Show(node);
+            Border frame = new Border { CornerRadius = new CornerRadius(14), BorderBrush = Theme.Line, BorderThickness = new Thickness(1), Padding = new Thickness(6), Child = map };
+            Children.Add(frame);
+            TextBlock hint = Theme.Text("Cada recuadro mide lo que ocupa. Clic en una carpeta para entrar · las migas de arriba vuelven atrás · pasa el cursor para ver el detalle.", 10.5, Theme.Muted);
+            hint.Margin = new Thickness(0, 6, 0, 0);
+            Children.Add(hint);
         }
 
         private UIElement Meter(long used, long total, long seen)
