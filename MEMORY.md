@@ -2,7 +2,7 @@
 
 Proyecto local de SARCA para transferir archivos entre equipos Windows 10/11 de una misma subred.
 
-Última actualización: 2026-10-15 (no acredita instalación en los equipos del equipo)
+Última actualización: 2026-10-20 (no acredita instalación en los equipos del equipo)
 
 ## Estado actual (2026-10-15)
 
@@ -13,6 +13,18 @@ Proyecto local de SARCA para transferir archivos entre equipos Windows 10/11 de 
 - Pendientes: prueba física entre dos equipos (pantalla compartida, control, mosaico); paridad en macOS (sigue en 0.5.0 sin las novedades de 0.5.1/0.5.2; Origen Nacional no implementado en Swift); E57 no probado con archivo real.
 - Siguiente paso: subir las firmas de v0.5.1/v0.5.2 desde el Mac.
 
+### Publicada 0.5.3 (2026-10-20)
+
+- Incluye: **conversor** con formatos LAS/XYZ/PTS/CSV escritos por Lazo y vista previa de la reducción; **Xpace** (espacio en disco, mapa de árbol); **chat**: eliminar mensajes (para mí / para todos), vaciar conversación, **grupos** sin servidor con cola de entrega (`ChatOutbox`, 14 días) y borrar el historial de archivos; arreglos: un panel reabierto durante su animación de cierre quedaba invisible (`Theme.Reveal`) y **el cierre de Lazo al arrastrar la ventana** (excepción sin atender en `MainWindow.IsInteractive` al hacer clic sobre un fragmento de texto; visto en el Registro de eventos de Windows).
+- Protocolo: señales nuevas 5–8 (borrar, mensaje de grupo, alta de grupo, salir). Los mensajes directos llevan su identificador escondido con caracteres invisibles, así que siguen siendo compatibles con 0.5.2; los grupos y «eliminar para todos» solo funcionan entre equipos con 0.5.3.
+- Pruebas: `test-chat` (lógica), `test-chat-panel` (dibujo fuera de pantalla, sin ventanas), `test-cloudformats`, `test-xpace`, `test-pointcloud`, `test-network`, `test-ui` (abre ventanas reales de Lazo y las deja encima: avisar antes de correrla).
+- **Pendiente**: firma `.sig` de v0.5.3 desde el Mac (sin ella los equipos 0.5.x no se actualizan solos); prueba entre dos equipos físicos (grupos y borrado para todos solo se probaron por red local en este PC y con el panel dibujado fuera de pantalla); E57 con un archivo real; recomendaciones de limpieza de Xpace.
+
+### En desarrollo, sin publicar (2026-10-20): rama `feature/xpace-conversor`
+
+- **Conversor**: DeCap solo escribe `.rcp`/`.rcs` (`--help` no ofrece más), así que los formatos **LAS, XYZ, PTS y CSV** los escribe Lazo (`CloudReaders.cs`: lectores LAS, LAZ con la LASzip de ReCap y E57 cartesiano; `CloudExport.cs`: reducción por celdas, reproyección propia solo LAS/LAZ). La reducción de esos formatos es por voxel (primer punto de cada celda), no idéntica a la de ReCap. E57 probado solo con un archivo sintético propio, no con uno real. **Vista previa de la reducción** (`CloudPreview.cs`, `MainWindow.CloudPreview.cs`): ventana de ~40× la distancia sobre 1,5 M de puntos seguidos de la zona elegida (Inicio/Medio/Final), original vs reducida, planta o frente, ~25 ms. Es aproximada para ReCap.
+- **Xpace** (nueva utilidad, `XpaceScanner.cs`, `XpaceView.cs`, `XpaceMap.cs`): análisis paralelo con FindFirstFileEx, sin administrador y sin leer contenido; tamaño lógico; no sigue enlaces. Medido: C:\Program Files 555 k archivos en 1,2 s; C:\Users (OneDrive) 633 k en 13 s. Vistas: Mapa de árbol (referencia visual de Jhon: treemap con migas y franja de indicadores), Lista, Archivos grandes, Tipos. Pendiente: recomendaciones de limpieza (cachés seguras para borrar), modo MFT con administrador, instalación real.
+- Pruebas nuevas: `scripts/test-cloudformats.ps1`, `scripts/test-xpace.ps1 [ruta]`; `test-pointcloud.ps1` sigue pasando con DeCap real.
 ### Conversor de nubes (Utilidades) — hallazgos confirmados
 
 - RCS/RCP es formato cerrado: se usa `C:\Program Files\Autodesk\Autodesk ReCap\decap.exe --importWithLicense` (licencia de ReCap del equipo). DeCap termina con código 0 aunque falle: el resultado se decide por sus líneas `[P]`, `[R]`, `[E]` y por los archivos.

@@ -22,6 +22,20 @@ namespace Lazo
             catch { }
         }
 
+        /// <summary>Borra del historial lo enviado («out»), lo recibido («in») o todo (null). Los archivos no se tocan.</summary>
+        public static void Clear(string direction)
+        {
+            try
+            {
+                string path = Path();
+                if (!File.Exists(path)) return;
+                if (direction == null) { File.Delete(path); return; }
+                List<string> keep = File.ReadAllLines(path).Where(row => { string[] parts = row.Split((char)124); return parts.Length < 2 || parts[1] != direction; }).ToList();
+                if (keep.Count == 0) File.Delete(path); else File.WriteAllLines(path, keep);
+            }
+            catch { }
+        }
+
         public static string[] Recent()
         {
             try

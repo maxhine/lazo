@@ -43,6 +43,8 @@ internal static class NetworkSmoke
             string chat = null;
             Guid chatFrom = Guid.Empty;
             receiver.ChatReceived += (id, name, text) => { chatFrom = id; chat = text; };
+            byte signalKind = 0; string signalBody = null;
+            receiver.ChatSignal += (id, name, kind, body) => { signalKind = kind; signalBody = body; };
             receiver.Start();
 
             // Descubrimiento: anuncio LAZO3 con huella.
@@ -127,6 +129,14 @@ internal static class NetworkSmoke
             await sender.SendChatAsync(target, "hola por canal cifrado");
             await Task.Delay(300);
             Check(chat == "hola por canal cifrado" && chatFrom == sender.SelfId, "chat con la identidad real");
+            string packed = "grupo" + (char)10 + "id" + (char)10 + "texto";
+            await sender.SendReliableSignalAsync(target, NetworkEngine.ChatKindGroupMessage, packed);
+            await Task.Delay(300);
+            Check(signalKind == NetworkEngine.ChatKindGroupMessage && signalBody == packed, "mensaje de grupo por el canal cifrado, con entrega confirmada");
+            bool undeliverable = false;
+            try { await sender.SendReliableSignalAsync(new Peer { Id = Guid.NewGuid(), Name = "nadie" }, NetworkEngine.ChatKindDelete, "x"); }
+            catch { undeliverable = true; }
+            Check(undeliverable, "enviar a quien no está conectado avisa del fallo (para dejarlo en cola)");
 
             // Quién está compartiendo (anuncio LAZO3P) y pedir unirse por el canal cifrado.
             using (UdpClient announcer = new UdpClient(new IPEndPoint(local, 0)))
