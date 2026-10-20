@@ -19,6 +19,8 @@ namespace Lazo
         public string Name;
         /// <summary>true: una sola nube .rcs; false: proyecto .rcp con un .rcs por escaneo.</summary>
         public bool Unify;
+        /// <summary>rcp, rcs (los escribe ReCap) o las, xyz, pts, csv (los escribe Lazo).</summary>
+        public string Format = "rcp";
         /// <summary>Proyecto .rcp: al final se unen las partes en un solo escaneo.</summary>
         public bool MergeParts;
         public int Unit = 2;
@@ -47,7 +49,7 @@ namespace Lazo
         {
             return new PointCloudJob
             {
-                Inputs = Inputs.ToList(), OutputFolder = OutputFolder, Name = Name, Unify = Unify, Unit = Unit,
+                Inputs = Inputs.ToList(), OutputFolder = OutputFolder, Name = Name, Unify = Unify, Format = Format, Unit = Unit,
                 DecimationMm = DecimationMm, SourceCs = SourceCs, TargetCs = TargetCs, MergeParts = MergeParts,
                 LazoFrom = LazoFrom, LazoTo = LazoTo, Ellipsoidal = Ellipsoidal, GeoidPath = GeoidPath
             };
@@ -124,7 +126,7 @@ namespace Lazo
                 text.AppendLine("  Ritmo: " + Size((long)(inputBytes / total.TotalSeconds)) + "/s");
             text.AppendLine();
             text.AppendLine("Opciones");
-            text.AppendLine("  Salida:       " + (_job.Unify ? "nube única .rcs" : "proyecto .rcp" + (_job.MergeParts ? " con un solo escaneo" : "")));
+            text.AppendLine("  Salida:       " + (CloudExport.IsLazoFormat(_job.Format) ? "archivo ." + _job.Format + " (lo escribe Lazo)" : _job.Unify ? "nube única .rcs" : "proyecto .rcp" + (_job.MergeParts ? " con un solo escaneo" : "")));
             text.AppendLine("  Reducción:    " + (_job.DecimationMm > 0 ? _job.DecimationMm.ToString("0.###", es) + " mm entre puntos" : "sin reducir"));
             text.AppendLine("  Unidades:     " + PointCloudConverter.UnitNames[Math.Max(0, Math.Min(PointCloudConverter.UnitNames.Length - 1, _job.Unit))]);
             if (_job.LazoTo != null) text.AppendLine("  Coordenadas:  " + (_job.LazoFrom != null ? _job.LazoFrom.Name : "?") + " → " + _job.LazoTo.Name + " (Lazo)" + (_job.Ellipsoidal ? ", alturas a EGM2008" : ""));
@@ -265,6 +267,8 @@ namespace Lazo
                 if (job.LazoTo.Egm2008 && job.Ellipsoidal && (job.GeoidPath == null || !File.Exists(job.GeoidPath)))
                     return "Para pasar las alturas a EGM2008 hace falta la malla egm08_25.gtx.";
             }
+            if (CloudExport.IsLazoFormat(job.Format) && job.Reprojects)
+                return "Los formatos que escribe Lazo (" + job.Format.ToUpperInvariant() + ") solo reproyectan con los sistemas que calcula Lazo; elige otro destino o un resultado de ReCap.";
             if (!string.IsNullOrEmpty(job.TargetCs) && string.IsNullOrEmpty(job.SourceCs))
                 return "Para reproyectar hay que indicar en qué sistema está la nube.";
             // ReCap ignora en silencio un código que no conoce: solo se aceptan los de su biblioteca.
@@ -290,6 +294,8 @@ namespace Lazo
 
         private static bool Taken(string folder, string name)
         {
+            foreach (string format in CloudExport.Formats)
+                if (File.Exists(Path.Combine(folder, name + "." + format))) return true;
             return File.Exists(Path.Combine(folder, name + ".rcp")) || File.Exists(Path.Combine(folder, name + ".rcs")) ||
                    Directory.Exists(Path.Combine(folder, name + " Support"));
         }
@@ -327,6 +333,13 @@ namespace Lazo
             string name = FreeName(job.OutputFolder, CleanName(job.Name));
             ConversionReport report = new ConversionReport(job, name);
             PointCloudResult result;
+            if (CloudExport.IsLazoFormat(job.Format))
+            {
+                string recapFolder = string.IsNullOrEmpty(decap) ? null : Path.GetDirectoryName(decap);
+                result = await report.TimeAsync("Escribir " + job.Format.ToUpperInvariant(), () => CloudExport.RunAsync(recapFolder, job, name, progress, cancel)).ConfigureAwait(false);
+                result.Report = report.Finish(result);
+                return result;
+            }
             try { result = await ConvertCoreAsync(decap, job, name, progress, report, cancel).ConfigureAwait(false); }
             catch (OperationCanceledException) { result = new PointCloudResult { Message = "Conversión cancelada." }; }
             catch (Exception ex) { result = new PointCloudResult { Message = ex.Message }; }

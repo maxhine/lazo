@@ -23,6 +23,7 @@ namespace Lazo
         private string _cloudFolder;
         private string _cloudName = "";
         private bool _cloudUnify;
+        private string _cloudFormat = "rcp";
         /// <summary>Proyecto .rcp: unir las partes en un solo escaneo al final.</summary>
         private bool _cloudMerge;
         private string _cloudReport;
@@ -160,17 +161,23 @@ namespace Lazo
             TextBlock outputLabel = Theme.Label("Resultado");
             outputLabel.Margin = new Thickness(0, 12, 0, 6);
             left.Children.Add(outputLabel);
-            UIElement mode = Segment("Proyecto .rcp", "Nube única .rcs", !_cloudUnify,
-                () => { _cloudUnify = false; RefreshToolsCard(); }, () => { _cloudUnify = true; RefreshToolsCard(); });
-            ((FrameworkElement)mode).IsEnabled = !running;
-            left.Children.Add(mode);
-            TextBlock modeHelp = Theme.Text(_cloudUnify
+            WrapPanel formats = new WrapPanel();
+            string[][] choices = { new[] { "rcp", "Proyecto .rcp" }, new[] { "rcs", "Nube única .rcs" }, new[] { "las", "LAS" }, new[] { "xyz", "XYZ" }, new[] { "pts", "PTS" }, new[] { "csv", "CSV" } };
+            foreach (string[] choice in choices)
+            {
+                string format = choice[0];
+                formats.Children.Add(CloudChip(choice[1], _cloudFormat == format, !running, () => { _cloudFormat = format; _cloudUnify = format == "rcs"; RefreshToolsCard(); }));
+            }
+            left.Children.Add(formats);
+            TextBlock modeHelp = Theme.Text(CloudExport.IsLazoFormat(_cloudFormat)
+                ? CloudExport.Describe(_cloudFormat) + " Lo escribe Lazo (ReCap solo genera .rcp y .rcs); sirve para LAS, LAZ y E57."
+                : _cloudUnify
                 ? "Todo en un solo .rcs, para Revit, AutoCAD o Navisworks. Con reducción de puntos se convierte en partes a la vez y se une al final."
                 : "Un proyecto .rcp para abrir y organizar en ReCap. Las nubes grandes se convierten en partes a la vez (un escaneo por parte).", 10.5, Theme.Muted);
             modeHelp.TextWrapping = TextWrapping.Wrap;
             modeHelp.Margin = new Thickness(0, 4, 0, 0);
             left.Children.Add(modeHelp);
-            if (!_cloudUnify)
+            if (_cloudFormat == "rcp")
             {
                 CheckBox merge = new CheckBox
                 {
@@ -222,7 +229,7 @@ namespace Lazo
             for (int i = 0; i < PointCloudConverter.UnitNames.Length; i++)
             {
                 int unit = i;
-                units.Children.Add(CloudChip(PointCloudConverter.UnitNames[i], _cloudUnit == i, !running, () => { _cloudUnit = unit; RefreshToolsCard(); }));
+                units.Children.Add(CloudChip(PointCloudConverter.UnitNames[i], _cloudUnit == i, !running, () => { _cloudUnit = unit; RefreshToolsCard(); SchedulePreview(false); }));
             }
             right.Children.Add(units);
             TextBlock unitsHelp = Theme.Text("Solo cuenta para LAS y LAZ; E57 ya guarda sus unidades.", 10.5, Theme.Muted);
@@ -236,7 +243,7 @@ namespace Lazo
             decimationRow.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(90) });
             decimationRow.ColumnDefinitions.Add(new ColumnDefinition());
             TextBox decimation = CloudBox(_cloudDecimation, running);
-            decimation.TextChanged += (s, e) => _cloudDecimation = decimation.Text;
+            decimation.TextChanged += (s, e) => { _cloudDecimation = decimation.Text; SchedulePreview(false); };
             decimationRow.Children.Add(decimation);
             TextBlock decimationHelp = Theme.Text("mm entre puntos. Vacío: todos los puntos.", 10.5, Theme.Muted);
             decimationHelp.VerticalAlignment = VerticalAlignment.Center;
@@ -245,6 +252,7 @@ namespace Lazo
             Grid.SetColumn(decimationHelp, 1);
             decimationRow.Children.Add(decimationHelp);
             right.Children.Add(decimationRow);
+            right.Children.Add(CloudPreviewPanel());
 
             right.Children.Add(CloudProjection(running));
 
@@ -596,6 +604,7 @@ namespace Lazo
                 if (_cloudFiles.Count == 0) { _cloudDetected = null; _cloudDetectNote = null; _cloudSource = null; }
                 RefreshToolsCard();
                 if (_cloudFiles.Count > 0) DetectCloudCrs();
+                SchedulePreview(true);
             });
             remove.ToolTip = "Quitar";
             remove.IsEnabled = !running;
@@ -674,10 +683,13 @@ namespace Lazo
                     Button show = Theme.Button("Mostrar en carpeta", false);
                     show.Click += (s, e) => RevealCloud(output);
                     buttons.Children.Add(show);
-                    Button open = Theme.Button("Abrir en ReCap", false);
-                    open.Margin = new Thickness(8, 0, 0, 0);
-                    open.Click += (s, e) => OpenCloud(output);
-                    buttons.Children.Add(open);
+                    if (!CloudExport.IsLazoFormat(_cloudFormat))
+                    {
+                        Button open = Theme.Button("Abrir en ReCap", false);
+                        open.Margin = new Thickness(8, 0, 0, 0);
+                        open.Click += (s, e) => OpenCloud(output);
+                        buttons.Children.Add(open);
+                    }
                 }
                 if (_cloudReport != null && File.Exists(_cloudReport))
                 {
@@ -720,6 +732,7 @@ namespace Lazo
             _cloudStatus = null;
             RefreshToolsCard();
             DetectCloudCrs();
+            SchedulePreview(true);
         }
 
         private void PickCloudFolder()
@@ -752,7 +765,8 @@ namespace Lazo
                 Inputs = _cloudFiles.ToList(),
                 OutputFolder = string.IsNullOrEmpty(_cloudFolder) ? Path.GetDirectoryName(_cloudFiles[0]) : _cloudFolder,
                 Name = _cloudName,
-                Unify = _cloudUnify,
+                Unify = _cloudFormat == "rcs",
+                Format = _cloudFormat,
                 Unit = _cloudUnit,
                 DecimationMm = decimation
             };
@@ -774,7 +788,7 @@ namespace Lazo
             string problem = PointCloudConverter.Validate(job);
             if (problem != null) { _cloudResult = new PointCloudResult { Message = problem }; _cloudStatus = problem; RefreshToolsCard(); return; }
 
-            job.MergeParts = !_cloudUnify && _cloudMerge;
+            job.MergeParts = _cloudFormat == "rcp" && _cloudMerge;
             CancellationTokenSource run = new CancellationTokenSource();
             _cloudRun = run;
             _cloudResult = null;
