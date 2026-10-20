@@ -53,6 +53,12 @@ namespace Lazo
         private bool _loadingDraft;
         private int _shownCount;
         private DateTime _typingSentUtc = DateTime.MinValue;
+        private Guid _self;
+        private readonly Dictionary<Guid, DateTime> _flushed = new Dictionary<Guid, DateTime>();
+        private Border _groupForm;
+        private readonly Grid _talk;
+        private Button _headMenu;
+        private Button _attach;
 
         // Texto de los mensajes en Segoe UI normal: Bahnschrift se ve demasiado grueso en párrafos.
         private static readonly FontFamily BodyFont = new FontFamily("Segoe UI");
@@ -66,7 +72,7 @@ namespace Lazo
         public ChatPanel(NetworkEngine network, Action unreadChanged, Action requestClose, Action nudgeFx)
         {
             _network = network;
-            if (network != null) _sendChatAsync = network.SendChatAsync;
+            if (network != null) { _sendChatAsync = network.SendChatAsync; _self = network.SelfId; }
             _unreadChanged = unreadChanged;
             _requestClose = requestClose;
             _nudgeFx = nudgeFx;
@@ -81,6 +87,7 @@ namespace Lazo
             Children.Add(rail);
 
             Grid talk = new Grid();
+            _talk = talk;
             Grid.SetColumn(talk, 1);
             Children.Add(talk);
             _thread = new Grid();
@@ -121,6 +128,8 @@ namespace Lazo
             actions.Children.Add(_shareButton);
             System.Windows.Shapes.Path ignored;
             actions.Children.Add(HeaderAction("zap", "Zumbido", SendNudge, out ignored));
+            _headMenu = HeaderAction("more", "Más opciones", () => ShowHeaderMenu(_headMenu), out ignored);
+            actions.Children.Add(_headMenu);
             Border divider = new Border { Width = 1, Height = 22, Background = Theme.Line, Margin = new Thickness(6, 0, 6, 0) };
             actions.Children.Add(divider);
             actions.Children.Add(HeaderAction("close", "Cerrar", () => { if (_requestClose != null) _requestClose(); }, out ignored));
@@ -149,6 +158,7 @@ namespace Lazo
             composer.ColumnDefinitions.Add(new ColumnDefinition());
             composer.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
             Button attach = Round("plus", "Enviar archivo", PickFile, false);
+            _attach = attach;
             attach.VerticalAlignment = VerticalAlignment.Bottom;
             composer.Children.Add(attach);
             Grid field = new Grid { Margin = new Thickness(8, 0, 8, 0) };
@@ -317,27 +327,98 @@ namespace Lazo
                 _peers = peers ?? new List<Peer>();
                 RenderPeople();
                 RefreshStatus();
+                if (_open != Guid.Empty && IsGroup(_open)) { _send.IsEnabled = !_sending; }
+                FlushOutbox();
             }));
+        }
+
+        private bool IsGroup(Guid id) { return ChatGroups.Get(id) != null; }
+
+        // ── Entrega diferida: lo que no salió porque alguien estaba desconectado sale cuando vuelve ────────
+
+        private void FlushOutbox()
+        {
+            if (_network == null) return;
+            foreach (Peer peer in _peers.Where(p => p.Address != null))
+            {
+                DateTime last;
+                if (_flushed.TryGetValue(peer.Id, out last) && (DateTime.UtcNow - last).TotalSeconds < 15) continue;
+                if (ChatOutbox.Pending(peer.Id) == 0) continue;
+                _flushed[peer.Id] = DateTime.UtcNow;
+                Peer target = peer;
+                Task.Run(async () =>
+                {
+                    foreach (ChatOutbox.Item item in ChatOutbox.For(target.Id))
+                    {
+                        try { await _network.SendReliableSignalAsync(target, item.Kind, item.Body); ChatOutbox.Done(item); }
+                        catch { break; }
+                    }
+                });
+            }
+        }
+
+        /// <summary>Envía a una persona; si no se puede ahora, queda en la cola y sale cuando vuelva a estar en línea.</summary>
+        private void Deliver(Guid person, byte kind, string body)
+        {
+            if (_network == null) return;
+            Peer peer = _peers.FirstOrDefault(p => p.Id == person && p.Address != null);
+            if (peer == null) { ChatOutbox.Add(person, kind, body); return; }
+            Task.Run(async () =>
+            {
+                try { await _network.SendReliableSignalAsync(peer, kind, body); }
+                catch { ChatOutbox.Add(person, kind, body); }
+            });
         }
 
         private void RenderPeople()
         {
             _people.Children.Clear();
-            TextBlock heading = Theme.Text("MENSAJES DIRECTOS", 10.5, Theme.Muted, FontWeights.SemiBold);
-            heading.Margin = new Thickness(10, 4, 0, 6);
-            _people.Children.Add(heading);
             Dictionary<Guid, ChatThread> known = ChatStore.Threads().ToDictionary(item => item.Id);
+            List<ChatGroup> groups = ChatGroups.All().OrderBy(g => g.Name).ToList();
+
+            Grid groupsHead = new Grid { Margin = new Thickness(10, 4, 2, 4) };
+            groupsHead.ColumnDefinitions.Add(new ColumnDefinition());
+            groupsHead.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+            groupsHead.Children.Add(new TextBlock { Text = "GRUPOS", FontFamily = Theme.Font, FontSize = 10.5, FontWeight = FontWeights.SemiBold, Foreground = Theme.Muted, VerticalAlignment = VerticalAlignment.Center });
+            System.Windows.Shapes.Path plusIcon;
+            Button add = HeaderAction("plus", "Nuevo grupo", ShowNewGroup, out plusIcon);
+            add.Width = 26; add.Height = 26;
+            Grid.SetColumn(add, 1);
+            groupsHead.Children.Add(add);
+            _people.Children.Add(groupsHead);
+            foreach (ChatGroup group in groups)
+            {
+                ChatThread thread;
+                known.TryGetValue(group.Id, out thread);
+                string people = group.Members.Count + 1 + " integrantes";
+                _people.Children.Add(Person(group.Id, group.Name, "", thread == null || string.IsNullOrEmpty(thread.Preview) ? people : thread.Preview, thread == null ? 0 : thread.Unread, true, true));
+            }
+            if (groups.Count == 0)
+            {
+                TextBlock none = Theme.Text("Crea uno con +", 11.5, Theme.Muted);
+                none.Margin = new Thickness(10, 0, 8, 6);
+                _people.Children.Add(none);
+            }
+
+            TextBlock heading = Theme.Text("MENSAJES DIRECTOS", 10.5, Theme.Muted, FontWeights.SemiBold);
+            heading.Margin = new Thickness(10, 10, 0, 6);
+            _people.Children.Add(heading);
+            int direct = 0;
             List<Guid> shown = new List<Guid>();
             foreach (Peer peer in _peers.OrderBy(item => item.Name))
             {
                 shown.Add(peer.Id);
                 ChatThread thread;
                 known.TryGetValue(peer.Id, out thread);
-                _people.Children.Add(Person(peer.Id, peer.Name, peer.Photo, thread == null ? "" : thread.Preview, thread == null ? 0 : thread.Unread, peer.Address != null));
+                _people.Children.Add(Person(peer.Id, peer.Name, peer.Photo, thread == null ? "" : thread.Preview, thread == null ? 0 : thread.Unread, peer.Address != null, false));
+                direct++;
             }
-            foreach (ChatThread thread in known.Values.OrderByDescending(item => item.When).Where(item => !shown.Contains(item.Id)))
-                _people.Children.Add(Person(thread.Id, thread.Name, "", thread.Preview, thread.Unread, false));
-            if (_people.Children.Count == 1)
+            foreach (ChatThread thread in known.Values.OrderByDescending(item => item.When).Where(item => !shown.Contains(item.Id) && !groups.Any(g => g.Id == item.Id)))
+            {
+                _people.Children.Add(Person(thread.Id, thread.Name, "", thread.Preview, thread.Unread, false, false));
+                direct++;
+            }
+            if (direct == 0)
             {
                 TextBlock empty = Theme.Text("Nadie conectado", 12, Theme.Muted);
                 empty.Margin = new Thickness(10, 6, 8, 0);
@@ -345,13 +426,13 @@ namespace Lazo
             }
         }
 
-        private Border Person(Guid id, string name, string photo, string preview, int unread, bool reachable)
+        private Border Person(Guid id, string name, string photo, string preview, int unread, bool reachable, bool group)
         {
             Grid row = new Grid { Margin = new Thickness(8, 6, 8, 6) };
             row.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
             row.ColumnDefinitions.Add(new ColumnDefinition());
             row.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
-            row.Children.Add(Face(name, photo, 34, reachable, InChat(id)));
+            row.Children.Add(group ? GroupFace(34) : Face(name, photo, 34, reachable, InChat(id)));
             StackPanel labels = new StackPanel { Margin = new Thickness(10, 0, 4, 0), VerticalAlignment = VerticalAlignment.Center };
             TextBlock title = Theme.Text(name, 13, unread > 0 || id == _open ? Theme.Ink : Theme.Color(Theme.P.Dark ? "#E6FFFFFF" : "#DD000000"), unread > 0 ? FontWeights.Bold : FontWeights.SemiBold);
             title.TextTrimming = TextTrimming.CharacterEllipsis;
@@ -447,13 +528,16 @@ namespace Lazo
             SelectDraft(id);
             _openName = name;
             _title.Text = name;
-            _headFace.Child = Photo(name, PhotoOf(id), 36);
-            _placeholder.Text = "Mensaje para @" + name;
+            bool isGroup = IsGroup(id);
+            _headFace.Child = isGroup ? (UIElement)GroupFace(36) : Photo(name, PhotoOf(id), 36);
+            _placeholder.Text = isGroup ? "Mensaje para el grupo " + name : "Mensaje para @" + name;
             _thread.Visibility = Visibility.Visible;
             _emptyState.Visibility = Visibility.Collapsed;
-            bool reachable = Reachable(id);
+            // En un grupo se puede escribir siempre: a quien esté desconectado le llega cuando vuelva.
+            bool reachable = isGroup || Reachable(id);
             _send.IsEnabled = reachable && !_sending;
             _composer.IsEnabled = reachable;
+            _attach.IsEnabled = !isGroup && reachable;
             ChatStore.MarkRead(id);
             if (_unreadChanged != null) _unreadChanged();
             List<ChatLine> lines = ChatStore.Messages(id);
@@ -462,12 +546,12 @@ namespace Lazo
             if (lines.Count == 0)
             {
                 StackPanel hello = new StackPanel { Margin = new Thickness(18, 18, 18, 0) };
-                hello.Children.Add(Face(name, PhotoOf(id), 64, false, false));
+                hello.Children.Add(isGroup ? GroupFace(64) : Face(name, PhotoOf(id), 64, false, false));
                 ((Grid)hello.Children[0]).HorizontalAlignment = HorizontalAlignment.Left;
                 TextBlock big = Theme.Text(name, 22, Theme.Ink, FontWeights.SemiBold);
                 big.Margin = new Thickness(0, 10, 0, 2);
                 hello.Children.Add(big);
-                hello.Children.Add(Theme.Text("Este es el comienzo de tu conversación con " + name + ".", 12.5, Theme.Muted));
+                hello.Children.Add(Theme.Text(isGroup ? "Este es el comienzo del grupo " + name + "." : "Este es el comienzo de tu conversación con " + name + ".", 12.5, Theme.Muted));
                 _messages.Children.Add(hello);
             }
             DateTime lastDay = DateTime.MinValue;
@@ -481,7 +565,7 @@ namespace Lazo
                     lastDay = line.When.Date;
                     last = null;
                 }
-                bool grouped = last != null && last.Mine == line.Mine && !last.Nudge && !line.Nudge &&
+                bool grouped = last != null && last.Mine == line.Mine && last.Sender == line.Sender && !last.Nudge && !line.Nudge && !last.Deleted && !line.Deleted &&
                                (line.When - last.When).TotalMinutes < 6;
                 FrameworkElement message = Message(line, name, id, grouped);
                 if (i >= previous) Arrive(message);
@@ -528,14 +612,16 @@ namespace Lazo
         /// <summary>Un mensaje con avatar, autor y hora; los seguidos del mismo autor se agrupan sin cabecera.</summary>
         private FrameworkElement Message(ChatLine line, string peerName, Guid peerId, bool grouped)
         {
-            string author = line.Mine ? Identity.Current : peerName;
+            bool inGroup = IsGroup(peerId);
+            string author = line.Mine ? Identity.Current : inGroup && !string.IsNullOrEmpty(line.Sender) ? line.Sender : peerName;
+            System.Windows.Shapes.Path ignoredIcon;
             Grid row = new Grid { Margin = new Thickness(0, grouped ? 0 : 8, 0, 0) };
             row.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(64) });
             row.ColumnDefinitions.Add(new ColumnDefinition());
             TextBlock hoverTime = null;
             if (!grouped)
             {
-                Grid face = Face(author, line.Mine ? ProfilePhoto.Current : PhotoOf(peerId), 38, false, false);
+                Grid face = Face(author, line.Mine ? ProfilePhoto.Current : inGroup ? "" : PhotoOf(peerId), 38, false, false);
                 face.VerticalAlignment = VerticalAlignment.Top;
                 face.Margin = new Thickness(0, 2, 0, 0);
                 row.Children.Add(face);
@@ -560,7 +646,14 @@ namespace Lazo
                 head.Inlines.Add(new System.Windows.Documents.Run("  " + Stamp(line.When)) { FontSize = 10.5, Foreground = Theme.Muted });
                 body.Children.Add(head);
             }
-            if (line.Nudge)
+            if (line.Deleted)
+            {
+                TextBlock gone = Theme.Text("⊘  " + line.Text, 12.5, Theme.Muted);
+                gone.FontStyle = FontStyles.Italic;
+                gone.Margin = new Thickness(0, 2, 0, 2);
+                body.Children.Add(gone);
+            }
+            else if (line.Nudge)
             {
                 StackPanel nudge = new StackPanel { Orientation = Orientation.Horizontal, Margin = new Thickness(0, 2, 0, 2) };
                 System.Windows.Shapes.Path zap = Icons.Make("zap", 15, new SolidColorBrush(Theme.AccentReadable()), 2);
@@ -591,10 +684,23 @@ namespace Lazo
             }
             Grid.SetColumn(body, 1);
             row.Children.Add(body);
+            // Menú del mensaje: botón «⋯» al pasar el cursor y clic derecho.
+            Button more = HeaderAction("more", "Opciones del mensaje", () => { }, out ignoredIcon);
+            more.Width = 28; more.Height = 26;
+            more.HorizontalAlignment = HorizontalAlignment.Right;
+            more.VerticalAlignment = VerticalAlignment.Top;
+            more.Margin = new Thickness(0, 0, 6, 0);
+            more.Opacity = 0;
+            Grid.SetColumn(more, 1);
+            row.Children.Add(more);
             Border holder = new Border { Child = row, Background = Brushes.Transparent, Padding = new Thickness(0, 1, 0, 1) };
+            ChatLine captured = line;
+            Guid threadId = peerId;
+            more.Click += (s, e) => { e.Handled = true; ShowMessageMenu(more, captured, threadId, false); };
+            holder.MouseRightButtonUp += (s, e) => { e.Handled = true; ShowMessageMenu(holder, captured, threadId, true); };
             Brush hover = Theme.Color(Theme.P.Dark ? "#0DFFFFFF" : "#08000000");
-            holder.MouseEnter += (s, e) => { holder.Background = hover; if (hoverTime != null) hoverTime.Opacity = 1; };
-            holder.MouseLeave += (s, e) => { holder.Background = Brushes.Transparent; if (hoverTime != null) hoverTime.Opacity = 0; };
+            holder.MouseEnter += (s, e) => { holder.Background = hover; more.Opacity = 1; if (hoverTime != null) hoverTime.Opacity = 1; };
+            holder.MouseLeave += (s, e) => { holder.Background = Brushes.Transparent; more.Opacity = 0; if (hoverTime != null) hoverTime.Opacity = 0; };
             return holder;
         }
 
@@ -673,6 +779,15 @@ namespace Lazo
             DateTime until;
             bool typing = _typing.TryGetValue(_open, out until) && until > DateTime.UtcNow;
             _typingLine.Text = typing ? _openName + " está escribiendo…" : "";
+            ChatGroup group = ChatGroups.Get(_open);
+            if (group != null)
+            {
+                int online = group.Members.Count(m => Reachable(m.Id));
+                _state.Text = group.Members.Count + 1 + " integrantes · " + (online == 0 ? "nadie más en línea" : online + " en línea") + " · " +
+                    string.Join(", ", new[] { "Tú" }.Concat(group.Members.Select(m => m.Name)));
+                _presenceDot.Visibility = Visibility.Collapsed;
+                return;
+            }
             bool reachable = Reachable(_open);
             _state.Text = InChat(_open) ? "En el chat" : reachable ? "En línea" : "Desconectado";
             _presenceDot.Visibility = reachable ? Visibility.Visible : Visibility.Collapsed;
@@ -684,7 +799,7 @@ namespace Lazo
             bool live = _open != Guid.Empty && SharingWith != null && SharingWith(_open);
             _shareButton.ToolTip = live ? "Dejar de compartir pantalla" : "Compartir pantalla";
             _shareIcon.Stroke = live ? Theme.Danger : Theme.Ink;
-            _shareButton.IsEnabled = _open != Guid.Empty && Reachable(_open);
+            _shareButton.IsEnabled = _open != Guid.Empty && !IsGroup(_open) && Reachable(_open);
         }
 
         private void ToggleShare()
@@ -728,6 +843,20 @@ namespace Lazo
             string draft = _composer.Text;
             string text = draft.Trim();
             if (text.Length == 0 || _open == Guid.Empty || _sending) return;
+            if (text.Length > 2000) text = text.Substring(0, 2000);
+            ChatGroup group = ChatGroups.Get(_open);
+            if (group != null)
+            {
+                // Grupo: se guarda al instante y se entrega a cada integrante; a quien esté desconectado le llega al volver.
+                string groupMessage = ChatStore.NewId();
+                ChatStore.Append(group.Id, group.Name, true, text, groupMessage, Identity.Current);
+                string packed = group.Id.ToString("N") + "\n" + groupMessage + "\n" + text;
+                foreach (GroupMember member in group.Members) Deliver(member.Id, NetworkEngine.ChatKindGroupMessage, packed);
+                _composer.Text = "";
+                _drafts.Remove(group.Id);
+                ShowThread(group.Id, group.Name);
+                return;
+            }
             Peer peer = _peers.FirstOrDefault(item => item.Id == _open && item.Address != null);
             if (peer == null) { _state.Text = "Desconectado"; return; }
             _sending = true;
@@ -735,8 +864,9 @@ namespace Lazo
             SignalOpen(NetworkEngine.ChatKindTyping, "0");
             try
             {
-                await _sendChatAsync(peer, text);
-                ChatStore.Append(peer.Id, peer.Name, true, text);
+                string messageId = ChatStore.NewId();
+                await _sendChatAsync(peer, WireId.Wrap(messageId, text));
+                ChatStore.Append(peer.Id, peer.Name, true, text, messageId);
                 if (_open == peer.Id && string.Equals(_composer.Text, draft, StringComparison.Ordinal))
                 {
                     _composer.Text = "";
@@ -756,7 +886,7 @@ namespace Lazo
 
         private async void SendNudge()
         {
-            if (_open == Guid.Empty) return;
+            if (_open == Guid.Empty || IsGroup(_open)) return;
             Peer peer = _peers.FirstOrDefault(item => item.Id == _open && item.Address != null);
             if (peer == null) { _state.Text = "Desconectado"; return; }
             try
@@ -811,6 +941,197 @@ namespace Lazo
                 try { await _network.SendSignalAsync(target, kind, body); }
                 catch { }
             });
+        }
+
+        // ── Grupos, borrado y menús ──────────────────────────────────────
+
+        private static Grid GroupFace(double size)
+        {
+            Grid host = new Grid { Width = size, Height = size, VerticalAlignment = VerticalAlignment.Center };
+            Border circle = new Border { CornerRadius = new CornerRadius(size / 2), Background = Theme.NavActive };
+            circle.Child = Icons.Make("users", size * 0.5, Theme.NavActiveText, 1.8);
+            host.Children.Add(circle);
+            return host;
+        }
+
+        /// <summary>Menú flotante propio (mismo estilo que el resto): texto, acción y si es destructiva.</summary>
+        private void ShowMenu(FrameworkElement anchor, bool atMouse, params MenuEntry[] entries)
+        {
+            System.Windows.Controls.Primitives.Popup popup = new System.Windows.Controls.Primitives.Popup
+            {
+                PlacementTarget = anchor,
+                Placement = atMouse ? System.Windows.Controls.Primitives.PlacementMode.MousePoint : System.Windows.Controls.Primitives.PlacementMode.Bottom,
+                StaysOpen = false,
+                AllowsTransparency = true
+            };
+            StackPanel stack = new StackPanel { MinWidth = 190 };
+            foreach (MenuEntry entry in entries)
+            {
+                MenuEntry captured = entry;
+                TextBlock label = Theme.Text(entry.Text, 13, entry.Danger ? Theme.Danger : Theme.Ink, FontWeights.Medium);
+                label.TextWrapping = TextWrapping.NoWrap;
+                Border item = new Border { Child = label, Padding = new Thickness(12, 8, 14, 8), CornerRadius = new CornerRadius(9), Background = Brushes.Transparent, Cursor = Cursors.Hand };
+                Brush hover = Theme.Color(Theme.P.Dark ? "#16FFFFFF" : "#0E000000");
+                item.MouseEnter += (s, e) => item.Background = hover;
+                item.MouseLeave += (s, e) => item.Background = Brushes.Transparent;
+                item.MouseLeftButtonUp += (s, e) => { e.Handled = true; popup.IsOpen = false; captured.Action(); };
+                stack.Children.Add(item);
+            }
+            popup.Child = new Border
+            {
+                Background = Theme.Color(Theme.P.Shell1),
+                BorderBrush = Theme.Line,
+                BorderThickness = new Thickness(1),
+                CornerRadius = new CornerRadius(13),
+                Padding = new Thickness(5),
+                Margin = new Thickness(8),
+                Child = stack,
+                Effect = new System.Windows.Media.Effects.DropShadowEffect { BlurRadius = 16, ShadowDepth = 3, Opacity = 0.35, Color = Colors.Black }
+            };
+            popup.IsOpen = true;
+        }
+
+        private sealed class MenuEntry
+        {
+            public string Text;
+            public Action Action;
+            public bool Danger;
+        }
+
+        private static MenuEntry Entry(string text, Action action, bool danger = false)
+        {
+            return new MenuEntry { Text = text, Action = action, Danger = danger };
+        }
+
+        private void ShowMessageMenu(FrameworkElement anchor, ChatLine line, Guid thread, bool atMouse)
+        {
+            List<MenuEntry> entries = new List<MenuEntry>();
+            if (!line.Deleted && !line.Nudge && string.IsNullOrEmpty(line.FilePath))
+                entries.Add(Entry("Copiar texto", () => { try { Clipboard.SetText(line.Text); } catch { } }));
+            entries.Add(Entry("Eliminar para mí", () => DeleteForMe(thread, line), true));
+            if (line.Mine && !line.Deleted && !string.IsNullOrEmpty(line.Id) && !line.Nudge)
+                entries.Add(Entry("Eliminar para todos", () => DeleteForEveryone(thread, line), true));
+            ShowMenu(anchor, atMouse, entries.ToArray());
+        }
+
+        private void DeleteForMe(Guid thread, ChatLine line)
+        {
+            ChatStore.DeleteLocal(thread, line);
+            RefreshOpen();
+        }
+
+        private void DeleteForEveryone(Guid thread, ChatLine line)
+        {
+            ChatGroup group = ChatGroups.Get(thread);
+            ChatStore.MarkDeleted(thread, line.Id, null, false);
+            if (group != null)
+            {
+                string body = group.Id.ToString("N") + "\n" + line.Id;
+                foreach (GroupMember member in group.Members) Deliver(member.Id, NetworkEngine.ChatKindDelete, body);
+            }
+            else Deliver(thread, NetworkEngine.ChatKindDelete, line.Id);
+            RefreshOpen();
+        }
+
+        private void ShowHeaderMenu(FrameworkElement anchor)
+        {
+            if (_open == Guid.Empty) return;
+            Guid thread = _open;
+            ChatGroup group = ChatGroups.Get(thread);
+            List<MenuEntry> entries = new List<MenuEntry>();
+            entries.Add(Entry("Vaciar conversación", () => { ChatStore.Clear(thread); if (group == null) CloseThread(); else RefreshOpen(); }, true));
+            if (group != null) entries.Add(Entry("Salir del grupo", () => LeaveGroup(group), true));
+            ShowMenu(anchor, false, entries.ToArray());
+        }
+
+        private void CloseThread()
+        {
+            _open = Guid.Empty;
+            _thread.Visibility = Visibility.Collapsed;
+            _emptyState.Visibility = Visibility.Visible;
+            RenderPeople();
+            if (_unreadChanged != null) _unreadChanged();
+        }
+
+        private void LeaveGroup(ChatGroup group)
+        {
+            foreach (GroupMember member in group.Members) Deliver(member.Id, NetworkEngine.ChatKindGroupLeave, group.Id.ToString("N"));
+            ChatGroups.Remove(group.Id);
+            ChatStore.Remove(group.Id);
+            CloseThread();
+        }
+
+        /// <summary>Formulario para crear un grupo: nombre y a quién añadir.</summary>
+        private void ShowNewGroup()
+        {
+            if (_groupForm != null) { _talk.Children.Remove(_groupForm); _groupForm = null; }
+            TextBox name = new TextBox
+            {
+                FontFamily = BodyFont, FontSize = 14, Foreground = Theme.Ink, CaretBrush = Theme.Ink,
+                Background = Theme.SoftSurface, BorderBrush = Theme.Line, BorderThickness = new Thickness(1),
+                Padding = new Thickness(10, 8, 10, 8), MaxLength = 40
+            };
+            StackPanel list = new StackPanel();
+            Dictionary<Guid, CheckBox> boxes = new Dictionary<Guid, CheckBox>();
+            foreach (Peer peer in _peers.OrderBy(p => p.Name))
+            {
+                CheckBox box = new CheckBox { Content = peer.Name + (peer.Address == null ? "  (desconectado)" : ""), Foreground = Theme.Ink, FontFamily = Theme.Font, FontSize = 13, Margin = new Thickness(0, 4, 0, 4) };
+                boxes[peer.Id] = box;
+                list.Children.Add(box);
+            }
+            if (boxes.Count == 0) list.Children.Add(Theme.Text("No hay nadie más en la red ahora mismo.", 12, Theme.Muted));
+            TextBlock error = Theme.Text("", 11.5, Theme.Danger);
+            error.Margin = new Thickness(0, 6, 0, 0);
+            Button create = Theme.Button("Crear grupo", true);
+            Button cancel = Theme.Button("Cancelar", false);
+            cancel.Margin = new Thickness(0, 0, 8, 0);
+            StackPanel buttons = new StackPanel { Orientation = Orientation.Horizontal, HorizontalAlignment = HorizontalAlignment.Right, Margin = new Thickness(0, 12, 0, 0) };
+            buttons.Children.Add(cancel);
+            buttons.Children.Add(create);
+            StackPanel form = new StackPanel { Margin = new Thickness(20) };
+            form.Children.Add(Theme.Text("Nuevo grupo", 18, Theme.Ink, FontWeights.SemiBold));
+            TextBlock nameLabel = Theme.Label("Nombre");
+            nameLabel.Margin = new Thickness(0, 14, 0, 4);
+            form.Children.Add(nameLabel);
+            form.Children.Add(name);
+            TextBlock whoLabel = Theme.Label("Integrantes");
+            whoLabel.Margin = new Thickness(0, 14, 0, 4);
+            form.Children.Add(whoLabel);
+            form.Children.Add(new ScrollViewer { Content = list, MaxHeight = 200, VerticalScrollBarVisibility = ScrollBarVisibility.Auto });
+            form.Children.Add(error);
+            form.Children.Add(buttons);
+            _groupForm = new Border
+            {
+                Background = Theme.Color(Theme.P.Shell1),
+                CornerRadius = new CornerRadius(0, 22, 22, 0),
+                Child = new ScrollViewer { Content = form, VerticalScrollBarVisibility = ScrollBarVisibility.Auto }
+            };
+            Panel.SetZIndex(_groupForm, 10);
+            _talk.Children.Add(_groupForm);
+            Action close = () => { _talk.Children.Remove(_groupForm); _groupForm = null; };
+            cancel.Click += (s, e) => close();
+            create.Click += (s, e) =>
+            {
+                string title = name.Text.Trim();
+                List<Peer> chosen = _peers.Where(p => boxes.ContainsKey(p.Id) && boxes[p.Id].IsChecked == true).ToList();
+                if (title.Length == 0) { error.Text = "Ponle un nombre al grupo."; return; }
+                if (chosen.Count == 0) { error.Text = "Elige al menos a una persona."; return; }
+                if (chosen.Count >= ChatGroups.MaxMembers) { error.Text = "Máximo " + (ChatGroups.MaxMembers - 1) + " personas."; return; }
+                CreateGroup(title, chosen);
+                close();
+            };
+            name.Focus();
+        }
+
+        private void CreateGroup(string title, List<Peer> chosen)
+        {
+            ChatGroup group = new ChatGroup { Id = Guid.NewGuid(), Name = title.Length > 40 ? title.Substring(0, 40) : title, Owner = _self };
+            foreach (Peer peer in chosen) group.Members.Add(new GroupMember { Id = peer.Id, Name = peer.Name });
+            ChatGroups.Save(group);
+            ChatStore.EnsureThread(group.Id, group.Name);
+            string packed = ChatGroups.Pack(group, _self, Identity.Current);
+            foreach (GroupMember member in group.Members) Deliver(member.Id, NetworkEngine.ChatKindGroupInfo, packed);
+            ShowThread(group.Id, group.Name);
         }
 
         /// <summary>Acción de la cabecera: ícono con halo al pasar el cursor.</summary>

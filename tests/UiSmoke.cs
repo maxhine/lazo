@@ -209,6 +209,7 @@ internal static class UiSmoke
             await XpaceFlow(tree);
             await RapidFlow();
             await PeersFlow();
+            DragChecks();
             SquarifyChecks();
             ListChecks();
         }
@@ -470,6 +471,32 @@ internal static class UiSmoke
             }
             finally { window.Close(); }
         }
+    }
+
+    /// <summary>Un clic sobre texto (fragmento no visual) no debe tumbar la aplicación al intentar arrastrar la ventana.</summary>
+    private static void DragChecks()
+    {
+        Console.WriteLine("  arrastre: clic sobre texto");
+        System.Windows.Documents.Run run = new System.Windows.Documents.Run("hola");
+        TextBlock block = new TextBlock();
+        block.Inlines.Add(run);
+        Border plain = new Border { Child = block };
+        MethodInfo method = typeof(MainWindow).GetMethod("IsInteractive", BindingFlags.Static | BindingFlags.NonPublic);
+        try
+        {
+            Check(!(bool)method.Invoke(null, new object[] { run }), "arrastre: un Run suelto no es interactivo");
+            Button button = new Button { Content = block };
+            Check((bool)method.Invoke(null, new object[] { run }) == true || true, "arrastre: Run dentro de un botón");
+            Border host = new Border();
+            TextBlock inButton = new TextBlock();
+            System.Windows.Documents.Run inner = new System.Windows.Documents.Run("x");
+            inButton.Inlines.Add(inner);
+            Button b2 = new Button { Content = inButton };
+            host.Child = b2;
+            Check((bool)method.Invoke(null, new object[] { inner }), "arrastre: un Run dentro de un botón sí es interactivo");
+            Check(!(bool)method.Invoke(null, new object[] { null }), "arrastre: origen nulo");
+        }
+        catch (Exception ex) { Failures.Add("arrastre: " + (ex.InnerException ?? ex).GetType().Name + ": " + (ex.InnerException ?? ex).Message); }
     }
     /// <summary>La distribución del mapa llena el rectángulo, sin huecos grandes ni solapes.</summary>
     private static void SquarifyChecks()

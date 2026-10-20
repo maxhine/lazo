@@ -17,10 +17,10 @@ La interfaz usa Bahnschrift con respaldo en Segoe UI. Paneles, chat y cambios de
 
 ## Instalar y compartir
 
-Comparte **`dist/Lazo-Setup-0.5.2.exe`**. Es un solo archivo: contiene Lazo, crea accesos directos, registra la desinstalación en Configuración de Windows y configura dos reglas entrantes limitadas al perfil **Privado** y a la **subred local**. Solicita permisos de administrador. Puede iniciar con Windows si se deja marcada la opción del instalador.
+Comparte **`dist/Lazo-Setup-0.5.3.exe`**. Es un solo archivo: contiene Lazo, crea accesos directos, registra la desinstalación en Configuración de Windows y configura dos reglas entrantes limitadas al perfil **Privado** y a la **subred local**. Solicita permisos de administrador. Puede iniciar con Windows si se deja marcada la opción del instalador.
 
 1. Cierra cualquier copia anterior de Lazo desde el icono de la bandeja.
-2. Ejecuta `Lazo-Setup-0.5.2.exe` y acepta el aviso de Windows.
+2. Ejecuta `Lazo-Setup-0.5.3.exe` y acepta el aviso de Windows.
 3. Abre Lazo desde el menú Inicio. Repite la instalación en el otro equipo.
 4. Asegúrate de que ambos equipos estén en una red marcada como **Privada** en Windows.
 
@@ -43,6 +43,15 @@ Cerrar la ventana principal la oculta en la bandeja. **Salir** en el menú de la
 Sección de herramientas de trabajo (ícono de llave). Hoy:
 
 - **Nube de puntos a ReCap**: `.las`, `.laz` o `.e57` a proyecto `.rcp` o nube única `.rcs`, con Autodesk ReCap instalado (usa su conversor `DeCap.exe` y la licencia del equipo). Lee el sistema de coordenadas de la nube y deja elegir el de salida; Origen Nacional (MAGNA-SIRGAS 2018), que ReCap no trae, lo calcula Lazo, y puede pasar alturas elipsoidales a EGM2008 con `egm08_25.gtx`. Las nubes grandes se parten y se convierten con varios ReCap a la vez; al final se pueden unir en un solo escaneo. Cada conversión deja un reporte de tiempos (`nombre - reporte.txt`) y el ícono de la bandeja muestra el avance como un anillo.
+
+- **Formatos de salida del conversor**: además de `.rcp` y `.rcs` (que solo escribe ReCap), Lazo mismo escribe **LAS, XYZ, PTS y CSV** desde LAS, LAZ y E57, con reducción de puntos por celdas. Al escribir la distancia de reducción aparece una **vista previa** con la zona de la nube tal cual y reducida (planta o frente; zona de inicio, medio o final del archivo). Es aproximada para ReCap.
+- **Xpace**: dónde se va el espacio en disco, al estilo de TreeSize. Analiza una unidad o carpeta en paralelo, sin administrador y sin leer el contenido de los archivos, y muestra un mapa de árbol (clic para entrar en una carpeta), la lista por carpetas, los archivos más grandes y los tipos de archivo. Tamaño lógico, como el Explorador; no sigue enlaces.
+
+## Chat: borrar, grupos e historial
+
+- **Eliminar mensajes**: pasa el cursor sobre un mensaje y pulsa «⋯» (o clic derecho). *Eliminar para mí* lo quita solo de tu equipo; *Eliminar para todos* (en los tuyos) deja en su lugar «Se eliminó este mensaje» en los equipos de los demás. Quien no está conectado lo recibe al volver. *Vaciar conversación* está en el «⋯» de la cabecera.
+- **Grupos**: el «+» de la lista de conversaciones crea un grupo con nombre y personas de la red. No hay servidor: cada integrante guarda el grupo y los mensajes se envían a cada uno, cifrados; a quien esté desconectado le llegan al volver (hasta 14 días). Solo quien crea el grupo puede modificarlo y cualquiera puede salir. Los grupos requieren que todos tengan 0.5.3 o posterior; los mensajes directos siguen siendo compatibles con versiones anteriores, aunque «eliminar para todos» solo funciona entre equipos actualizados. En grupos aún no se envían archivos ni zumbidos.
+- **Historial de archivos**: en el panel Historial, *Borrar enviados*, *Borrar recibidos* o *Borrar todo* limpian la lista; los archivos siguen en su carpeta.
 
 ## Seguridad
 

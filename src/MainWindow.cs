@@ -2586,6 +2586,30 @@ namespace Lazo
             }
             Grid.SetRow(scroll, 1);
             frame.Children.Add(scroll);
+            if (shown > 0)
+            {
+                // Limpiar el historial: solo se quita la lista; los archivos siguen donde estaban.
+                frame.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
+                WrapPanel clear = new WrapPanel { Margin = new Thickness(0, 8, 0, 0) };
+                string[][] choices = { new[] { "out", "Borrar enviados" }, new[] { "in", "Borrar recibidos" }, new[] { "", "Borrar todo" } };
+                foreach (string[] choice in choices)
+                {
+                    string direction = choice[0];
+                    Button clearButton = Theme.Button(choice[1], false);
+                    clearButton.MinHeight = 28;
+                    clearButton.FontSize = 11.5;
+                    clearButton.Margin = new Thickness(0, 0, 6, 4);
+                    clearButton.ToolTip = "Solo quita la lista; los archivos siguen en su carpeta";
+                    clearButton.Click += (s, e) =>
+                    {
+                        TransferLog.Clear(direction.Length == 0 ? null : direction);
+                        if (_historyCard != null) _historyCard.Child = HistoryList();
+                    };
+                    clear.Children.Add(clearButton);
+                }
+                Grid.SetRow(clear, 2);
+                frame.Children.Add(clear);
+            }
             return frame;
         }
 
@@ -2855,7 +2879,8 @@ namespace Lazo
         {
             Dispatcher.BeginInvoke((Action)(() =>
             {
-                ChatStore.AppendIncoming(id, name, text);
+                string wireId = WireId.Unwrap(ref text);
+                ChatStore.AppendIncoming(id, name, text, wireId);
                 if (_chatPanel != null) _chatPanel.Incoming(id, name, text);
                 if (_chatPanel == null || !_chatPanel.Viewing(id)) NotifyChat(name, text);
                 RefreshChatDot();
@@ -2872,6 +2897,15 @@ namespace Lazo
                     if (_chatPanel != null) _chatPanel.Incoming(id, name, "Zumbido");
                     Shake();
                     if (_chatPanel == null || !_chatPanel.Viewing(id)) NotifyChat(name, "Zumbido");
+                    RefreshChatDot();
+                    return;
+                }
+                if (kind >= NetworkEngine.ChatKindDelete && kind <= NetworkEngine.ChatKindGroupLeave)
+                {
+                    ChatEvents.Result result = ChatEvents.Apply(id, name, kind, body, _network == null ? Guid.Empty : _network.SelfId);
+                    if (!result.Changed) return;
+                    if (_chatPanel != null) _chatPanel.RefreshOpen();
+                    if (result.Notify && (_chatPanel == null || !_chatPanel.Viewing(result.Thread))) NotifyChat(result.Title, result.Text);
                     RefreshChatDot();
                     return;
                 }
@@ -3295,10 +3329,18 @@ namespace Lazo
 
         private static bool IsInteractive(DependencyObject source)
         {
+            // El origen del clic puede no ser visual (un fragmento de texto dentro de un TextBlock, por ejemplo):
+            // VisualTreeHelper.GetParent lanza con esos, así que se sube por el árbol lógico.
             while (source != null)
             {
                 if (source is Button || source is TextBox || source is System.Windows.Controls.Primitives.ScrollBar) return true;
-                source = VisualTreeHelper.GetParent(source);
+                try
+                {
+                    source = source is Visual || source is System.Windows.Media.Media3D.Visual3D
+                        ? VisualTreeHelper.GetParent(source)
+                        : LogicalTreeHelper.GetParent(source);
+                }
+                catch (InvalidOperationException) { return false; }
             }
             return false;
         }

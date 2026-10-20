@@ -114,6 +114,14 @@ namespace Lazo
         public const byte ChatKindTyping = 2;
         public const byte ChatKindPresence = 3;
         public const byte ChatKindNudge = 4;
+        /// <summary>Eliminar un mensaje para todos: id, o grupo e id en dos líneas.</summary>
+        public const byte ChatKindDelete = 5;
+        /// <summary>Mensaje de grupo: grupo, id y texto, cada uno en su línea.</summary>
+        public const byte ChatKindGroupMessage = 6;
+        /// <summary>Alta o cambio de un grupo (lista de integrantes).</summary>
+        public const byte ChatKindGroupInfo = 7;
+        /// <summary>Alguien sale de un grupo: «grupo».</summary>
+        public const byte ChatKindGroupLeave = 8;
         private volatile string _receiveDirectory;
         private readonly int _discoveryPort;
         private readonly int _transferPort;
@@ -650,6 +658,27 @@ namespace Lazo
                 WriteText(writer, body, 4000);
                 writer.Flush();
                 await ReadByteAsync(connection.Stream, 4000).ConfigureAwait(false);
+            }
+        }
+
+        /// <summary>
+        /// Como <see cref="SendSignalAsync"/> pero avisa si no se entregó (lanza): los mensajes de grupo y los
+        /// borrados no deben perderse en silencio. No exige haber hablado antes con el equipo.
+        /// </summary>
+        public async Task SendReliableSignalAsync(Peer peer, byte kind, string body)
+        {
+            if (peer == null || peer.Address == null) throw new IOException("Equipo desconectado.");
+            body = body ?? "";
+            if (body.Length > 3900) body = body.Substring(0, 3900);
+            using (SecureConnection connection = await OpenAsync(peer, 4000).ConfigureAwait(false))
+            {
+                BinaryWriter writer = new BinaryWriter(connection.Stream, Encoding.UTF8, true);
+                writer.Write((byte)'D');
+                WriteText(writer, Label(), 80);
+                writer.Write(kind);
+                WriteText(writer, body, 4000);
+                writer.Flush();
+                if (await ReadByteAsync(connection.Stream, 5000).ConfigureAwait(false) != 1) throw new IOException("No se entregó.");
             }
         }
 
