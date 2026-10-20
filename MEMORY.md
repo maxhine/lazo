@@ -2,7 +2,7 @@
 
 Proyecto local de SARCA para transferir archivos entre equipos Windows 10/11 de una misma subred.
 
-Última actualización: 2026-10-15 (no acredita instalación en los equipos del equipo)
+Última actualización: 2026-10-20 (no acredita instalación en los equipos del equipo)
 
 ## Estado actual (2026-10-15)
 
@@ -12,6 +12,13 @@ Proyecto local de SARCA para transferir archivos entre equipos Windows 10/11 de 
 - **Pendiente crítico: firmas `.sig`**. Desde 0.5 el actualizador solo instala versiones firmadas con la clave privada que está **solo** en el Mac de Jhon (`~/.lazo/release-signing-key.pem`). v0.5.1 y v0.5.2 se publicaron **sin** `.sig`: los equipos en 0.5.x no se actualizan solos hasta subirla (`scripts/sign-release.sh` + `gh release upload … .sig`); mientras tanto, instalar a mano. Los 0.4.x no piden firma.
 - Pendientes: prueba física entre dos equipos (pantalla compartida, control, mosaico); paridad en macOS (sigue en 0.5.0 sin las novedades de 0.5.1/0.5.2; Origen Nacional no implementado en Swift); E57 no probado con archivo real.
 - Siguiente paso: subir las firmas de v0.5.1/v0.5.2 desde el Mac.
+
+### Publicada 0.5.3 (2026-10-20)
+
+- Incluye: **conversor** con formatos LAS/XYZ/PTS/CSV escritos por Lazo y vista previa de la reducción; **Xpace** (espacio en disco, mapa de árbol); **chat**: eliminar mensajes (para mí / para todos), vaciar conversación, **grupos** sin servidor con cola de entrega (`ChatOutbox`, 14 días) y borrar el historial de archivos; arreglos: un panel reabierto durante su animación de cierre quedaba invisible (`Theme.Reveal`) y **el cierre de Lazo al arrastrar la ventana** (excepción sin atender en `MainWindow.IsInteractive` al hacer clic sobre un fragmento de texto; visto en el Registro de eventos de Windows).
+- Protocolo: señales nuevas 5–8 (borrar, mensaje de grupo, alta de grupo, salir). Los mensajes directos llevan su identificador escondido con caracteres invisibles, así que siguen siendo compatibles con 0.5.2; los grupos y «eliminar para todos» solo funcionan entre equipos con 0.5.3.
+- Pruebas: `test-chat` (lógica), `test-chat-panel` (dibujo fuera de pantalla, sin ventanas), `test-cloudformats`, `test-xpace`, `test-pointcloud`, `test-network`, `test-ui` (abre ventanas reales de Lazo y las deja encima: avisar antes de correrla).
+- **Pendiente**: firma `.sig` de v0.5.3 desde el Mac (sin ella los equipos 0.5.x no se actualizan solos); prueba entre dos equipos físicos (grupos y borrado para todos solo se probaron por red local en este PC y con el panel dibujado fuera de pantalla); E57 con un archivo real; recomendaciones de limpieza de Xpace.
 
 ### En desarrollo, sin publicar (2026-10-20): rama `feature/xpace-conversor`
 
