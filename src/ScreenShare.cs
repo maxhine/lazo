@@ -363,6 +363,7 @@ namespace Lazo
                     if (type == (byte)'H')
                     {
                         byte version = reader.ReadByte();
+                        DiagLog.Write("transmisión: " + viewer.Name + " saludó con la versión " + version);
                         Post(() =>
                         {
                             if (viewer.Capable) return;
@@ -525,6 +526,8 @@ namespace Lazo
         }
 
         private volatile bool _idle;
+        private bool _loggedFrame;
+        private int _failedCaptures;
         private volatile bool _sourceGone;
 
         // Captura y codificación van en hilos distintos con doble búfer: mientras se codifica un fotograma
@@ -540,6 +543,7 @@ namespace Lazo
             TileEncoder encoder = new TileEncoder();
             try
             {
+                DiagLog.Write("transmisión: bucle iniciado, fuente " + Source.Width + "x" + Source.Height + (Source.IsWindow ? " (ventana)" : " (pantalla)"));
                 slots = new[] { new FrameCapturer(Source), new FrameCapturer(Source) };
                 grabber = new Thread(() => Grab(slots, free, ready)) { IsBackground = true, Name = "Lazo capture", Priority = ThreadPriority.AboveNormal };
                 grabber.Start();
@@ -582,6 +586,11 @@ namespace Lazo
                     work += clock.ElapsedMilliseconds - start;
                     captures++;
                     bool moved = cursorX != lastX || cursorY != lastY;
+                    if (!_loggedFrame && (tiles.Count > 0 || key))
+                    {
+                        _loggedFrame = true;
+                        DiagLog.Write("transmisión: primer fotograma " + width + "x" + height + " con " + tiles.Count + " bloques para " + targets.Length + " visor(es)");
+                    }
                     if (tiles.Count > 0 || moved || key)
                     {
                         packet.SetLength(0);
@@ -670,8 +679,15 @@ namespace Lazo
                     ok = slots[i].Capture();
                     CaptureMs = CaptureMs * 0.9 + (clock.ElapsedMilliseconds - t0) * 0.1;
                 }
-                catch { ok = false; }
-                if (!ok) free[i].Release();
+                catch (Exception ex) { ok = false; if (_failedCaptures == 0) DiagLog.Write("captura: excepción " + ex.GetType().Name + ": " + ex.Message); }
+                if (!ok)
+                {
+                    _failedCaptures++;
+                    if (_failedCaptures == 1 || _failedCaptures == 40 || _failedCaptures % 400 == 0)
+                        DiagLog.Write("captura: no se pudo capturar el fotograma (" + _failedCaptures + " fallos seguidos; ¿pantalla bloqueada o sin sesión activa?)");
+                    free[i].Release();
+                }
+                else if (_failedCaptures > 0) { DiagLog.Write("captura: volvió a funcionar tras " + _failedCaptures + " fallos"); _failedCaptures = 0; }
                 bool posted = false;
                 while (_running && !posted) posted = ready.TryAdd(ok ? i : -1, 200);
                 if (!posted) { if (ok) free[i].Release(); return; }

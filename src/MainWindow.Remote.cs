@@ -39,7 +39,19 @@ namespace Lazo
 
         private void StartRemoteSession(string name, SecureConnection connection, TaskCompletionSource<bool> done)
         {
+            try { StartRemoteSessionCore(name, connection, done); }
+            catch (Exception ex)
+            {
+                DiagLog.Write("control remoto de " + name + ": error al arrancar la transmisión: " + ex);
+                try { connection.Dispose(); } catch { }
+                done.TrySetResult(false);
+            }
+        }
+
+        private void StartRemoteSessionCore(string name, SecureConnection connection, TaskCompletionSource<bool> done)
+        {
             ShareSource source = _preview || _share != null ? null : ScreenSources.Primary();
+            DiagLog.Write("control remoto de " + name + ": arrancando; monitor " + (source == null ? "ninguno" : source.Width + "x" + source.Height + " en " + source.Left + "," + source.Top) + (_share != null ? " (ya hay una transmisión)" : ""));
             if (source == null)
             {
                 connection.Dispose();
@@ -73,6 +85,7 @@ namespace Lazo
                 return;
             }
             session.Start();
+            DiagLog.Write("control remoto de " + name + ": transmisión iniciada");
             // No se anuncia a la red como «compartiendo»: nadie debe poder pedir unirse a una sesión privada.
             overlay.Show();
             _shareBar = new ShareBarWindow(StopShare, overlay, session.RevokeAll);
