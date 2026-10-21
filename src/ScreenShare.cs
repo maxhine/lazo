@@ -363,6 +363,7 @@ namespace Lazo
                     if (type == (byte)'H')
                     {
                         byte version = reader.ReadByte();
+                        DiagLog.Write("transmisión: " + viewer.Name + " saludó con la versión " + version);
                         Post(() =>
                         {
                             if (viewer.Capable) return;
@@ -525,6 +526,9 @@ namespace Lazo
         }
 
         private volatile bool _idle;
+        private bool _loggedFrame;
+        private int _failedCaptures;
+        private volatile bool _captureDead;
         private volatile bool _sourceGone;
 
         // Captura y codificación van en hilos distintos con doble búfer: mientras se codifica un fotograma
@@ -540,6 +544,7 @@ namespace Lazo
             TileEncoder encoder = new TileEncoder();
             try
             {
+                DiagLog.Write("transmisión: bucle iniciado, fuente " + Source.Width + "x" + Source.Height + (Source.IsWindow ? " (ventana)" : " (pantalla)"));
                 slots = new[] { new FrameCapturer(Source), new FrameCapturer(Source) };
                 grabber = new Thread(() => Grab(slots, free, ready)) { IsBackground = true, Name = "Lazo capture", Priority = ThreadPriority.AboveNormal };
                 grabber.Start();
@@ -557,6 +562,12 @@ namespace Lazo
                     Viewer[] targets;
                     lock (_lock) targets = _viewers.ToArray();
                     if (_sourceGone) { Say("La ventana compartida se cerró."); break; }
+                    if (_captureDead)
+                    {
+                        DiagLog.Write("transmisión: se termina porque no se pudo capturar nunca la pantalla");
+                        Say("No se pudo capturar la pantalla de este equipo. Con la sesión desconectada o bloqueada no hay imagen; desbloquéala o vuelve a abrirla.");
+                        break;
+                    }
                     if (targets.Length == 0)
                     {
                         if (got && index >= 0) free[index].Release();
@@ -582,6 +593,11 @@ namespace Lazo
                     work += clock.ElapsedMilliseconds - start;
                     captures++;
                     bool moved = cursorX != lastX || cursorY != lastY;
+                    if (!_loggedFrame && (tiles.Count > 0 || key))
+                    {
+                        _loggedFrame = true;
+                        DiagLog.Write("transmisión: primer fotograma " + width + "x" + height + " con " + tiles.Count + " bloques para " + targets.Length + " visor(es)");
+                    }
                     if (tiles.Count > 0 || moved || key)
                     {
                         packet.SetLength(0);
@@ -670,8 +686,18 @@ namespace Lazo
                     ok = slots[i].Capture();
                     CaptureMs = CaptureMs * 0.9 + (clock.ElapsedMilliseconds - t0) * 0.1;
                 }
-                catch { ok = false; }
-                if (!ok) free[i].Release();
+                catch (Exception ex) { ok = false; if (_failedCaptures == 0) DiagLog.Write("captura: excepción " + ex.GetType().Name + ": " + ex.Message); }
+                if (!ok)
+                {
+                    _failedCaptures++;
+                    // Unos 8 s sin poder capturar (pantalla bloqueada, sesión de Escritorio Remoto desconectada…): se termina con aviso
+                    // en vez de dejar a quien mira esperando una imagen que no va a llegar.
+                    if (_failedCaptures == 100 && !_loggedFrame) _captureDead = true;
+                    if (_failedCaptures == 1 || _failedCaptures == 40 || _failedCaptures % 400 == 0)
+                        DiagLog.Write("captura: no se pudo capturar el fotograma (" + _failedCaptures + " fallos seguidos; ¿pantalla bloqueada o sin sesión activa?)");
+                    free[i].Release();
+                }
+                else if (_failedCaptures > 0) { DiagLog.Write("captura: volvió a funcionar tras " + _failedCaptures + " fallos"); _failedCaptures = 0; }
                 bool posted = false;
                 while (_running && !posted) posted = ready.TryAdd(ok ? i : -1, 200);
                 if (!posted) { if (ok) free[i].Release(); return; }
@@ -888,6 +914,9 @@ namespace Lazo
         private readonly Button _fitButton;
         private readonly DispatcherTimer _fitTimer;
         private bool _fit;
+        // El ajuste espera a que ya se vea algo: cambiar el monitor remoto durante el arranque puede dejar la imagen en negro.
+        private bool _gotFrame, _fitPending;
+        private readonly DispatcherTimer _firstFitTimer;
         private readonly AnnotationToolbar _tools;
         private readonly Border _hintBox;
         private readonly TextBlock _hint;
@@ -914,8 +943,6 @@ namespace Lazo
         public bool HasEnded { get; private set; }
         /// <summary>Control remoto con contraseña: en cuanto llega el permiso de control se entra en modo control, sin botón que pulsar.</summary>
         public bool AutoControl;
-        /// <summary>Junto con <see cref="AutoControl"/>: «Ajustar resolución» empieza activado (el otro equipo adopta el tamaño de esta ventana).</summary>
-        public bool AutoFit;
         /// <summary>Pide ver esta pantalla en grande (F11, el botón de ampliar).</summary>
         public event Action FullRequested;
         /// <summary>Doble clic mientras solo se mira: destacarla entre las demás.</summary>
@@ -1047,7 +1074,9 @@ namespace Lazo
             // Con «Ajustar resolución» activo, cada cambio de tamaño de la ventana se pide 500 ms después de que termine.
             _fitTimer = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(500) };
             _fitTimer.Tick += (s, e) => { _fitTimer.Stop(); SendFit(); };
-            SizeChanged += (s, e) => { if (_fit) { _fitTimer.Stop(); _fitTimer.Start(); } };
+            _firstFitTimer = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(1500) };
+            _firstFitTimer.Tick += (s, e) => { _firstFitTimer.Stop(); SendFit(); };
+            SizeChanged += (s, e) => { if (_fit) ScheduleFit(); };
         }
 
         private static void Raise(Action handler)
@@ -1139,6 +1168,12 @@ namespace Lazo
         public void Apply(Patch[] patches, int cursorX, int cursorY, bool changed)
         {
             if (_bitmap == null) return;
+            if (!_gotFrame && patches.Length > 0)
+            {
+                _gotFrame = true;
+                DiagLog.Write("visor " + Sender + ": llegó el primer fotograma");
+                if (_fitPending) { _fitPending = false; _firstFitTimer.Stop(); _firstFitTimer.Start(); }
+            }
             if (patches.Length > 0)
             {
                 _bitmap.Lock();
@@ -1212,9 +1247,7 @@ namespace Lazo
             else if (AutoControl && (gained & SharePermission.Control) != 0 && _mode != ViewerMode.Control)
             {
                 SetMode(ViewerMode.Control);
-                bool canFit = AutoFit && _sharerVersion >= ScreenShareSession.ResolutionVersion;
-                if (canFit) { _fit = true; _fitTimer.Stop(); _fitTimer.Start(); }
-                Hint(canFit ? "Control remoto activo. La resolución del otro equipo se ajusta a esta ventana." : "Control remoto activo.");
+                Hint(_fit ? "Control remoto activo. La resolución del otro equipo se ajusta a esta ventana." : "Control remoto activo.");
             }
             _asking = (byte)(_asking & ~gained);
             SyncButtons();
@@ -1273,14 +1306,25 @@ namespace Lazo
         {
             if (_mode == ViewerMode.Control && mode != ViewerMode.Control) { ReleaseKeys(); ReleaseButtons(); }
             if (mode == ViewerMode.Watch) HidePointer();
+            bool entering = mode == ViewerMode.Control && _mode != ViewerMode.Control;
             _mode = mode;
+            if (entering && ViewerPrefs.AutoFit && !_fit && _back != null && _sharerVersion >= ScreenShareSession.ResolutionVersion && (_granted & SharePermission.Control) != 0)
+                _fit = true;
             Layer.Drawing = mode == ViewerMode.Draw;
             _tools.Visibility = mode == ViewerMode.Draw ? Visibility.Visible : Visibility.Collapsed;
             _image.Cursor = mode == ViewerMode.Control ? Cursors.Arrow : null;
             if (mode == ViewerMode.Control) _cursor.Visibility = Visibility.Collapsed;
             if (mode != ViewerMode.Watch) { Fade(_bar, 1); Focus(); }
             SyncButtons();
-            if (_fit && mode == ViewerMode.Control) { _fitTimer.Stop(); _fitTimer.Start(); }
+            if (_fit && mode == ViewerMode.Control) ScheduleFit();
+        }
+
+        /// <summary>Pide el ajuste 500 ms después del último cambio; si todavía no llegó ninguna imagen, espera a la primera (más 1,5 s).</summary>
+        private void ScheduleFit()
+        {
+            if (!_gotFrame) { _fitPending = true; return; }
+            _fitTimer.Stop();
+            _fitTimer.Start();
         }
 
         private void SyncButtons()
@@ -1304,9 +1348,10 @@ namespace Lazo
             if (_back == null || _sharerVersion < ScreenShareSession.ResolutionVersion || (_granted & SharePermission.Control) == 0) return;
             _fit = !_fit;
             _fitTimer.Stop();
+            _firstFitTimer.Stop();
             if (_fit)
             {
-                SendFit();
+                if (_gotFrame) SendFit(); else _fitPending = true;
                 Hint("Resolución ajustada a esta ventana mientras controlas.");
             }
             else
@@ -1483,7 +1528,9 @@ namespace Lazo
             _controlButton.Visibility = Visibility.Collapsed;
             _fitButton.Visibility = Visibility.Collapsed;
             _fit = false;
+            _fitPending = false;
             _fitTimer.Stop();
+            _firstFitTimer.Stop();
             _back = null;
             _center.Text = reason;
             _center.Visibility = Visibility.Visible;

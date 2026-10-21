@@ -54,6 +54,8 @@ final class ViewerSink: ScreenSink {
         var reason = "La transmisión terminó."
         let input = BinaryIn(stream)
         var width = 0, height = 0
+        var frameCount = 0
+        DiagLog.write("visor: esperando la transmisión")
         do {
             loop: while true {
                 let type = try input.u8()
@@ -75,10 +77,13 @@ final class ViewerSink: ScreenSink {
                     if let op = AnnotationOp.parse(try input.bytes(length)) { DispatchQueue.main.async { self.window.annotations.apply(op) } }
                 case UInt8(ascii: "S"):
                     width = Int(try input.i32()); height = Int(try input.i32())
+                    DiagLog.write("visor: tamaño de pantalla \(width)×\(height)")
                     guard (1...8192).contains(width), (1...8192).contains(height) else { throw LazoError.invalid("Tamaño de pantalla no válido.") }
                     let w = width, h = height
                     DispatchQueue.main.sync { self.window.resize(w, h) }
                 case UInt8(ascii: "F"):
+                    frameCount += 1
+                    if frameCount == 1 { DiagLog.write("visor: primer paquete de imagen") }
                     let cx = try input.i32(), cy = try input.i32(), count = Int(try input.i32())
                     guard (0...40000).contains(count) else { throw LazoError.invalid("Fotograma no válido.") }
                     var tiles: [(x: Int, y: Int, w: Int, h: Int, jpeg: Data)] = []
@@ -104,6 +109,7 @@ final class ViewerSink: ScreenSink {
                 }
             }
         } catch {
+            DiagLog.write("visor: terminó tras \(frameCount) paquetes de imagen: \(error.localizedDescription)")
             if case LazoError.closed = error { reason = "Se perdió la conexión." }
             else if case LazoError.timeout = error { reason = "Se perdió la conexión." }
             else { reason = "Error: " + error.localizedDescription }
@@ -204,6 +210,8 @@ final class ViewerPane: NSView {
     var endedChanged: (() -> Void)?
     var sizeKnown: ((Int, Int) -> Void)?
     private(set) var frameSize = CGSize.zero
+    private var gotFrame = false
+    private var fitPending = false
 
     /// En la tira del mosaico: sin barra, con el nombre de quien comparte.
     var compact = false {
@@ -249,6 +257,11 @@ final class ViewerPane: NSView {
             bar.centerXAnchor.constraint(equalTo: centerXAnchor), bar.topAnchor.constraint(equalTo: topAnchor, constant: 8),
             nameTag.leadingAnchor.constraint(equalTo: leadingAnchor, constant: 6), nameTag.bottomAnchor.constraint(equalTo: bottomAnchor, constant: -6),
         ])
+        // Si pasan unos segundos y no llega imagen, se explica la causa más probable en vez de dejar solo un fondo negro.
+        DispatchQueue.main.asyncAfter(deadline: .now() + 10) { [weak self] in
+            guard let self, !self.gotFrame, !self.isEnded else { return }
+            self.state.hint = "Todavía no llega imagen. Si es control remoto, \(self.sender) debe tener su sesión de Windows activa y desbloqueada (no desconectada de Escritorio Remoto)."
+        }
     }
 
     required init?(coder: NSCoder) { fatalError() }
@@ -276,6 +289,12 @@ final class ViewerPane: NSView {
 
     func apply(_ patches: [(Int, Int, CGImage)], cursor: (Int, Int), changed: Bool) {
         frameView.apply(patches, cursor: cursor)
+        if !gotFrame && !patches.isEmpty {
+            gotFrame = true
+            DiagLog.write("visor \(sender): llegó el primer fotograma")
+            // El ajuste de resolución espera a que ya se vea algo: cambiar el monitor remoto durante el arranque podía dejar la pantalla en negro.
+            if fitPending { DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) { [weak self] in self?.sendFit() } }
+        }
         if changed { frames += 1 }
         if Date().timeIntervalSince(statStart) >= 1 {
             let fps = Double(frames) / Date().timeIntervalSince(statStart)
@@ -286,6 +305,7 @@ final class ViewerPane: NSView {
     }
 
     func ended(_ reason: String) {
+        if !gotFrame { state.hint = "No llegó ninguna imagen de \(sender). Su sesión de Windows debe estar activa y desbloqueada (no desconectada de Escritorio Remoto)." }
         pointers.hideAll()
         setMode(.watch)
         state.canAsk = false
@@ -317,6 +337,8 @@ final class ViewerPane: NSView {
 
     private func sendFit() {
         guard let back, sharerVersion >= 3 else { return }
+        if state.fit && !gotFrame { fitPending = true; return }
+        fitPending = false
         var w: UInt16 = 0, h: UInt16 = 0
         if state.fit {
             let scale = window?.backingScaleFactor ?? 2

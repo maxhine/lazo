@@ -15,7 +15,7 @@ New-Item -ItemType Directory -Force -Path $output | Out-Null
 $exe = Join-Path $output 'ControlSmoke.exe'
 # Todo el código de la aplicación salvo su punto de entrada, más la prueba.
 $sources = Get-ChildItem -LiteralPath (Join-Path $project 'src') -Filter '*.cs' | Where-Object { $_.Name -ne 'Program.cs' } | Select-Object -ExpandProperty FullName
-& $csc /nologo /target:exe /platform:anycpu /utf8output ('/out:' + $exe) /reference:System.IO.Compression.dll /reference:System.IO.Compression.FileSystem.dll $references $sources (Join-Path $project 'tests\ControlSmoke.cs')
+& $csc /nologo /target:exe /platform:anycpu /utf8output ('/out:' + $exe) /reference:Microsoft.VisualBasic.dll /reference:System.IO.Compression.dll /reference:System.IO.Compression.FileSystem.dll $references $sources (Join-Path $project 'tests\ControlSmoke.cs')
 if ($LASTEXITCODE -ne 0) { throw 'Falló la compilación de la prueba de dibujo y control.' }
 & $exe (Join-Path $output 'control-check')
 if ($LASTEXITCODE -ne 0) { throw 'Falló la prueba de dibujo y control remoto.' }

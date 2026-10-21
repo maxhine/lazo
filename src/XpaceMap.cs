@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Globalization;
 using System.Linq;
 using System.Windows;
+using System.Windows.Controls;
 using System.Windows.Input;
 using System.Windows.Media;
 
@@ -34,8 +35,34 @@ namespace Lazo
         private Size _laidOut;
 
         public event Action<XNode> Drill;
+        /// <summary>Clic derecho › abrir en el Explorador / quitar una carpeta del mapa.</summary>
+        public event Action<string> RevealRequested;
+        public event Action<string, long> RemoveRequested;
+        /// <summary>Ruta de la carpeta analizada (para construir la de cada recuadro).</summary>
+        public string RootPath = "";
 
         public XpaceMap() { ClipToBounds = true; }
+
+        protected override void OnContextMenuOpening(ContextMenuEventArgs e)
+        {
+            Item hit = At(Mouse.GetPosition(this));
+            if (hit == null || hit.Node == null || hit.Other) { e.Handled = true; return; }
+            string path = hit.Node.FullPath(RootPath);
+            long size = hit.Size;
+            ContextMenu menu = new ContextMenu();
+            MenuItem show = new MenuItem { Header = "Abrir en el Explorador" };
+            show.Click += (s, a) => { if (RevealRequested != null) RevealRequested(path); };
+            menu.Items.Add(show);
+            if (!hit.Files && hit.Node.Parent != null)
+            {
+                MenuItem remove = new MenuItem { Header = "Quitar…" };
+                remove.Click += (s, a) => { if (RemoveRequested != null) RemoveRequested(path, size); };
+                menu.Items.Add(new Separator());
+                menu.Items.Add(remove);
+            }
+            ContextMenu = menu;
+            base.OnContextMenuOpening(e);
+        }
 
         public void Show(XNode node)
         {

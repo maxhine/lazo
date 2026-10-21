@@ -196,7 +196,9 @@ final class AppModel: ObservableObject {
     func connectRemote(_ peer: Peer, password: String) async -> String? {
         let engine = self.engine
         do {
+            DiagLog.write("control remoto: conectando a \(peer.name) (\(peer.address))")
             let connection = try await Task.detached { try engine.connectRemote(peer, password: password) }.value
+            DiagLog.write("control remoto: contraseña aceptada por \(peer.name)")
             let pane = ViewerPane(sender: peer.name, source: "Control remoto")
             pane.autoControl = true
             StageWindow.add(pane)
@@ -204,6 +206,7 @@ final class AppModel: ObservableObject {
             LauncherController.shared.hide()
             return nil
         } catch {
+            DiagLog.write("control remoto: falló con \(peer.name): \(error.localizedDescription)")
             return error.localizedDescription
         }
     }

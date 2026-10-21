@@ -834,6 +834,7 @@ namespace Lazo
             // Desactivado, bloqueado u ocupado: se cierra sin dar pistas de la contraseña.
             if (handler == null || !Remote.Enabled || Remote.IsLocked(viewerId) || (busy != null && busy()))
             {
+                DiagLog.Write("control remoto de " + name + ": rechazado (desactivado, bloqueado u ocupado)");
                 writer.Write((byte)0);
                 writer.Flush();
                 return;
@@ -848,6 +849,7 @@ namespace Lazo
             if (proof.Length != RemoteAccess.KeyLength) throw new EndOfStreamException();
             if (!Remote.Verify(challenge, proof, viewerId, _id.ToString("D").ToLowerInvariant()))
             {
+                DiagLog.Write("control remoto de " + name + ": contraseña incorrecta");
                 Remote.RegisterFailure(viewerId);
                 await Task.Delay(1000).ConfigureAwait(false);
                 writer.Write((byte)0);
@@ -863,7 +865,9 @@ namespace Lazo
             client.SendTimeout = 6000;
             client.ReceiveTimeout = 0;
             SecureConnection connection = new SecureConnection { Client = client, Stream = stream, PeerId = peerId.ToString("D") };
+            DiagLog.Write("control remoto de " + name + ": contraseña aceptada, se entrega la conexión a la transmisión");
             await handler(peerId, name, connection).ConfigureAwait(false);
+            DiagLog.Write("control remoto de " + name + ": la sesión terminó");
         }
 
         /// <summary>

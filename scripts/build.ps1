@@ -35,6 +35,7 @@ $icon = Join-Path $project 'assets\lazo.ico'
 if (Test-Path -LiteralPath $icon) { $arguments += '/win32icon:' + $icon }
 if ($Release) { $arguments += '/optimize+' } else { $arguments += '/debug+' }
 $arguments += $references
+$arguments += '/reference:Microsoft.VisualBasic.dll'
 $arguments += '/reference:System.IO.Compression.dll'
 $arguments += '/reference:System.IO.Compression.FileSystem.dll'
 $arguments += $sources

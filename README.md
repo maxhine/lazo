@@ -17,10 +17,10 @@ La interfaz usa Bahnschrift con respaldo en Segoe UI. Paneles, chat y cambios de
 
 ## Instalar y compartir
 
-Comparte **`dist/Lazo-Setup-0.6.0.exe`**. Es un solo archivo: contiene Lazo, crea accesos directos, registra la desinstalación en Configuración de Windows y configura dos reglas entrantes limitadas al perfil **Privado** y a la **subred local**. Solicita permisos de administrador. Puede iniciar con Windows si se deja marcada la opción del instalador.
+Comparte **`dist/Lazo-Setup-0.6.1.exe`**. Es un solo archivo: contiene Lazo, crea accesos directos, registra la desinstalación en Configuración de Windows y configura dos reglas entrantes limitadas al perfil **Privado** y a la **subred local**. Solicita permisos de administrador. Puede iniciar con Windows si se deja marcada la opción del instalador.
 
 1. Cierra cualquier copia anterior de Lazo desde el icono de la bandeja.
-2. Ejecuta `Lazo-Setup-0.6.0.exe` y acepta el aviso de Windows.
+2. Ejecuta `Lazo-Setup-0.6.1.exe` y acepta el aviso de Windows.
 3. Abre Lazo desde el menú Inicio. Repite la instalación en el otro equipo.
 4. Asegúrate de que ambos equipos estén en una red marcada como **Privada** en Windows.
 
@@ -63,6 +63,27 @@ Desde la versión 0.5.0 Lazo usa el protocolo **LAZO3** ([especificación](docs/
 - Lo recibido lleva la marca de origen de internet (Windows) o de cuarentena (macOS), y los ejecutables piden confirmación antes de abrirse.
 - Las actualizaciones solo se instalan si traen una firma válida de la clave de publicación (`scripts/sign-release.sh`).
 
+## Funciones por plataforma
+
+Windows y Mac tienen las mismas funciones y la misma interfaz. Las únicas diferencias vienen del sistema:
+
+| Función | Windows | macOS |
+|---|---|---|
+| Enviar y recibir archivos, carpeta de recepción elegible, historial | ✓ | ✓ |
+| Chat: grupos, borrar para mí / para todos, vaciar, borrar historial de archivos | ✓ | ✓ |
+| Compartir pantalla o ventana, punteros con nombre, láser, mosaico, dibujar, control remoto con los dos modos | ✓ | ✓ |
+| «Compartiendo ahora», unirme, pedir que compartan | ✓ | ✓ |
+| Control remoto con contraseña (anfitrión y visor) y ajuste de resolución | ✓ | ✓ (el Mac como anfitrión no cambia su resolución) |
+| Atajos de emergencia (Ctrl+Alt izquierdo + Q, X, A, R) | Ctrl+Alt | ⌃⌥ |
+| Interfaz Minimal y Standard, temas, acento, Liquid Glass, fondo de inicio, foto de perfil | ✓ | ✓ |
+| Descanso Visual (20-20-20, pausa activa) | ✓ | ✓ |
+| Xpace: mapa, lista, archivos grandes, tipos, quitar archivos y sugerencias de qué borrar | ✓ | ✓ |
+| Equipos conocidos y verificación con código | ✓ | ✓ |
+| Actualización automática con firma | ✓ | ✓ |
+| Registro de diagnóstico (Ajustes › Abrir registro de diagnóstico) | `%APPDATA%\Lazo\lazo.log` | `~/Library/Logs/Lazo/lazo.log` |
+| Búsqueda de archivos | Everything | Spotlight |
+| Conversor de nubes de puntos a ReCap | ✓ | — (necesita ReCap, solo Windows) |
+
 ## Control remoto con contraseña
 
 Entra a un equipo desde otro **sin que nadie tenga que aceptar**, con una contraseña que define su dueño. Pensado para controlar tu PC de trabajo desde el Mac (o al revés).
@@ -75,7 +96,7 @@ Entra a un equipo desde otro **sin que nadie tenga que aceptar**, con una contra
 
 ## macOS
 
-Instala **`Lazo-0.6.0-mac.dmg`**: ábrelo y arrastra Lazo a Aplicaciones. Vive en la barra de menús y se abre con **doble ⌥ izquierdo**, **⌃⌥L** o su icono. Tiene lo mismo que en Windows salvo el conversor de nubes de puntos (necesita ReCap): Minimal y Standard con la misma interfaz (barra lateral, mosaicos, tema Oscuro por defecto), temas y Liquid Glass, chat con grupos y borrado, historial, carpeta de recepción elegible, Descanso Visual, **Xpace** (espacio en disco con opción de quitar y sugerencias de qué borrar), compartir pantalla con punteros, láser, mosaico y «Compartiendo ahora», dibujar, control remoto con los dos modos y **control remoto con contraseña**. La búsqueda usa Spotlight en lugar de Everything.
+Instala **`Lazo-0.6.1-mac.dmg`**: ábrelo y arrastra Lazo a Aplicaciones. Vive en la barra de menús y se abre con **doble ⌥ izquierdo**, **⌃⌥L** o su icono. Tiene lo mismo que en Windows salvo el conversor de nubes de puntos (necesita ReCap): Minimal y Standard con la misma interfaz (barra lateral, mosaicos, tema Oscuro por defecto), temas y Liquid Glass, chat con grupos y borrado, historial, carpeta de recepción elegible, Descanso Visual, **Xpace** (espacio en disco con opción de quitar y sugerencias de qué borrar), compartir pantalla con punteros, láser, mosaico y «Compartiendo ahora», dibujar, control remoto con los dos modos y **control remoto con contraseña**. La búsqueda usa Spotlight en lugar de Everything.
 
 - La app no tiene firma de Apple (Developer ID). La primera vez, en otro Mac: clic derecho › **Abrir**.
 - macOS pide permisos: **Red local** (al abrir), **Grabación de pantalla** (para compartir) y **Accesibilidad** (para que alguien controle el Mac y para el doble ⌥). Están en Ajustes › Permisos de macOS.
@@ -111,7 +132,7 @@ No requiere SDK de .NET ni paquetes NuGet en el equipo de desarrollo; usa el com
 En un Mac (requiere Swift y `brew install dotnet`):
 
 ```sh
-./scripts/build-mac.sh        # dist/Lazo-0.6.0-mac.dmg
+./scripts/build-mac.sh        # dist/Lazo-0.6.1-mac.dmg
 ./scripts/test-interop.sh     # motor de Windows (C#) contra el de Mac: archivo y chat en los dos sentidos
 ~/Library/Caches/lazo-build/debug/Lazo --self-test
 ```

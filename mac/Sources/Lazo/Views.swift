@@ -106,6 +106,8 @@ struct SettingsView: View {
                     ThemeChips()
                     SectionLabel(text: "Acento")
                     AccentPicker()
+                    SectionLabel(text: "Fondo de inicio")
+                    HeroBackgroundRow()
                     Toggle("Liquid Glass", isOn: $prefs.liquidGlass).toggleStyle(.switch).font(.lazo(12.5))
                     SectionLabel(text: "Avisos de chat")
                     Segmented(options: [(false, "Discretos"), (true, "Notificación")], selection: $prefs.chatBanner)
@@ -141,6 +143,24 @@ struct SettingsView: View {
         .panelFrame(360)
         .onAppear { nameDraft = prefs.name.isEmpty ? prefs.displayName : prefs.name }
         .onDisappear { if nameDraft != prefs.displayName { prefs.name = nameDraft } }
+    }
+}
+
+/// Imagen de fondo del inicio (la usa el tema «Imagen» y el acento «De la imagen de inicio»), como «Fondo de inicio» en Windows.
+struct HeroBackgroundRow: View {
+    @ObservedObject var prefs = Prefs.shared
+
+    var body: some View {
+        HStack(spacing: 8) {
+            if prefs.hasHero, let image = NSImage(contentsOf: prefs.heroURL) {
+                Image(nsImage: image).resizable().scaledToFill().frame(width: 56, height: 36).clipShape(RoundedRectangle(cornerRadius: 8)).id(prefs.heroVersion)
+            }
+            PillButton(title: prefs.hasHero ? "Cambiar imagen…" : "Elegir imagen…") {
+                if let url = LauncherController.shared.pickImage() { prefs.setHero(from: url) }
+            }
+            if prefs.hasHero { PillButton(title: "Restablecer") { prefs.setHero(from: nil) } }
+            Spacer(minLength: 0)
+        }
     }
 }
 

@@ -1,4 +1,4 @@
-# Control remoto con contraseña y ajuste de resolución (Lazo 0.6.0)
+# Control remoto con contraseña y ajuste de resolución (Lazo 0.6.1)
 
 Dos funciones nuevas sobre el canal cifrado LAZO3 (`protocolo-seguro.md`). Este documento es la especificación común de Windows (C#) y macOS (Swift).
 
