@@ -28,6 +28,9 @@ namespace Lazo
         public double Offset;
         public string SelectedKey;
         public XpaceScanner Scanner;
+        /// <summary>Qué conviene quitar (ubicaciones conocidas + lo analizado).</summary>
+        public List<XSuggestion> Suggestions = new List<XSuggestion>();
+        public bool LoadingTips, TipsLoaded;
 
         /// <summary>Empezó o terminó un análisis: hay que reconstruir la pantalla.</summary>
         public event Action Changed;
@@ -78,12 +81,63 @@ namespace Lazo
                     Error = error;
                     if (result != null && !result.Cancelled) { Expanded.Add(result.Root); MapNode = result.Root; }
                     if (result != null && result.Cancelled) { Result = null; Error = "Análisis cancelado."; }
+                    TipsLoaded = false;
+                    if (Tab == "tips") { Raise(); LoadSuggestions(false); return; }
                     Raise();
                 }));
             });
         }
 
         public void Cancel() { if (_run != null && Running) _run.Cancel(); }
+
+        /// <summary>Busca qué se puede quitar: ubicaciones conocidas del equipo y, si hay análisis, lo que sale de él.</summary>
+        public void LoadSuggestions(bool force)
+        {
+            if (LoadingTips || (TipsLoaded && !force)) return;
+            LoadingTips = true;
+            Raise();
+            XResult scanned = Result;
+            Task.Run(() =>
+            {
+                List<XSuggestion> all = new List<XSuggestion>();
+                try { all.AddRange(XpaceSuggestions.Known(XpaceEnv.Current(), XpaceSuggestions.Minimum, null, null)); } catch { }
+                try { XSuggestion bin = XpaceSuggestions.RecycleBin(null); if (bin != null) all.Add(bin); } catch { }
+                if (scanned != null)
+                    try { all.AddRange(XpaceSuggestions.From(scanned, XpaceSuggestions.Minimum, DateTime.UtcNow)); } catch { }
+                List<XSuggestion> clean = XpaceSuggestions.Clean(all);
+                _dispatcher.BeginInvoke((Action)(() =>
+                {
+                    Suggestions = clean;
+                    LoadingTips = false;
+                    TipsLoaded = true;
+                    Raise();
+                }));
+            });
+        }
+
+        /// <summary>
+        /// Quita un elemento (papelera o para siempre) y deja el análisis y las sugerencias al día sin recorrer el disco.
+        /// Devuelve null si salió bien, o el motivo del fallo.
+        /// </summary>
+        public string Remove(string path, bool isFolder, bool permanent, bool contentsOnly)
+        {
+            string problem = XpaceActions.Remove(path, isFolder, permanent, contentsOnly);
+            bool gone = problem == null || (contentsOnly && problem.StartsWith("Se quitó lo que se pudo", StringComparison.Ordinal));
+            if (!gone) return problem;
+            string normalized = XpaceActions.Normalize(path);
+            Suggestions.RemoveAll(x => string.Equals(XpaceActions.Normalize(x.Path), normalized, StringComparison.OrdinalIgnoreCase) ||
+                XpaceActions.Normalize(x.Path).StartsWith(normalized.TrimEnd('\\') + "\\", StringComparison.OrdinalIgnoreCase));
+            if (Result != null && !contentsOnly) XpaceActions.Forget(Result, path, isFolder);
+            if (SelectedKey != null && string.Equals(SelectedKey, path, StringComparison.OrdinalIgnoreCase)) SelectedKey = null;
+            if (MapNode != null && Result != null)
+            {
+                bool reachable = false;
+                for (XNode n = MapNode; n != null; n = n.Parent) if (n == Result.Root) reachable = true;
+                if (!reachable) MapNode = Result.Root;
+            }
+            Raise();
+            return problem;
+        }
 
         private void Raise() { if (Changed != null) Changed(); }
     }
@@ -393,6 +447,7 @@ namespace Lazo
         private readonly Action<string> _toast;
         private TextBlock _status;
         private XpaceList _list;
+        private Button _revealButton, _removeButton;
         private Action _onProgress;
 
         public XpaceView(XpaceSession session, Action<string> toast)
@@ -452,6 +507,9 @@ namespace Lazo
             Children.Add(pathRow);
 
             WrapPanel drives = new WrapPanel { Margin = new Thickness(0, 0, 0, 6) };
+            Button tipsButton = Pill("✦ Sugerencias", _s.Tab == "tips", 30, () => { _s.Tab = "tips"; _s.SelectedKey = null; _s.LoadSuggestions(false); Rebuild(); });
+            tipsButton.Margin = new Thickness(0, 0, 6, 6);
+            drives.Children.Add(tipsButton);
             foreach (DriveInfo drive in DriveInfo.GetDrives())
             {
                 try
@@ -477,6 +535,7 @@ namespace Lazo
             }
             if (_s.Result == null)
             {
+                if (_s.Tab == "tips") { BuildTips(); return; }
                 if (_s.Error == null)
                 {
                     TextBlock hint = Theme.Text("Xpace recorre las carpetas en paralelo y muestra dónde se va el espacio, al estilo de TreeSize. No lee el contenido de los archivos y funciona sin permisos de administrador.", 11.5, Theme.Muted);
@@ -575,16 +634,21 @@ namespace Lazo
 
             // Vistas
             WrapPanel tabs = new WrapPanel { Margin = new Thickness(0, 0, 0, 8) };
-            string[][] views = { new[] { "map", "Mapa" }, new[] { "folders", "Lista" }, new[] { "files", "Archivos grandes" }, new[] { "types", "Tipos de archivo" } };
+            string[][] views = { new[] { "map", "Mapa" }, new[] { "folders", "Lista" }, new[] { "files", "Archivos grandes" }, new[] { "types", "Tipos de archivo" }, new[] { "tips", "Sugerencias" } };
             foreach (string[] view in views)
             {
                 string id = view[0];
-                Button tab = Pill(view[1], _s.Tab == id, 30, () => { _s.Offset = 0; _s.SelectedKey = null; _s.Tab = id; Rebuild(); });
+                Button tab = Pill(view[1], _s.Tab == id, 30, () => { _s.Offset = 0; _s.SelectedKey = null; _s.Tab = id; if (id == "tips") _s.LoadSuggestions(false); Rebuild(); });
                 tab.Margin = new Thickness(0, 0, 6, 0);
                 tabs.Children.Add(tab);
             }
             Children.Add(tabs);
 
+            if (_s.Tab == "tips")
+            {
+                BuildTips();
+                return;
+            }
             if (_s.Tab == "map")
             {
                 BuildMap();
@@ -598,15 +662,101 @@ namespace Lazo
                 _s.SelectedKey = row.Key;
                 Fill();
             };
-            _list.Selected += row => _s.SelectedKey = row.Key;
+            _list.Selected += row => { _s.SelectedKey = row.Key; UpdateActions(); };
             _list.Activate += row => Reveal(row);
             _list.ContextRequested += row => _list.ContextMenu = Menu(row);
             Children.Add(_list);
             Fill();
 
-            TextBlock hint = Theme.Text("Doble clic expande o abre en el Explorador · clic derecho para copiar la ruta · tamaño lógico, como lo muestra el Explorador.", 10.5, Theme.Muted);
+            StackPanel actions = new StackPanel { Orientation = Orientation.Horizontal, Margin = new Thickness(0, 8, 0, 0) };
+            _revealButton = Pill("Mostrar en el Explorador", false, 30, () => { XRow row = _list.Current; if (row != null) Reveal(row); });
+            _removeButton = Pill("Quitar…", false, 30, () => { XRow row = _list.Current; if (row != null) RemoveRow(row); });
+            _removeButton.Margin = new Thickness(8, 0, 0, 0);
+            actions.Children.Add(_revealButton);
+            actions.Children.Add(_removeButton);
+            Children.Add(actions);
+            UpdateActions();
+
+            TextBlock hint = Theme.Text("Doble clic expande o abre en el Explorador · clic derecho para más opciones · tamaño lógico, como lo muestra el Explorador.", 10.5, Theme.Muted);
             hint.Margin = new Thickness(0, 6, 0, 0);
             Children.Add(hint);
+        }
+
+        /// <summary>Qué conviene quitar: cada sugerencia dice por qué, cuánto ocupa y si es seguro o hay que revisarlo.</summary>
+        private void BuildTips()
+        {
+            List<XSuggestion> items = _s.Suggestions;
+            long total = 0;
+            foreach (XSuggestion item in items) if (!item.InfoOnly) total += item.Size;
+            Grid head = new Grid { Margin = new Thickness(0, 4, 0, 4) };
+            head.ColumnDefinitions.Add(new ColumnDefinition());
+            head.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+            string title = _s.LoadingTips ? "Buscando qué se puede quitar…" : items.Count(x => !x.InfoOnly) == 0 ? "No encontré nada claro para quitar." : "Se podrían recuperar hasta " + XpaceList.SizeText(total);
+            head.Children.Add(Theme.Text(title, 13, Theme.Ink, FontWeights.SemiBold));
+            Button again = Pill("Buscar de nuevo", false, 30, () => _s.LoadSuggestions(true));
+            again.IsEnabled = !_s.LoadingTips;
+            Grid.SetColumn(again, 1);
+            head.Children.Add(again);
+            Children.Add(head);
+            TextBlock note = Theme.Text(_s.Result == null
+                ? "Revisé cachés y carpetas temporales conocidas. Analiza una carpeta o una unidad para encontrar además instaladores, dependencias regenerables y archivos enormes sin tocar."
+                : "Incluye lo que encontró el análisis y las ubicaciones conocidas de este equipo. «Seguro» se vuelve a generar solo; «Revisar» pide que mires antes.", 10.5, Theme.Muted);
+            note.TextWrapping = TextWrapping.Wrap;
+            note.Margin = new Thickness(0, 0, 0, 6);
+            Children.Add(note);
+            StackPanel list = new StackPanel();
+            foreach (XSuggestion item in items)
+            {
+                XSuggestion s = item;
+                Grid card = new Grid();
+                card.ColumnDefinitions.Add(new ColumnDefinition());
+                card.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+                StackPanel left = new StackPanel();
+                StackPanel titleRow = new StackPanel { Orientation = Orientation.Horizontal };
+                TextBlock name = Theme.Text(s.Title, 12.5, Theme.Ink, FontWeights.SemiBold);
+                name.TextTrimming = TextTrimming.CharacterEllipsis;
+                name.TextWrapping = TextWrapping.NoWrap;
+                titleRow.Children.Add(name);
+                Border tag = new Border
+                {
+                    CornerRadius = new CornerRadius(8), Padding = new Thickness(7, 1, 7, 2), Margin = new Thickness(8, 1, 0, 0),
+                    Background = Theme.Color(s.Safe ? "#332FB45A" : "#33F2A33A"),
+                    Child = Theme.Text(s.Safe ? "Seguro" : "Revisar", 9.5, Theme.Ink, FontWeights.SemiBold)
+                };
+                titleRow.Children.Add(tag);
+                left.Children.Add(titleRow);
+                TextBlock why = Theme.Text(s.Why, 11, Theme.Muted);
+                why.TextWrapping = TextWrapping.Wrap;
+                left.Children.Add(why);
+                TextBlock where = Theme.Text(s.Path, 10, Theme.Muted);
+                where.TextTrimming = TextTrimming.CharacterEllipsis;
+                where.TextWrapping = TextWrapping.NoWrap;
+                where.Opacity = 0.8;
+                left.Children.Add(where);
+                card.Children.Add(left);
+                StackPanel right = new StackPanel { Margin = new Thickness(10, 0, 0, 0), HorizontalAlignment = HorizontalAlignment.Right };
+                TextBlock size = Theme.Text(XpaceList.SizeText(s.Size), 13, Theme.Ink, FontWeights.SemiBold);
+                size.FontFamily = Theme.Mono;
+                size.HorizontalAlignment = HorizontalAlignment.Right;
+                right.Children.Add(size);
+                StackPanel buttons = new StackPanel { Orientation = Orientation.Horizontal, Margin = new Thickness(0, 4, 0, 0) };
+                Button show = Pill("Explorador", false, 26, () => RevealPath(s.Path, false));
+                buttons.Children.Add(show);
+                if (!s.InfoOnly)
+                {
+                    Button remove = Pill("Quitar…", false, 26, () => RemovePath(s.Path, s.Size, s.IsFolder, s.ContentsOnly));
+                    remove.Margin = new Thickness(6, 0, 0, 0);
+                    buttons.Children.Add(remove);
+                }
+                right.Children.Add(buttons);
+                Grid.SetColumn(right, 1);
+                card.Children.Add(right);
+                list.Children.Add(new Border
+                {
+                    Background = Theme.SoftSurface, CornerRadius = new CornerRadius(12), Padding = new Thickness(12, 9, 12, 9), Margin = new Thickness(0, 0, 0, 6), Child = card
+                });
+            }
+            Children.Add(new ScrollViewer { Content = list, Height = 330, VerticalScrollBarVisibility = ScrollBarVisibility.Auto });
         }
 
         /// <summary>Mapa de árbol con migas de pan: cada recuadro es una carpeta y un clic entra en ella.</summary>
@@ -637,8 +787,10 @@ namespace Lazo
             crumbs.Children.Add(total);
             Children.Add(crumbs);
 
-            XpaceMap map = new XpaceMap { Height = 340 };
+            XpaceMap map = new XpaceMap { Height = 340, RootPath = _s.Result.Path };
             map.Drill += child => { _s.MapNode = child; Rebuild(); };
+            map.RevealRequested += path => RevealPath(path, false);
+            map.RemoveRequested += (path, size) => RemovePath(path, size, true, false);
             map.Show(node);
             Border frame = new Border { CornerRadius = new CornerRadius(14), BorderBrush = Theme.Line, BorderThickness = new Thickness(1), Padding = new Thickness(6), Child = map };
             Children.Add(frame);
@@ -740,17 +892,88 @@ namespace Lazo
                 toggle.Click += (s, e) => { if (!_s.Expanded.Add(row.Node)) _s.Expanded.Remove(row.Node); Fill(); };
                 menu.Items.Add(toggle);
             }
+            if (Removable(row))
+            {
+                menu.Items.Add(new Separator());
+                MenuItem remove = new MenuItem { Header = "Quitar…" };
+                remove.Click += (s, e) => RemoveRow(row);
+                menu.Items.Add(remove);
+            }
             return menu;
+        }
+
+        /// <summary>Solo carpetas y archivos concretos se pueden quitar (no los resúmenes «[N archivos]» ni los tipos).</summary>
+        private static bool Removable(XRow row)
+        {
+            if (row == null || row.Path == null || row.Key == null || row.Key.IndexOf('|') >= 0 || row.Key.StartsWith("ext:", StringComparison.Ordinal)) return false;
+            return row.Node != null ? row.Node.Parent != null : row.IsFile;
+        }
+
+        private void UpdateActions()
+        {
+            XRow row = _list == null ? null : _list.Current;
+            if (_revealButton != null) _revealButton.IsEnabled = row != null && row.Path != null;
+            if (_removeButton != null) _removeButton.IsEnabled = Removable(row);
+        }
+
+        private void RemoveRow(XRow row)
+        {
+            if (!Removable(row)) return;
+            RemovePath(row.Path, row.Size, row.Node != null, false);
+        }
+
+        /// <summary>Pregunta qué hacer (papelera, para siempre o nada) y quita. Para la papelera, el espacio se libera al vaciarla.</summary>
+        private void RemovePath(string path, long size, bool isFolder, bool contentsOnly)
+        {
+            string name = Path.GetFileName(path.TrimEnd('\\'));
+            if (name.Length == 0) name = path;
+            Window owner = Window.GetWindow(this);
+            bool top = owner != null && owner.Topmost;
+            if (owner != null) owner.Topmost = false;
+            bool permanent = false;
+            try
+            {
+                string reason = XpaceActions.ProtectionReason(path);
+                if (reason != null)
+                {
+                    MessageBox.Show(owner, name + ": " + reason, "Xpace no borra esto", MessageBoxButton.OK, MessageBoxImage.Warning);
+                    return;
+                }
+                string text = "«" + name + "»\n" + (contentsOnly ? "Contenido de la carpeta" : isFolder ? "Carpeta" : "Archivo") + " de " + XpaceList.SizeText(size) + ".\n" + path + "\n\n" +
+                    (contentsOnly ? "Se quita lo que hay dentro y la carpeta se queda; lo que esté en uso no se toca.\n\n" : "") +
+                    "Sí: mover a la papelera de reciclaje (se puede recuperar, pero el espacio no se libera hasta que la vacíes).\n" +
+                    "No: eliminar definitivamente.\nCancelar: no hacer nada.";
+                if (XpaceActions.IsSynced(path)) text += "\n\nOjo: está en una carpeta sincronizada. Quitarlo también lo quita en la nube y en tus otros equipos.";
+                MessageBoxResult first = MessageBox.Show(owner, text, "¿Quitar «" + name + "»?", MessageBoxButton.YesNoCancel, MessageBoxImage.Warning);
+                if (first == MessageBoxResult.Cancel || first == MessageBoxResult.None) return;
+                if (first == MessageBoxResult.No)
+                {
+                    MessageBoxResult sure = MessageBox.Show(owner, "No se podrá recuperar. Se liberan " + XpaceList.SizeText(size) + " de inmediato.\n\n¿Eliminar «" + name + "» para siempre?",
+                        "Eliminar para siempre", MessageBoxButton.YesNo, MessageBoxImage.Stop);
+                    if (sure != MessageBoxResult.Yes) return;
+                    permanent = true;
+                }
+            }
+            finally { if (owner != null) owner.Topmost = top; }
+            string problem = _s.Remove(path, isFolder, permanent, contentsOnly);
+            if (problem == null) _toast(permanent ? "Eliminado para siempre" : "Movido a la papelera: vacíala para liberar el espacio");
+            else _toast(problem);
         }
 
         private void Reveal(XRow row)
         {
             if (row.Path == null) return;
+            RevealPath(row.Path, row.IsFile && row.Node == null && row.Key.IndexOf('|') < 0 && File.Exists(row.Path));
+        }
+
+        private void RevealPath(string path, bool file)
+        {
             try
             {
                 string explorer = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.Windows), "explorer.exe");
-                bool file = row.IsFile && row.Node == null && row.Key.IndexOf('|') < 0 && File.Exists(row.Path);
-                Process.Start(explorer, file ? "/select,\"" + row.Path + "\"" : "\"" + row.Path + "\"");
+                if (path.IndexOf("$Recycle.Bin", StringComparison.OrdinalIgnoreCase) >= 0) { Process.Start(explorer, "shell:RecycleBinFolder"); return; }
+                if (!file && File.Exists(path)) file = true;
+                Process.Start(explorer, file ? "/select,\"" + path + "\"" : "\"" + path + "\"");
             }
             catch (Exception ex) { _toast(ex.Message); }
         }

@@ -15,7 +15,7 @@ $references = foreach ($name in @('PresentationCore','PresentationFramework','Wi
     '/reference:' + $dll.FullName
 }
 $sources = Get-ChildItem -LiteralPath (Join-Path $project 'src') -Filter '*.cs' | Where-Object { $_.Name -ne 'Program.cs' } | Select-Object -ExpandProperty FullName
-& $csc /nologo /target:exe /platform:anycpu /utf8output ('/out:' + $exe) /reference:System.IO.Compression.dll /reference:System.IO.Compression.FileSystem.dll $references $sources (Join-Path $project 'tests\RemoteSmoke.cs')
+& $csc /nologo /target:exe /platform:anycpu /utf8output ('/out:' + $exe) /reference:Microsoft.VisualBasic.dll /reference:System.IO.Compression.dll /reference:System.IO.Compression.FileSystem.dll $references $sources (Join-Path $project 'tests\RemoteSmoke.cs')
 if ($LASTEXITCODE -ne 0) { throw 'Falló la compilación de la prueba de control remoto.' }
 & $exe
 if ($LASTEXITCODE -ne 0) { throw 'Falló la prueba de control remoto.' }

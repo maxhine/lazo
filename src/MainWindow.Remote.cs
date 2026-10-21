@@ -320,7 +320,7 @@ namespace Lazo
                 stage.Closed += (s, e) => { if (_stage == stage) _stage = null; };
                 _stage = stage;
             }
-            ScreenViewerView view = new ScreenViewerView(peer.Name, "Control remoto") { AutoControl = true, AutoFit = true };
+            ScreenViewerView view = new ScreenViewerView(peer.Name, "Control remoto") { AutoControl = true };
             _stage.Add(view);
             if (!_stage.IsVisible) _stage.Show();
             if (_stage.WindowState == WindowState.Minimized) _stage.WindowState = WindowState.Normal;

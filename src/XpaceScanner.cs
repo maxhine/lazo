@@ -29,7 +29,7 @@ namespace Lazo
             List<string> parts = new List<string>();
             for (XNode n = this; n != null && n.Parent != null; n = n.Parent) parts.Add(n.Name);
             parts.Reverse();
-            return parts.Count == 0 ? rootPath : Path.Combine(rootPath.TrimEnd('\\') + "\\", string.Join("\\", parts));
+            return parts.Count == 0 ? rootPath : rootPath.TrimEnd('\\') + "\\" + string.Join("\\", parts);
         }
     }
 

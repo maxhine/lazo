@@ -1327,6 +1327,18 @@ namespace Lazo
             panel.Children.Add(startup);
             AddReceiveFolder(panel);
             AddRemoteAccess(panel);
+            CheckBox autoFit = new CheckBox
+            {
+                Content = "Ajustar la resolución del otro equipo al controlar",
+                IsChecked = ViewerPrefs.AutoFit,
+                Foreground = Theme.Ink,
+                FontFamily = Theme.Font,
+                FontSize = 12,
+                Margin = new Thickness(0, 10, 0, 2)
+            };
+            autoFit.Checked += (s, e) => ViewerPrefs.SetAutoFit(true, !_preview);
+            autoFit.Unchecked += (s, e) => ViewerPrefs.SetAutoFit(false, !_preview);
+            panel.Children.Add(autoFit);
             CheckBox updates = new CheckBox
             {
                 Content = "Actualizar automáticamente",
@@ -1344,6 +1356,22 @@ namespace Lazo
             panel.Children.Add(chatAlerts);
             panel.Children.Add(Segment("Bandeja", "Notificación", !ChatPrefs.UseBalloon,
                 () => ChatPrefs.Set(false), () => ChatPrefs.Set(true)));
+            Button openLog = Theme.Button("Abrir registro de diagnóstico", false);
+            openLog.HorizontalAlignment = HorizontalAlignment.Left;
+            openLog.Margin = new Thickness(0, 8, 0, 0);
+            openLog.MinHeight = 34;
+            openLog.ToolTip = "Para ver por qué falla una conexión: " + DiagLog.Path;
+            openLog.Click += (s, e) =>
+            {
+                if (_preview) return;
+                try
+                {
+                    if (!File.Exists(DiagLog.Path)) DiagLog.Write("registro abierto desde Ajustes");
+                    System.Diagnostics.Process.Start("notepad.exe", "\"" + DiagLog.Path + "\"");
+                }
+                catch (Exception ex) { ShowToast(ex.Message); }
+            };
+            panel.Children.Add(openLog);
             Button checkUpdates = Theme.Button("Verificar actualizaciones", false);
             checkUpdates.HorizontalAlignment = HorizontalAlignment.Left;
             checkUpdates.Margin = new Thickness(0, 8, 0, 0);
