@@ -257,6 +257,11 @@ final class ViewerPane: NSView {
             bar.centerXAnchor.constraint(equalTo: centerXAnchor), bar.topAnchor.constraint(equalTo: topAnchor, constant: 8),
             nameTag.leadingAnchor.constraint(equalTo: leadingAnchor, constant: 6), nameTag.bottomAnchor.constraint(equalTo: bottomAnchor, constant: -6),
         ])
+        // Si pasan unos segundos y no llega imagen, se explica la causa más probable en vez de dejar solo un fondo negro.
+        DispatchQueue.main.asyncAfter(deadline: .now() + 10) { [weak self] in
+            guard let self, !self.gotFrame, !self.isEnded else { return }
+            self.state.hint = "Todavía no llega imagen. Si es control remoto, \(self.sender) debe tener su sesión de Windows activa y desbloqueada (no desconectada de Escritorio Remoto)."
+        }
     }
 
     required init?(coder: NSCoder) { fatalError() }
@@ -300,6 +305,7 @@ final class ViewerPane: NSView {
     }
 
     func ended(_ reason: String) {
+        if !gotFrame { state.hint = "No llegó ninguna imagen de \(sender). Su sesión de Windows debe estar activa y desbloqueada (no desconectada de Escritorio Remoto)." }
         pointers.hideAll()
         setMode(.watch)
         state.canAsk = false
