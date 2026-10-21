@@ -8,3 +8,4 @@ tests/interop/obj/
 tests/interop/bin/
 mac/.build/
 mac/.swiftpm/
+.DS_Store
