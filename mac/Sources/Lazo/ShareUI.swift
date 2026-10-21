@@ -75,7 +75,8 @@ struct SharePickerView: View {
                 }
             }
         }
-        .frame(width: 400)
+        .panelFrame(400)
+        .onAppear { if let id = model.shareTarget { targets = [id]; model.shareTarget = nil } }
         .task {
             guard Permissions.screenRecording else { return }
             do {
@@ -116,7 +117,13 @@ struct FlowChips: View {
 enum ShareStarter {
     private static var overlay: ShareOverlayWindow?
     private static var bar: ShareBarPanel?
-    private static var prompts: [(viewer: Int, panel: FloatingPanel, dismiss: () -> Void)] = []
+    struct Prompt {
+        let viewer: Int
+        let panel: FloatingPanel
+        let accept: () -> Void
+        let reject: () -> Void
+    }
+    private static var prompts: [Prompt] = []
 
     /// Desde el chat: comparte la pantalla principal con esa persona (o la invita si ya se comparte).
     static func startQuick(with peer: Peer) {
@@ -131,8 +138,8 @@ enum ShareStarter {
         }
     }
 
-    static func start(_ source: ShareSource, _ peers: [Peer]) {
-        guard AppModel.shared.share == nil else { return }
+    static func start(_ source: ShareSource, _ peers: [Peer], remote: (SecureConnection, String)? = nil) {
+        guard AppModel.shared.share == nil else { remote?.0.close(); return }
         let model = AppModel.shared
         let session = ScreenShareSession(engine: model.engine, source: source)
         let overlay = ShareOverlayWindow(source: source)
@@ -143,12 +150,14 @@ enum ShareStarter {
         session.notice = { model.say($0) }
         session.changed = { update(session) }
         session.permissionRequested = { id, name, kind in ask(session, id, name, kind) }
-        session.viewerLeft = { id in for prompt in prompts where prompt.viewer == id { prompt.dismiss() } }
+        session.viewerLeft = { id in for prompt in prompts where prompt.viewer == id { prompt.reject() } }
+        session.pointerMoved = { overlay.pointers.apply($0) }
         session.ended = { ended(session) }
         self.overlay = overlay
         self.bar = bar
         model.share = session
         for peer in peers { session.invite(peer) }
+        if let remote { session.attachRemote(remote.0, name: remote.1) }
         Task {
             do {
                 try await session.start()
@@ -164,10 +173,29 @@ enum ShareStarter {
         }
     }
 
+    /// Alguien entró con la contraseña de control remoto: se comparte la pantalla principal sin preguntar.
+    static func startRemote(_ connection: SecureConnection, _ name: String) {
+        guard AppModel.shared.share == nil else { connection.close(); return }
+        guard Permissions.screenRecording else {
+            AppModel.shared.say("Control remoto: \(name) intentó entrar, pero Lazo no tiene permiso de grabación de pantalla.")
+            Permissions.requestScreenRecording()
+            connection.close()
+            return
+        }
+        if !Permissions.accessibility {
+            Permissions.requestAccessibility()
+            AppModel.shared.say("Para que \(name) controle este Mac, activa Lazo en Accesibilidad.")
+        }
+        Task {
+            guard let source = try? await ShareSource.load().first else { connection.close(); return }
+            start(source, [], remote: (connection, name))
+        }
+    }
+
     static func update(_ session: ScreenShareSession) {
         guard AppModel.shared.share === session else { return }
         let names = session.viewerNames
-        var text = "Compartiendo " + session.source.label
+        var text = session.remoteViewer.map { "Control remoto activo: \($0)" } ?? "Compartiendo " + session.source.label
         if text.count > 46 { text = String(text.prefix(45)) + "…" }
         text += names.isEmpty ? " · esperando…" : " · " + (names.count == 1 ? names[0] : "\(names.count) personas") + " · \(Int(session.fps.rounded())) fps"
         if let controller = session.controller { text += " · controla " + controller }
@@ -183,7 +211,7 @@ enum ShareStarter {
         AppModel.shared.share = nil
         overlay?.close(); overlay = nil
         bar?.close(); bar = nil
-        for prompt in prompts { prompt.dismiss() }
+        for prompt in prompts { prompt.reject() }
         prompts.removeAll()
         AppModel.shared.say("Dejaste de compartir la pantalla")
     }
@@ -232,8 +260,79 @@ enum ShareStarter {
         panel = FloatingPanel(view, width: control ? 440 : 380)
         FloatingPanel.Stack.add(panel)
         panel.fadeIn()
-        prompts.append((viewerId, panel, { respond(false, false) }))
+        // Atajos de emergencia: aceptar es lo prudente (control: solo la ventana activa).
+        prompts.append(Prompt(viewer: viewerId, panel: panel, accept: { respond(true, false) }, reject: { respond(false, false) }))
         DispatchQueue.main.asyncAfter(deadline: .now() + 60) { respond(false, false) }
+    }
+
+    // MARK: Peticiones de unirse o de compartir
+
+    /// Alguien que no mira pide unirse a lo que se comparte. Si se acepta, se le envía la invitación de siempre.
+    static func askWatch(_ peerId: String, _ name: String) {
+        notify(id: -1, symbol: "eye", title: "\(name) quiere ver tu pantalla",
+               detail: "Verá lo mismo que los demás que miran. Puedes dejar de compartir cuando quieras.", accept: "Permitir", reject: "Rechazar") {
+            guard let share = AppModel.shared.share, let peer = AppModel.shared.peer(peerId) else { return }
+            share.invite(peer)
+        }
+    }
+
+    /// Alguien te pide que compartas tu pantalla. Si aceptas, eliges qué compartir; nada se ve hasta que pulses Compartir.
+    static func askShare(_ peerId: String, _ name: String) {
+        notify(id: -2, symbol: "display", title: "\(name) te pide que compartas tu pantalla",
+               detail: "Elige qué compartir; nada se ve hasta que pulses Compartir.", accept: "Elegir qué compartir", reject: "Ahora no") {
+            AppModel.shared.shareTarget = peerId
+            LauncherController.shared.show(route: .share)
+        }
+    }
+
+    private static func notify(id: Int, symbol: String, title: String, detail: String, accept: String, reject: String, onAccept: @escaping () -> Void) {
+        var panel: FloatingPanel!
+        var done = false
+        let respond: (Bool) -> Void = { ok in
+            guard !done else { return }
+            done = true
+            prompts.removeAll { $0.panel === panel }
+            panel.fadeOut()
+            if ok { onAccept() }
+        }
+        let view = Card {
+            VStack(alignment: .leading, spacing: 8) {
+                HStack(spacing: 10) {
+                    Circle().fill(Prefs.shared.accentColor).frame(width: 36, height: 36).overlay(Image(systemName: symbol).foregroundStyle(.white))
+                    Text(title).font(.lazo(13, .semibold))
+                }
+                Text(detail).font(.lazo(11.5)).opacity(0.7).fixedSize(horizontal: false, vertical: true)
+                HStack {
+                    Spacer()
+                    PillButton(title: reject) { respond(false) }
+                    PillButton(title: accept, primary: true) { respond(true) }
+                }
+                Text("⌃⌥A: aceptar · ⌃⌥R: rechazar").font(.lazo(10.5)).opacity(0.5).frame(maxWidth: .infinity, alignment: .trailing)
+            }
+        }
+        panel = FloatingPanel(view, width: 400)
+        FloatingPanel.Stack.add(panel)
+        panel.fadeIn()
+        NSSound(named: "Pop")?.play()
+        prompts.append(Prompt(viewer: id, panel: panel, accept: { respond(true) }, reject: { respond(false) }))
+        DispatchQueue.main.asyncAfter(deadline: .now() + 60) { respond(false) }
+    }
+
+    /// Atajos de emergencia ⌃⌥ izquierdo + letra, solo desde el teclado físico: Q quita los permisos, X deja de compartir,
+    /// A acepta la petición más antigua y R la rechaza. Devuelve si el atajo se atendió.
+    @discardableResult
+    static func chord(_ letter: Character) -> Bool {
+        switch letter {
+        case "q", "x":
+            guard let share = AppModel.shared.share else { return false }
+            if letter == "q" { share.revokeAll(); AppModel.shared.say("Quitaste todos los permisos") } else { share.stop() }
+            return true
+        case "a", "r":
+            guard let first = prompts.first else { return false }
+            if letter == "a" { first.accept() } else { first.reject() }
+            return true
+        default: return false
+        }
     }
 }
 
@@ -242,6 +341,8 @@ enum ShareStarter {
 /// Ventana transparente exactamente sobre la fuente, excluida de la captura. Deja pasar el mouse salvo al dibujar.
 final class ShareOverlayWindow: NSWindow {
     let annotations = AnnotationView()
+    /// Punteros de quienes miran y dibujan o controlan, sobre lo compartido.
+    let pointers = PointerView()
     private let source: ShareSource
     private var follow: Timer?
     var drawingChanged: ((Bool) -> Void)?
@@ -259,6 +360,9 @@ final class ShareOverlayWindow: NSWindow {
         sharingType = .none
         collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary, .stationary]
         contentView = annotations
+        pointers.frame = annotations.bounds
+        pointers.autoresizingMask = [.width, .height]
+        annotations.addSubview(pointers)
         place()
         follow = Timer.scheduledTimer(withTimeInterval: source.window != nil ? 0.12 : 1, repeats: true) { [weak self] _ in self?.place() }
     }
@@ -298,6 +402,7 @@ final class ShareBarState: ObservableObject {
     @Published var granted = false
     @Published var drawAllowed = true
     @Published var drawing = false
+    @Published var hasStrokes = false
 }
 
 final class ShareBarPanel {
@@ -307,6 +412,7 @@ final class ShareBarPanel {
     init(session: ScreenShareSession, overlay: ShareOverlayWindow) {
         let state = self.state
         overlay.drawingChanged = { [weak session] on in session?.inputPaused = on; state.drawing = on }
+        overlay.annotations.strokesChanged = { [weak overlay] in state.hasStrokes = overlay?.annotations.hasStrokes ?? false }
         panel = FloatingPanel(ShareBarView(state: state, overlay: overlay, session: session), width: 640, activates: true)
         panel.isMovableByWindowBackground = true
         panel.level = .statusBar
@@ -342,6 +448,12 @@ private struct ShareBarView: View {
                         .padding(.horizontal, 10).padding(.vertical, 5).background(Capsule().fill(Color.white.opacity(state.drawing ? 0.35 : 0.15)))
                 }.buttonStyle(.plain).disabled(!state.drawAllowed)
                     .help(state.drawAllowed ? "Escribir sobre la pantalla (Esc para terminar)" : "Quita el control para poder dibujar")
+                if state.hasStrokes {
+                    Button { overlay.annotations.clearAll() } label: {
+                        Label("Borrar dibujos", systemImage: "trash").font(.lazo(12, .semibold)).padding(.horizontal, 10).padding(.vertical, 5)
+                            .background(Capsule().fill(Color.white.opacity(0.15)))
+                    }.buttonStyle(.plain).help("Quita todos los trazos de la pantalla, incluidos los de quienes miran")
+                }
                 if state.granted {
                     Button { session.revokeAll() } label: {
                         Text("Quitar permisos").font(.lazo(12, .semibold)).padding(.horizontal, 10).padding(.vertical, 5)

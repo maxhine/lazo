@@ -1,6 +1,6 @@
 #!/bin/sh
 # Firma los instaladores de una versión para que el actualizador de Lazo los acepte.
-# Uso: scripts/sign-release.sh dist/Lazo-Setup-0.5.2.exe dist/Lazo-0.5.0-mac.dmg
+# Uso: scripts/sign-release.sh dist/Lazo-Setup-0.6.0.exe dist/Lazo-0.6.0-mac.dmg
 # La clave privada vive solo en el equipo que publica: ~/.lazo/release-signing-key.pem
 # (nunca en el repositorio ni en OneDrive). Publica cada archivo junto con su «.sig».
 set -e

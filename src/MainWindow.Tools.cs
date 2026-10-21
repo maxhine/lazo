@@ -17,7 +17,7 @@ namespace Lazo
     {
         private bool _toolsOpen;
         private Border _toolsCard;
-        /// <summary>Utilidad abierta: «cloud» (nubes de puntos) o «xpace» (espacio en disco).</summary>
+        /// <summary>Utilidad abierta: «cloud» (nubes de puntos), «xpace» (espacio en disco) o «remote» (control remoto).</summary>
         private string _toolId = "cloud";
         private XpaceSession _xpace;
 
@@ -130,9 +130,10 @@ namespace Lazo
             WrapPanel gallery = new WrapPanel { Margin = new Thickness(0, 0, 0, 8) };
             gallery.Children.Add(ToolTile(CloudGlyph(), "Nube de puntos", "LAS, LAZ o E57 a ReCap, LAS, XYZ, PTS o CSV, con vista previa de la reducción", _toolId == "cloud", () => SelectTool("cloud")));
             gallery.Children.Add(ToolTile(XpaceGlyph(), "Xpace", "Dónde se va el espacio en disco: carpetas, archivos grandes y tipos", _toolId == "xpace", () => SelectTool("xpace")));
+            gallery.Children.Add(ToolTile(Icons.Make("key", 20, Theme.Ink, 1.8), "Control remoto", "Entrar a otro equipo con su contraseña y controlarlo, con la resolución ajustada a tu ventana", _toolId == "remote", () => SelectTool("remote")));
             panel.Children.Add(gallery);
             panel.Children.Add(new Border { Height = 1, Background = Theme.Line, Margin = new Thickness(0, 0, 12, 12) });
-            panel.Children.Add(_toolId == "xpace" ? XpaceTool() : PointCloudTool());
+            panel.Children.Add(_toolId == "xpace" ? XpaceTool() : _toolId == "remote" ? RemoteTool() : PointCloudTool());
             return Scroll(panel);
         }
 

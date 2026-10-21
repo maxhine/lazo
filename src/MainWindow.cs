@@ -198,6 +198,8 @@ namespace Lazo
                 _network.ScreenOffered += OnScreenOffered;
                 _network.JoinRequested += OnJoinRequested;
                 _network.ShareRequested += OnShareRequested;
+                _network.RemoteAccessAccepted += OnRemoteAccess;
+                _network.RemoteBusy = () => _share != null;
                 _network.PairingPrompt += OnPairingPrompt;
                 Updater.CheckInBackground(text => Dispatcher.BeginInvoke((Action)(() => SetStatus(text))),
                     () => Dispatcher.BeginInvoke((Action)(() => { _exiting = true; Application.Current.Shutdown(); })));
@@ -1324,6 +1326,7 @@ namespace Lazo
             startup.Unchecked += (s, e) => { Startup.Set(false); startup.IsChecked = Startup.IsEnabled(); };
             panel.Children.Add(startup);
             AddReceiveFolder(panel);
+            AddRemoteAccess(panel);
             CheckBox updates = new CheckBox
             {
                 Content = "Actualizar automáticamente",
@@ -4034,9 +4037,10 @@ namespace Lazo
         {
             if (_share == null) return;
             string[] names = _share.ViewerNames();
-            string text = "Compartiendo " + _share.Source.Label;
+            string text = _remoteName != null ? "Control remoto activo · " + _remoteName : "Compartiendo " + _share.Source.Label;
             if (text.Length > 46) text = text.Substring(0, 45) + "…";
-            text += names.Length == 0 ? " · esperando…" : " · " + (names.Length == 1 ? names[0] : names.Length + " personas") + " · " + Math.Round(_share.Fps) + " fps";
+            if (_remoteName != null) text += " · " + Math.Round(_share.Fps) + " fps";
+            else text += names.Length == 0 ? " · esperando…" : " · " + (names.Length == 1 ? names[0] : names.Length + " personas") + " · " + Math.Round(_share.Fps) + " fps";
             string controller = _share.Controller;
             if (controller != null) text += " · controla " + controller;
             bool control = _share.ControlActive;
@@ -4055,6 +4059,8 @@ namespace Lazo
         {
             if (_share != session) return;
             _share = null;
+            bool wasRemote = _remoteName != null;
+            _remoteName = null;
             _network.SetSharing(null);
             _joinPrompted.Clear();
             if (_shareBar != null) { _shareBar.Close(); _shareBar = null; }
@@ -4064,7 +4070,7 @@ namespace Lazo
             _shareInvited.Clear();
             RefreshShareCard();
             if (_chatPanel != null) _chatPanel.RefreshOpen();
-            ShowToast("Dejaste de compartir la pantalla");
+            ShowToast(wasRemote ? "El control remoto terminó" : "Dejaste de compartir la pantalla");
         }
 
         /// <summary>Alguien que mira pide dibujar o controlar: decide quien comparte.</summary>

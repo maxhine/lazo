@@ -193,11 +193,16 @@ final class ScreenShareSession: NSObject, SCStreamOutput, SCStreamDelegate {
         let writeLock = NSLock()
         var capable = false
         var granted: UInt8 = 0
+        /// Versión del canal de retorno con la que saludó; desde la 2 entiende punteros.
+        var version: UInt8 = 0
+        var pointerShown = false
         var asked = Set<UInt8>()
         init(id: Int, name: String, connection: SecureConnection) { self.id = id; self.name = name; self.connection = connection }
     }
 
-    static let backChannelVersion: UInt8 = 1
+    static let backChannelVersion: UInt8 = 3
+    /// Primera versión del canal de retorno con punteros colaborativos (`M`).
+    static let pointerVersion: UInt8 = 2
     static let maxWidth = 2560, maxHeight = 1600
     let source: ShareSource
     private let engine: NetworkEngine
@@ -226,6 +231,8 @@ final class ScreenShareSession: NSObject, SCStreamOutput, SCStreamDelegate {
     var permissionRequested: ((Int, String, UInt8) -> Void)?
     var viewerLeft: ((Int) -> Void)?
     var annotated: ((AnnotationOp) -> Void)?
+    /// Puntero de quien mira, para pintarlo sobre la pantalla de quien comparte.
+    var pointerMoved: ((PointerUpdate) -> Void)?
 
     init(engine: NetworkEngine, source: ShareSource) {
         self.engine = engine
@@ -240,6 +247,25 @@ final class ScreenShareSession: NSObject, SCStreamOutput, SCStreamDelegate {
         lock.lock(); defer { lock.unlock() }
         guard let v = viewers.first(where: { $0.granted & SharePermission.control != 0 }) else { return nil }
         return v.name + (v.granted & SharePermission.fullControl != 0 ? " (control total)" : " (ventana activa)")
+    }
+
+    /// Quien entró con contraseña (control remoto); mientras haya alguien, la barra lo muestra.
+    private(set) var remoteViewer: String?
+
+    /// Adjunta a quien entró por control remoto con contraseña: ya viene autenticado, con dibujar y control total concedidos.
+    func attachRemote(_ connection: SecureConnection, name: String) {
+        lock.lock()
+        nextViewer += 1
+        let viewer = Viewer(id: nextViewer, name: name, connection: connection)
+        viewer.granted = SharePermission.draw | SharePermission.control | SharePermission.fullControl
+        viewers.append(viewer)
+        remoteViewer = name
+        key = true
+        lock.unlock()
+        injector.configure(full: true)
+        Thread.detachNewThread { self.readBack(viewer) }
+        say("Control remoto: \(name) entró a este Mac")
+        raise()
     }
 
     func invite(_ peer: Peer) {
@@ -494,8 +520,23 @@ final class ScreenShareSession: NSObject, SCStreamOutput, SCStreamDelegate {
         let hadControl = viewer.granted & SharePermission.control != 0
         viewer.granted = granted
         if hadControl && granted & SharePermission.control == 0 { injector.releaseAll() }
+        if granted & (SharePermission.draw | SharePermission.control) == 0 { pointer(viewer, visible: false, x: 0, y: 0) }
         write(viewer, Data([UInt8(ascii: "P"), granted]))
         raise()
+    }
+
+    /// Puntero de quien mira: solo se muestra mientras puede dibujar o controlar. Se pinta en la superposición de quien
+    /// comparte y se reenvía a los demás visores que lo entienden.
+    private func pointer(_ viewer: Viewer, visible: Bool, x: UInt16, y: UInt16) {
+        if visible && viewer.granted & (SharePermission.draw | SharePermission.control) == 0 { return }
+        if !visible && !viewer.pointerShown { return }
+        viewer.pointerShown = visible
+        let update = PointerUpdate(id: Int32(viewer.id), visible: visible, x: x, y: y,
+                                   color: UInt8((viewer.id - 1) % PointerPalette.count), name: viewer.name)
+        DispatchQueue.main.async { self.pointerMoved?(update) }
+        let packet = Self.framed(UInt8(ascii: "M"), update.bytes())
+        lock.lock(); let targets = viewers.filter { $0.capable && $0 !== viewer && $0.version >= Self.pointerVersion }; lock.unlock()
+        for target in targets { write(target, packet) }
     }
 
     private func controllerOther(_ except: Viewer) -> Viewer? {
@@ -538,9 +579,11 @@ final class ScreenShareSession: NSObject, SCStreamOutput, SCStreamDelegate {
         defer {
             control.async { [self] in
                 if viewer.granted & SharePermission.control != 0 { injector.releaseAll() }
+                pointer(viewer, visible: false, x: 0, y: 0)
                 viewer.granted = 0
                 viewer.capable = false
                 viewer.asked.removeAll()
+                if remoteViewer == viewer.name { remoteViewer = nil }
                 DispatchQueue.main.async { self.viewerLeft?(viewer.id) }
                 raise()
             }
@@ -550,9 +593,10 @@ final class ScreenShareSession: NSObject, SCStreamOutput, SCStreamDelegate {
                 let type = try input.u8()
                 switch type {
                 case UInt8(ascii: "H"):
-                    _ = try input.u8()
+                    let version = try input.u8()
                     control.async { [self] in
                         guard !viewer.capable else { return }
+                        viewer.version = version
                         write(viewer, Data([UInt8(ascii: "H"), Self.backChannelVersion]))
                         write(viewer, Data([UInt8(ascii: "P"), viewer.granted]))
                         for op in annotations.snapshot() { write(viewer, Self.framed(UInt8(ascii: "A"), op.bytes())) }
@@ -571,6 +615,13 @@ final class ScreenShareSession: NSObject, SCStreamOutput, SCStreamDelegate {
                         guard viewer.granted & SharePermission.control != 0, running, !inputPaused else { return }
                         injector.apply(event)
                     }
+                case UInt8(ascii: "Z"):
+                    // Ajustar la resolución al tamaño del visor (v3): este Mac no cambia su resolución, solo lee y descarta el paquete.
+                    _ = try input.u16(); _ = try input.u16()
+                case UInt8(ascii: "M"):
+                    let visible = try input.u8() != 0
+                    let x = try input.u16(), y = try input.u16()
+                    control.async { [self] in if viewer.version >= Self.pointerVersion { pointer(viewer, visible: visible, x: x, y: y) } }
                 default: return
                 }
             }

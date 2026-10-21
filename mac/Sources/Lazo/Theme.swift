@@ -61,9 +61,13 @@ extension Color {
     }
 }
 
-/// Tipografía: Bahnschrift no existe en Mac; se usa la redondeada del sistema, cercana en tono.
+/// Tipografía: Bahnschrift (la de Windows) no existe en Mac; DIN Alternate, que sí viene con macOS, es su pariente más cercana.
+/// Solo tiene negrita: los textos con peso van en DIN y el cuerpo en la del sistema.
 extension Font {
     static func lazo(_ size: CGFloat, _ weight: Font.Weight = .regular) -> Font {
-        .system(size: size, weight: weight, design: .rounded)
+        switch weight {
+        case .medium, .semibold, .bold, .heavy, .black: return .custom("DINAlternate-Bold", size: size)
+        default: return .system(size: size, weight: weight)
+        }
     }
 }

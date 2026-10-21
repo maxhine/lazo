@@ -2,7 +2,8 @@ import AppKit
 import LazoCore
 import SwiftUI
 
-enum AnnotationTool: UInt8 { case pen = 1, marker = 2, arrow = 3, box = 4, eraser = 100 }
+/// `laser`: puntero efímero que brilla y se borra solo poco después de levantar el mouse (desde 0.5.1).
+enum AnnotationTool: UInt8 { case pen = 1, marker = 2, arrow = 3, box = 4, laser = 5, eraser = 100 }
 
 /// Cambio sobre los trazos, con coordenadas normalizadas 0–65535 (mismo formato que src/ScreenAnnotation.cs).
 struct AnnotationOp {
@@ -54,6 +55,41 @@ struct AnnotationOp {
     }
 
     static func norm(_ value: Double) -> UInt16 { UInt16((max(0, min(1, value)) * 65535).rounded()) }
+}
+
+/// Colores de los punteros colaborativos (mismos que src/RemotePointers.cs).
+let PointerPalette: [UInt32] = [0xFF4C5FF2, 0xFF2FB56E, 0xFFE04E8A, 0xFFF28C28, 0xFF8E5CE6, 0xFF17A8B8]
+
+/// Puntero de alguien que mira y dibuja o controla, reenviado por quien comparte a los demás (canal de retorno v2):
+/// `M` u16 longitud + [i32 id · u8 visible · u16 x · u16 y · u8 color · nombre UTF-8].
+struct PointerUpdate {
+    var id: Int32
+    var visible: Bool
+    var x: UInt16
+    var y: UInt16
+    var color: UInt8
+    var name: String
+
+    func bytes() -> Data {
+        var out = BinaryOut()
+        out.i32(id)
+        out.u8(visible ? 1 : 0)
+        out.u16(x); out.u16(y)
+        out.u8(color)
+        var name = Data(self.name.utf8)
+        if name.count > 180 { name = name.prefix(180) }
+        out.bytes(name)
+        return out.data
+    }
+
+    static func parse(_ data: Data) -> PointerUpdate? {
+        guard data.count >= 10 else { return nil }
+        let d = Data(data)
+        func le<T: FixedWidthInteger>(_ t: T.Type, _ at: Int) -> T { T(littleEndian: d[at..<at + MemoryLayout<T>.size].withUnsafeBytes { $0.loadUnaligned(as: T.self) }) }
+        let nameData = d.dropFirst(10).prefix(180)
+        return PointerUpdate(id: le(Int32.self, 0), visible: d[4] != 0, x: le(UInt16.self, 5), y: le(UInt16.self, 7), color: d[9],
+                             name: String(data: nameData, encoding: .utf8) ?? "")
+    }
 }
 
 /// Estado de los trazos; quien comparte lo conserva para enviarlo a quien se une tarde.
@@ -110,6 +146,8 @@ final class AnnotationModel {
     func snapshot() -> [AnnotationOp] {
         var ops: [AnnotationOp] = []
         for stroke in order {
+            // El láser es efímero: quien se une tarde no lo recibe.
+            if stroke.tool == .laser { continue }
             var start = 0
             while start < stroke.xs.count {
                 let end = min(stroke.xs.count, start + AnnotationOp.maxPoints)
@@ -131,14 +169,24 @@ final class AnnotationView: NSView {
     /// Visor: el borrador solo quita los trazos hechos en este equipo.
     var onlyMine = false
     var local: ((AnnotationOp) -> Void)?
+    /// Mi puntero sobre la capa (visible, x, y normalizados) mientras dibujo.
+    var pointer: ((Bool, UInt16, UInt16) -> Void)?
+    private var lastPointer = Date.distantPast
     private(set) var mine = Set<Int32>()
     private var current: Int32 = 0
     private var batchX: [UInt16] = [], batchY: [UInt16] = []
     private var batchTimer: Timer?
+    /// Cambió el número de trazos (propios o llegados de la red).
+    var strokesChanged: (() -> Void)?
+    var hasStrokes: Bool { !model.order.isEmpty }
+    /// Tiempo que el láser sigue visible tras levantar el mouse y tiempo tras el cual cada equipo lo quita solo si quien lo trazó desapareció.
+    static let laserLinger: TimeInterval = 1.2, laserOrphan: TimeInterval = 6
+    private var lasers: [Int32: Date] = [:]
+    private var laserTimer: Timer?
 
     var drawing = false {
         didSet {
-            if !drawing { flushBatch(); current = 0 }
+            if !drawing { flushBatch(); finishStroke(current); current = 0 }
             window?.invalidateCursorRects(for: self)
         }
     }
@@ -156,8 +204,11 @@ final class AnnotationView: NSView {
     func apply(_ op: AnnotationOp) {
         if model.apply(op) {
             if op.kind == AnnotationOp.clear { mine.removeAll() }
-            if op.kind == AnnotationOp.erase { mine.remove(op.id) }
+            if op.kind == AnnotationOp.erase { mine.remove(op.id); lasers.removeValue(forKey: op.id) }
+            if op.kind == AnnotationOp.clear { lasers.removeAll() }
+            if op.kind == AnnotationOp.begin, op.tool == .laser { trackLaser(op.id) }
             needsDisplay = true
+            strokesChanged?()
         }
     }
 
@@ -166,10 +217,37 @@ final class AnnotationView: NSView {
         guard model.apply(op) else { return false }
         if op.kind == AnnotationOp.begin { mine.insert(op.id) }
         if op.kind == AnnotationOp.clear { mine.removeAll() }
-        if op.kind == AnnotationOp.erase { mine.remove(op.id) }
+        if op.kind == AnnotationOp.erase { mine.remove(op.id); lasers.removeValue(forKey: op.id) }
+        if op.kind == AnnotationOp.begin, op.tool == .laser { trackLaser(op.id) }
         needsDisplay = true
+        strokesChanged?()
         local?(op)
         return true
+    }
+
+    private func trackLaser(_ id: Int32) {
+        lasers[id] = Date()
+        if laserTimer == nil {
+            laserTimer = Timer.scheduledTimer(withTimeInterval: 0.5, repeats: true) { [weak self] _ in self?.sweepLasers() }
+        }
+    }
+
+    /// Si quien lo trazó desaparece sin borrarlo, cada equipo lo quita por su cuenta (solo aquí: nadie más lo anuncia).
+    private func sweepLasers() {
+        if lasers.isEmpty { laserTimer?.invalidate(); laserTimer = nil; return }
+        for (id, since) in lasers where current != id && Date().timeIntervalSince(since) >= Self.laserOrphan {
+            lasers.removeValue(forKey: id)
+            if model.apply(AnnotationOp(kind: AnnotationOp.erase, id: id)) { mine.remove(id); needsDisplay = true; strokesChanged?() }
+        }
+    }
+
+    /// Terminó un trazo propio (se levantó el mouse). Si es láser, se borra para todos al poco.
+    private func finishStroke(_ id: Int32) {
+        guard id > 0, let stroke = model.find(id), stroke.tool == .laser else { return }
+        DispatchQueue.main.asyncAfter(deadline: .now() + Self.laserLinger) { [weak self] in
+            guard let self, self.model.find(id) != nil else { return }
+            self.emit(AnnotationOp(kind: AnnotationOp.erase, id: id))
+        }
     }
 
     func eraseMine() { for id in Array(mine) { emit(AnnotationOp(kind: AnnotationOp.erase, id: id)) } }
@@ -191,6 +269,7 @@ final class AnnotationView: NSView {
     }
 
     override func mouseDragged(with event: NSEvent) {
+        announcePointer(event)
         guard drawing, current != 0 else { return }
         if current == -1 { eraseAt(event); return }
         let (x, y) = normalized(event)
@@ -201,8 +280,25 @@ final class AnnotationView: NSView {
         }
     }
 
+    override func updateTrackingAreas() {
+        trackingAreas.forEach(removeTrackingArea)
+        addTrackingArea(NSTrackingArea(rect: bounds, options: [.mouseMoved, .mouseEnteredAndExited, .activeAlways, .inVisibleRect], owner: self))
+        super.updateTrackingAreas()
+    }
+
+    private func announcePointer(_ event: NSEvent) {
+        guard drawing, pointer != nil, Date().timeIntervalSince(lastPointer) > 0.03 else { return }
+        lastPointer = Date()
+        let (x, y) = normalized(event)
+        pointer?(true, x, y)
+    }
+
+    override func mouseMoved(with event: NSEvent) { announcePointer(event) }
+    override func mouseExited(with event: NSEvent) { if drawing { pointer?(false, 0, 0) } }
+
     override func mouseUp(with event: NSEvent) {
         flushBatch()
+        finishStroke(current)
         current = 0
     }
 
@@ -223,7 +319,7 @@ final class AnnotationView: NSView {
     private var scale: CGFloat { max(0.6, bounds.width / 1280) }
 
     private func width(_ tool: AnnotationTool) -> CGFloat {
-        (tool == .marker ? 16 : tool == .pen ? 3.5 : 4) * scale
+        (tool == .marker ? 16 : tool == .pen ? 3.5 : tool == .laser ? 4.5 : 4) * scale
     }
 
     private func eraseAt(_ event: NSEvent) {
@@ -269,6 +365,10 @@ final class AnnotationView: NSView {
             g.setStrokeColor(red: CGFloat(c >> 16 & 255) / 255, green: CGFloat(c >> 8 & 255) / 255, blue: CGFloat(c & 255) / 255, alpha: CGFloat(alpha) / 255)
             let w = width(stroke.tool)
             g.setLineWidth(w)
+            // Láser: trazo intenso del color elegido con un halo de luz, visible en fondos claros y oscuros.
+            if stroke.tool == .laser {
+                g.setShadow(offset: .zero, blur: 16 * scale, color: CGColor(red: CGFloat(c >> 16 & 255) / 255, green: CGFloat(c >> 8 & 255) / 255, blue: CGFloat(c & 255) / 255, alpha: 0.95))
+            } else { g.setShadow(offset: .zero, blur: 0) }
             let first = at(stroke.xs[0], stroke.ys[0]), last = at(stroke.xs.last!, stroke.ys.last!)
             switch stroke.tool {
             case .box:
@@ -307,6 +407,7 @@ struct AnnotationToolbar: View {
             toolButton(.marker, "highlighter", "Marcador")
             toolButton(.arrow, "arrow.up.right", "Flecha")
             toolButton(.box, "rectangle", "Recuadro")
+            toolButton(.laser, "scope", "Láser: el trazo se desvanece solo")
             toolButton(.eraser, "eraser", "Borrador: pulsa un trazo para quitarlo")
             Rectangle().fill(Color.white.opacity(0.25)).frame(width: 1, height: 18).padding(.horizontal, 6)
             ForEach(AnnotationView.colors, id: \.self) { value in

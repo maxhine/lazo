@@ -891,7 +891,9 @@ namespace Lazo
             if (peer == null) { _state.Text = "Desconectado"; return; }
             try
             {
-                await _network.SendSignalAsync(peer, NetworkEngine.ChatKindNudge, "1");
+                // Con el envío fiable: el de avisos (escribiendo, presencia) sale en silencio si el equipo aún no consta como
+                // conocido en esta lista, y el zumbido parecía enviado sin llegar nunca.
+                await _network.SendReliableSignalAsync(peer, NetworkEngine.ChatKindNudge, "1");
                 ChatStore.AppendNudge(peer.Id, peer.Name, true);
                 if (_nudgeFx != null) _nudgeFx();
                 ShowThread(peer.Id, peer.Name);

@@ -14,6 +14,47 @@ enum LazoMain {
             MainActor.assumeIsolated { Previews.run(URL(fileURLWithPath: args[index + 1])) }
             return
         }
+        if let index = args.firstIndex(of: "--chat-vectors"), index + 2 < args.count {
+            func text(_ b64: String) -> String { String(decoding: Data(base64Encoded: b64) ?? Data(), as: UTF8.self) }
+            let (id, clean) = WireId.unwrap(text(args[index + 1]))
+            let wireOk = id == "a1b2c3d4" && clean == "hola ñ ✓"
+            let group = ChatGroups.unpack(text(args[index + 2]), selfId: "33333333-3333-3333-3333-333333333333")
+            let groupOk = group?.name == "Equipo ñ" && group?.owner == "22222222-2222-2222-2222-222222222222" && group?.members.count == 2
+                && group?.members[0].id == "55555555-5555-5555-5555-555555555555" && group?.members[0].name == "Jhon" && group?.members[1].name == "Luis"
+            print((wireOk ? "OK    " : "FALLO ") + "Windows → Mac: identificador de mensaje")
+            print((groupOk ? "OK    " : "FALLO ") + "Windows → Mac: lista de grupo")
+            var mine = ChatGroup(id: "11111111-1111-1111-1111-111111111111", name: "Equipo ñ", owner: "22222222-2222-2222-2222-222222222222",
+                                 members: [GroupMember(id: "33333333-3333-3333-3333-333333333333", name: "Ana"), GroupMember(id: "44444444-4444-4444-4444-444444444444", name: "Luis")])
+            mine.name = "Equipo ñ"
+            print("WIRE " + Data(WireId.wrap("a1b2c3d4", "hola ñ ✓").utf8).base64EncodedString())
+            print("GROUP " + Data(ChatGroups.pack(mine, selfId: "55555555-5555-5555-5555-555555555555", selfName: "Jhon").utf8).base64EncodedString())
+            exit(wireOk && groupOk ? 0 : 1)
+        }
+        if args.contains("--whoami") {
+            let engine = NetworkEngine()
+            print("\(engine.selfId) \(engine.identity.fingerprint)")
+            exit(0)
+        }
+        if args.contains("--xpace-tips") {
+            for s in XpaceSuggestions.known() { print(xpaceSize(s.size), s.risk == .safe ? "seguro " : "revisar", s.title, "·", s.path) }
+            let h = NSHomeDirectory()
+            for path in ["/", h, h + "/Documents", h + "/Library", h + "/Library/Caches", h + "/Library/Caches/Homebrew", "/System/Library", "/Volumes/X", "/Volumes/X/a", "/Applications", "/tmp/foo"] {
+                print("protegido(\(path)):", XpaceActions.protectionReason(path) ?? "no, se puede")
+            }
+            exit(0)
+        }
+        if args.contains("--bench-video") {
+            let size = args.firstIndex(of: "--bench-video").flatMap { $0 + 1 < args.count ? Int(args[$0 + 1]) : nil } ?? 2560
+            VideoBench.run(width: size, height: size * 9 / 16, frames: 120)
+            exit(0)
+        }
+        if let index = args.firstIndex(of: "--xpace"), index + 1 < args.count {
+            let r = XpaceScanner().scan(args[index + 1])
+            print("\(r.files) archivos, \(xpaceSize(r.bytes)), \(r.folders) carpetas, \(r.denied) sin acceso, \(String(format: "%.2f", r.elapsed)) s")
+            print("Mayores:", r.largest.prefix(3).map { "\($0.name) \(xpaceSize($0.size))" }.joined(separator: ", "))
+            print("Tipos:", r.types.prefix(3).map { "\($0.ext) \(xpaceSize($0.size))" }.joined(separator: ", "))
+            exit(0)
+        }
         if args.contains("--self-test") { exit(SelfTest.run() ? 0 : 1) }
         let delegate = AppDelegate()
         app.delegate = delegate
@@ -42,6 +83,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         LauncherController.shared.setup()
         AppModel.shared.start()
         EyeCare.shared.start()
+        hotkeys.chord = { ShareStarter.chord($0) }
         hotkeys.start { LauncherController.shared.toggle() }
         if Prefs.shared.updates { Updater.check(silentIfCurrent: true) { _ in } }
         LauncherController.shared.show()
@@ -82,7 +124,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     @objc private func openLauncher() { LauncherController.shared.show() }
     @objc private func openChat() { LauncherController.shared.openChat(nil) }
     @objc private func openInbox() {
-        let folder = NetworkEngine.defaultReceiveDirectory
+        let folder = AppModel.shared.engine.receiveDirectory
         try? FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
         NSWorkspace.shared.open(folder)
     }
@@ -126,6 +168,9 @@ final class Hotkeys {
     private var downAt = Date.distantPast
     private var lastTap = Date.distantPast
 
+    /// Atajos de emergencia (⌃⌥ izquierdo + letra, solo teclado físico). Devuelve true si se atendió.
+    var chord: ((Character) -> Bool)?
+
     func start(_ action: @escaping () -> Void) {
         self.action = action
         // ⌃⌥L con Carbon: no necesita permisos.
@@ -141,11 +186,30 @@ final class Hotkeys {
                             GetApplicationEventTarget(), 0, &hotKey)
         // Doble ⌥ izquierdo: requiere Accesibilidad para verse fuera de Lazo.
         let flags: (NSEvent) -> Void = { [weak self] in self?.flagsChanged($0) }
-        let keys: (NSEvent) -> Void = { [weak self] _ in self?.otherKey = true }
+        let keys: (NSEvent) -> Void = { [weak self] in self?.otherKey = true; _ = self?.handleChord($0) }
         if let m = NSEvent.addGlobalMonitorForEvents(matching: .flagsChanged, handler: flags) { monitors.append(m) }
         if let m = NSEvent.addGlobalMonitorForEvents(matching: .keyDown, handler: keys) { monitors.append(m) }
         if let m = NSEvent.addLocalMonitorForEvents(matching: .flagsChanged, handler: { flags($0); return $0 }) { monitors.append(m) }
-        if let m = NSEvent.addLocalMonitorForEvents(matching: .keyDown, handler: { keys($0); return $0 }) { monitors.append(m) }
+        if let m = NSEvent.addLocalMonitorForEvents(matching: .keyDown, handler: { [weak self] event in
+            self?.otherKey = true
+            return (self?.handleChord(event) ?? false) ? nil : event
+        }) { monitors.append(m) }
+    }
+
+    /// ⌃ y ⌥ izquierdos físicos + Q, X, A o R. La entrada que inyecta Lazo (control remoto) nunca cuenta.
+    private func handleChord(_ event: NSEvent) -> Bool {
+        if event.cgEvent?.getIntegerValueField(.eventSourceUserData) == injectedMarker { return false }
+        let raw = event.modifierFlags.rawValue
+        guard event.modifierFlags.contains(.control), event.modifierFlags.contains(.option), raw & 0x20 != 0 else { return false }
+        let letter: Character
+        switch Int(event.keyCode) {
+        case kVK_ANSI_Q: letter = "q"
+        case kVK_ANSI_X: letter = "x"
+        case kVK_ANSI_A: letter = "a"
+        case kVK_ANSI_R: letter = "r"
+        default: return false
+        }
+        return chord?(letter) ?? false
     }
 
     private func flagsChanged(_ event: NSEvent) {

@@ -16,6 +16,9 @@ public struct Peer: Identifiable, Equatable {
     public var verified = false
     /// Conocido antes pero ahora anuncia otra clave: no se le envía nada.
     public var identityChanged = false
+    /// Qué está compartiendo ahora (anuncio LAZO3P), o nil si no comparte.
+    public var sharing: String?
+    var sharingSeen = Date.distantPast
 
     public init(id: String, name: String, address: String, port: Int, fingerprint: String) {
         self.id = id.lowercased()
@@ -109,18 +112,46 @@ public final class SecureConnection {
     public func close() { socket.close() }
 }
 
+/// Registro de diagnóstico en `~/Library/Logs/Lazo/lazo.log` (sin contenido de mensajes ni de archivos). Se recorta a 1 MB.
+public enum DiagLog {
+    private static let lock = NSLock()
+    public static var url: URL {
+        FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent("Library/Logs/Lazo/lazo.log")
+    }
+
+    public static func write(_ text: String) {
+        lock.lock(); defer { lock.unlock() }
+        let folder = url.deletingLastPathComponent()
+        try? FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
+        if let size = (try? FileManager.default.attributesOfItem(atPath: url.path)[.size] as? Int), size > 1 << 20 { try? FileManager.default.removeItem(at: url) }
+        let line = ISO8601DateFormatter().string(from: Date()) + " " + text + "\n"
+        if let handle = try? FileHandle(forWritingTo: url) { handle.seekToEndOfFile(); handle.write(Data(line.utf8)); try? handle.close() }
+        else { try? line.write(to: url, atomically: true, encoding: .utf8) }
+    }
+}
+
 /// Red de Lazo con el protocolo LAZO3 (docs/protocolo-seguro.md). Las operaciones bloquean: llamarlas fuera del hilo principal.
 public final class NetworkEngine {
     public static let discoveryPort = 48351
     public static let transferPort = 48352
     public static let chatKindText: UInt8 = 1, chatKindTyping: UInt8 = 2, chatKindPresence: UInt8 = 3, chatKindNudge: UInt8 = 4
+    /// Borrar un mensaje para todos, mensaje de grupo, alta en un grupo y salida de un grupo (0.5.3).
+    public static let chatKindDelete: UInt8 = 5, chatKindGroupMessage: UInt8 = 6, chatKindGroupInfo: UInt8 = 7, chatKindGroupLeave: UInt8 = 8
     static let maxFileSize: Int64 = 20 * 1024 * 1024 * 1024
     private static let statusKnown: UInt8 = 1, statusMismatch: UInt8 = 2
 
     public let selfId: String
     public let identity: DeviceIdentity
     public let pairings: PairingStore
-    public let receiveDirectory: URL
+    /// Carpeta donde se guarda lo recibido. Se elige en Ajustes; lo que ya llega sigue donde iba.
+    public private(set) var receiveDirectory: URL
+    private let profileFolder: URL
+    /// Control remoto con contraseña (anfitrión).
+    public let remoteAccess: RemoteAccess
+    /// ¿Ya hay una sesión remota en curso? Solo se admite una a la vez.
+    public var remoteBusy: (() -> Bool)?
+    /// Alguien entró con la contraseña correcta: la conexión pasa a ser la transmisión de pantalla (este equipo emite).
+    public var remoteAccepted: ((SecureConnection, String) -> Void)?
     private let discoveryPort: Int
     private let transferPort: Int
     private var udp: UDPBroadcaster?
@@ -153,13 +184,39 @@ public final class NetworkEngine {
         FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0].appendingPathComponent("Lazo")
     }
 
+    public var usesDefaultReceiveDirectory: Bool {
+        receiveDirectory.standardizedFileURL.path == NetworkEngine.defaultReceiveDirectory.standardizedFileURL.path
+    }
+
+    /// Cambia la carpeta de recepción (nil: la predeterminada, Descargas/Lazo). Mismo archivo que Windows: `receive-folder.txt`.
+    public func setReceiveDirectory(_ folder: URL?) {
+        let file = profileFolder.appendingPathComponent("receive-folder.txt")
+        guard let folder else {
+            receiveDirectory = NetworkEngine.defaultReceiveDirectory
+            try? FileManager.default.removeItem(at: file)
+            return
+        }
+        try? FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
+        receiveDirectory = folder
+        try? FileManager.default.createDirectory(at: profileFolder, withIntermediateDirectories: true)
+        try? folder.path.write(to: file, atomically: true, encoding: .utf8)
+    }
+
+    private static func savedReceiveDirectory(_ profile: URL) -> URL? {
+        guard let text = try? String(contentsOf: profile.appendingPathComponent("receive-folder.txt"), encoding: .utf8) else { return nil }
+        let path = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        return path.hasPrefix("/") ? URL(fileURLWithPath: path, isDirectory: true) : nil
+    }
+
     public static var defaultReceiveDirectory: URL {
         FileManager.default.urls(for: .downloadsDirectory, in: .userDomainMask)[0].appendingPathComponent("Lazo")
     }
 
-    public init(receiveDirectory: URL = NetworkEngine.defaultReceiveDirectory, discoveryPort: Int = NetworkEngine.discoveryPort,
+    public init(receiveDirectory: URL? = nil, discoveryPort: Int = NetworkEngine.discoveryPort,
                 transferPort: Int = NetworkEngine.transferPort, profile: URL = NetworkEngine.defaultProfile) {
-        self.receiveDirectory = receiveDirectory
+        profileFolder = profile
+        remoteAccess = RemoteAccess(profile: profile)
+        self.receiveDirectory = receiveDirectory ?? Self.savedReceiveDirectory(profile) ?? NetworkEngine.defaultReceiveDirectory
         self.discoveryPort = discoveryPort
         self.transferPort = transferPort
         selfId = NetworkEngine.loadId(profile)
@@ -223,6 +280,22 @@ public final class NetworkEngine {
             peerLock.unlock()
             return
         }
+        if fields.count == 3, fields[0] == "LAZO3P", let uuid = UUID(uuidString: fields[1]) {
+            // Está compartiendo (o dejó de hacerlo, si el texto viene vacío). Solo sirve para listarlo: unirse pasa por el
+            // canal cifrado y lo decide quien comparte.
+            let id = uuid.uuidString.lowercased()
+            let label = Labels.clean(fields[2], max: 120)
+            peerLock.lock()
+            guard var peer = peers[id], peer.address == address else { peerLock.unlock(); return }
+            let now: String? = label.isEmpty ? nil : label
+            peer.sharingSeen = Date()
+            let changed = peer.sharing != now
+            peer.sharing = now
+            peers[id] = peer
+            peerLock.unlock()
+            if changed { publish() }
+            return
+        }
         guard data.count <= 600, fields.count == 5, fields[0] == "LAZO3", let uuid = UUID(uuidString: fields[1]),
               let port = Int(fields[3]), port == transferPort, fields[4].count == 64,
               fields[4].allSatisfy({ $0.isHexDigit }) else { return }
@@ -235,10 +308,12 @@ public final class NetworkEngine {
         let previous = peers[id]
         var peer = Peer(id: id, name: name, address: address, port: port, fingerprint: fingerprint)
         peer.photo = previous?.photo ?? ""
+        peer.sharing = previous?.sharing
+        peer.sharingSeen = previous?.sharingSeen ?? .distantPast
         peers[id] = peer
         let changed = previous == nil || previous!.name != name || previous!.address != address || previous!.fingerprint != fingerprint
         peerLock.unlock()
-        if changed { publish() }
+        if changed { DiagLog.write("descubierto \(name) en \(address)"); publish() }
     }
 
     private func announce() {
@@ -250,12 +325,45 @@ public final class NetworkEngine {
             udp.send(payload, to: target, port: discoveryPort)
             udp.send(photoPayload, to: target, port: discoveryPort)
         }
+        if let label = sharingLabel { announceSharing(label) }
+        // Además, directo a cada equipo ya conocido: algunos routers y puntos de acceso Wi-Fi no reenvían los anuncios por difusión
+        // desde el Wi-Fi hacia los equipos con cable, y así el otro equipo nunca vería a este Mac.
+        peerLock.lock()
+        let known = peers.values.map(\.address)
+        peerLock.unlock()
+        for address in Set(known) {
+            udp.send(payload, to: address, port: discoveryPort)
+            udp.send(photoPayload, to: address, port: discoveryPort)
+            if let label = sharingLabel { udp.send(Data("LAZO3P|\(selfId)|\(label)".utf8), to: address, port: discoveryPort) }
+        }
         peerLock.lock()
         let before = peers.count
         peers = peers.filter { Date().timeIntervalSince($0.value.seen) <= 9 }
-        let removed = peers.count != before
+        // Quien dejó de anunciar que comparte (se cerró de golpe, por ejemplo) sale de la lista.
+        var ended = false
+        for (id, peer) in peers where peer.sharing != nil && Date().timeIntervalSince(peer.sharingSeen) > 8 {
+            var copy = peer; copy.sharing = nil; peers[id] = copy; ended = true
+        }
+        let removed = peers.count != before || ended
         peerLock.unlock()
         if removed { publish() }
+    }
+
+    private var sharingLabel: String?
+    private let sharingLock = NSLock()
+
+    /// Anuncia a la red qué se está compartiendo (nil: ya no). Los demás lo ven en su panel y pueden pedir unirse.
+    public func setSharing(_ label: String?) {
+        var value = label.map { Labels.clean($0, max: 120) }
+        if value?.isEmpty == true { value = "Pantalla" }
+        sharingLock.lock(); sharingLabel = value; sharingLock.unlock()
+        announceSharing(value ?? "")
+    }
+
+    private func announceSharing(_ label: String) {
+        guard let udp else { return }
+        let packet = Data("LAZO3P|\(selfId)|\(label)".utf8)
+        for interface in IPv4.interfaces() { udp.send(packet, to: IPv4.text(interface.broadcast), port: discoveryPort) }
     }
 
     public func snapshot() -> [Peer] {
@@ -281,16 +389,20 @@ public final class NetworkEngine {
     // MARK: Servidor
 
     private func handle(_ socket: TCPSocket) {
-        defer { socket.close() }
-        guard IPv4.isLocalSubnet(socket.remoteAddress) else { return }
+        var keepOpen = false
+        defer { if !keepOpen { socket.close() } }
+        let remote = socket.remoteAddress
+        guard IPv4.isLocalSubnet(remote) else { DiagLog.write("entrante \(remote): fuera de la subred local, descartada"); return }
+        DiagLog.write("entrante \(remote): conexión")
         do {
             socket.setReadTimeout(SecureSession.handshakeTimeout)
             socket.setWriteTimeout(30)
-            guard try socket.readExactly(5) == LazoCrypto.ascii("LAZO3") else { return }
+            guard try socket.readExactly(5) == LazoCrypto.ascii("LAZO3") else { DiagLog.write("entrante \(remote): no es LAZO3 (versión distinta de Lazo)"); return }
             let session = try SecureSession.accept(socket, me: identity)
             let known = pairings.get(session.peerId)
             let stream = session.stream
             if let known, known.fingerprint != session.peerFingerprint {
+                DiagLog.write("entrante \(remote): rechazada, la clave de \(known.name) cambió (Olvidar en Ajustes › Equipos conocidos)")
                 try stream.writeByte(Self.statusMismatch)
                 try stream.flush()
                 return
@@ -308,15 +420,20 @@ public final class NetworkEngine {
                 if !name.isEmpty { _ = verifyIncoming(session, name: name) }
                 return
             }
+            if op != UInt8(ascii: "D") { DiagLog.write("entrante \(remote): operación \(Character(UnicodeScalar(op))) de \(nameOf(session.peerId))") }
             switch op {
             case UInt8(ascii: "F"): try receiveFile(socket, session, input)
             case UInt8(ascii: "C"): try readChat(session, input)
             case UInt8(ascii: "D"): try readSignal(session, input)
             case UInt8(ascii: "S"): try readScreen(socket, session, input)
+            case UInt8(ascii: "J"): try readRequest(session, input, handler: joinRequested)
+            case UInt8(ascii: "Q"): try readRequest(session, input, handler: shareRequested)
+            case UInt8(ascii: "W"): keepOpen = try readRemote(socket, session, input)
             default: return
             }
         } catch {
             // Conexión no válida, cortada o rechazada.
+            DiagLog.write("entrante \(remote): error \(error.localizedDescription)")
         }
     }
 
@@ -453,11 +570,27 @@ public final class NetworkEngine {
         _ = try? connection.stream.readByte()
     }
 
+    /// Como `sendSignal` pero avisa si no se entregó (lanza): los mensajes de grupo y los borrados no deben perderse en
+    /// silencio. No exige haber hablado antes con el equipo.
+    public func sendReliableSignal(_ peer: Peer, kind: UInt8, body: String) throws {
+        let connection = try open(peer, connectTimeout: 4)
+        defer { connection.close() }
+        var out = BinaryOut()
+        out.u8(UInt8(ascii: "D"))
+        try out.text(Labels.clean(displayName()), max: 80)
+        out.u8(kind)
+        try out.text(String(body.prefix(3900)), max: 4000)
+        try out.send(connection.stream)
+        connection.socket.setReadTimeout(5)
+        guard try connection.stream.readByte() == 1 else { throw LazoError.refused("No se entregó.") }
+    }
+
     private func readSignal(_ session: SecureSession, _ input: BinaryIn) throws {
         let name = Labels.clean(try input.text(max: 80))
         let kind = try input.u8()
         let body = try input.text(max: 4000)
         guard !name.isEmpty else { return }
+        if kind != Self.chatKindTyping && kind != Self.chatKindPresence { DiagLog.write("señal \(kind) de \(name)") }
         try session.stream.writeByte(1)
         try session.stream.flush()
         if kind == Self.chatKindText {
@@ -511,6 +644,107 @@ public final class NetworkEngine {
         socket.setBuffers(send: 1 << 16, receive: 1 << 20)
         socket.setReadTimeout(15)
         sink.run(session.stream)
+    }
+
+    /// Alguien pide unirse a la pantalla que comparto (`J`) o que comparta la mía (`Q`): identidad comprobada y nombre.
+    /// Devuelve si se atiende; quien comparte decide después y, si acepta, envía la invitación normal.
+    public var joinRequested: ((String, String) -> Bool)?
+    public var shareRequested: ((String, String) -> Bool)?
+
+    private func readRequest(_ session: SecureSession, _ input: BinaryIn, handler: ((String, String) -> Bool)?) throws {
+        let name = Labels.clean(try input.text(max: 80))
+        guard !name.isEmpty else { return }
+        let taken = handler?(session.peerId, name) ?? false
+        try session.stream.writeByte(taken ? 1 : 0)
+        try session.stream.flush()
+    }
+
+    /// Pide a un compañero que está compartiendo que nos deje verla. Devuelve false si ya no comparte.
+    public func requestJoin(_ peer: Peer) throws -> Bool { try request(peer, kind: "J", old: "una versión de Lazo que no admite solicitudes para unirse") }
+
+    /// Pide a un compañero que comparta su pantalla. Si acepta, elige qué y llega una invitación normal.
+    public func requestShare(_ peer: Peer) throws -> Bool { try request(peer, kind: "Q", old: "una versión de Lazo que no admite pedirle que comparta") }
+
+    private func request(_ peer: Peer, kind: Character, old: String) throws -> Bool {
+        let connection = try open(peer)
+        defer { connection.close() }
+        var out = BinaryOut()
+        out.u8(UInt8(ascii: kind.unicodeScalars.first!))
+        try out.text(Labels.clean(displayName()), max: 80)
+        try out.send(connection.stream)
+        connection.socket.setReadTimeout(7)
+        do { return try connection.stream.readByte() == 1 } catch { throw LazoError.refused("\(peer.name) tiene \(old).") }
+    }
+
+    // MARK: Control remoto con contraseña
+
+    /// Anfitrión: reto y prueba. Devuelve true si la conexión pasa a ser la transmisión (el emisor la cierra después).
+    private func readRemote(_ socket: TCPSocket, _ session: SecureSession, _ input: BinaryIn) throws -> Bool {
+        let name = Labels.clean(try input.text(max: 80))
+        let stream = session.stream
+        guard !name.isEmpty, remoteAccess.isEnabled, !remoteAccess.isLocked(session.peerId), !(remoteBusy?() ?? false),
+              let challenge = remoteAccess.makeChallenge() else {
+            DiagLog.write("control remoto de \(name): rechazado (desactivado, bloqueado u ocupado)")
+            try stream.writeByte(0); try stream.flush()
+            return false
+        }
+        var out = BinaryOut()
+        out.u8(1)
+        out.bytes(challenge.salt)
+        out.i32(Int32(challenge.iterations))
+        out.bytes(challenge.nonce)
+        try out.send(stream)
+        socket.setReadTimeout(15)
+        let proof = try stream.readExactly(32)
+        guard remoteAccess.verify(proof: proof, nonce: challenge.nonce, viewerId: session.peerId, hostId: selfId) else {
+            remoteAccess.registerFailure(session.peerId)
+            DiagLog.write("control remoto de \(name): contraseña incorrecta")
+            Thread.sleep(forTimeInterval: 1)
+            try stream.writeByte(0); try stream.flush()
+            return false
+        }
+        remoteAccess.registerSuccess(session.peerId)
+        try stream.writeByte(1); try stream.flush()
+        DiagLog.write("control remoto de \(name): aceptado")
+        socket.noDelay = true
+        socket.setBuffers(send: 1 << 20, receive: 1 << 16)
+        socket.setWriteTimeout(6)
+        socket.setReadTimeout(0)
+        guard let handler = remoteAccepted else { return false }
+        handler(SecureConnection(socket: socket, session: session), name)
+        return true
+    }
+
+    /// Visor: entra con contraseña. Devuelve la conexión ya autenticada, lista para leer la transmisión (`ViewerSink.run`).
+    public func connectRemote(_ peer: Peer, password: String) throws -> SecureConnection {
+        let connection = try open(peer)
+        do {
+            var out = BinaryOut()
+            out.u8(UInt8(ascii: "W"))
+            try out.text(Labels.clean(displayName()), max: 80)
+            try out.send(connection.stream)
+            connection.socket.setReadTimeout(8)
+            let status: UInt8
+            do { status = try connection.stream.readByte() } catch { throw LazoError.refused("\(peer.name) tiene una versión de Lazo sin control remoto.") }
+            guard status == 1 else { throw LazoError.refused("\(peer.name) no admite control remoto ahora (desactivado, bloqueado u ocupado).") }
+            let input = BinaryIn(connection.stream)
+            let salt = try input.bytes(16)
+            let iterations = Int(try input.i32())
+            let nonce = try input.bytes(16)
+            guard (50_000...1_000_000).contains(iterations) else { throw LazoError.invalid("Reto no válido.") }
+            let proof = RemoteAccess.proof(password: password, salt: salt, iterations: iterations, nonce: nonce, viewerId: selfId, hostId: peer.id)
+            try connection.stream.write(proof)
+            try connection.stream.flush()
+            connection.socket.setReadTimeout(8)
+            guard try connection.stream.readByte() == 1 else { throw LazoError.refused("Contraseña incorrecta.") }
+            connection.socket.noDelay = true
+            connection.socket.setBuffers(send: 1 << 16, receive: 1 << 20)
+            connection.socket.setReadTimeout(15)
+            return connection
+        } catch {
+            connection.close()
+            throw error
+        }
     }
 
     // MARK: Archivos

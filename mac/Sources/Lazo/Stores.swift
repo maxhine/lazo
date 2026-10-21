@@ -14,7 +14,8 @@ enum Paths {
 /// Preferencias de la persona. Se guardan en UserDefaults salvo foto, fondo y chat (archivos).
 final class Prefs: ObservableObject {
     static let shared = Prefs()
-    private let d = UserDefaults.standard
+    /// Las capturas de prueba (`--preview-snapshots`) usan un dominio aparte para no tocar las preferencias reales.
+    private let d: UserDefaults = CommandLine.arguments.contains("--preview-snapshots") ? UserDefaults(suiteName: "com.jhonandrew.lazo.preview")! : .standard
 
     @Published var name: String { didSet { d.set(name, forKey: "name") } }
     @Published var interface: InterfaceKind { didSet { d.set(interface.rawValue, forKey: "interface") } }
@@ -23,6 +24,10 @@ final class Prefs: ObservableObject {
     @Published var accent: String { didSet { d.set(accent, forKey: "accent") } }
     @Published var liquidGlass: Bool { didSet { d.set(liquidGlass, forKey: "glass") } }
     @Published var updates: Bool { didSet { d.set(updates, forKey: "updates") } }
+    /// Al controlar otro equipo, ajustar su resolución al tamaño de la ventana (si ese equipo lo permite).
+    @Published var autoFit: Bool { didSet { d.set(autoFit, forKey: "autoFit") } }
+    /// Ocultar la ventana al hacer clic fuera de ella (por defecto sí). Apagado, solo se cierra con Esc, × o el atajo.
+    @Published var closeOnClickOutside: Bool { didSet { d.set(closeOnClickOutside, forKey: "closeOutside") } }
     @Published var chatBanner: Bool { didSet { d.set(chatBanner, forKey: "chatBanner") } }
     @Published var photo: String = ""
     @Published var heroVersion = 0
@@ -30,10 +35,12 @@ final class Prefs: ObservableObject {
     private init() {
         name = d.string(forKey: "name") ?? ""
         interface = InterfaceKind(rawValue: d.string(forKey: "interface") ?? "") ?? .minimal
-        theme = ThemeKind(rawValue: d.string(forKey: "theme") ?? "") ?? .wine
+        theme = ThemeKind(rawValue: d.string(forKey: "theme") ?? "") ?? .dark
         accent = d.string(forKey: "accent") ?? ""
-        liquidGlass = d.object(forKey: "glass") as? Bool ?? true
+        liquidGlass = d.object(forKey: "glass") as? Bool ?? false
         updates = d.object(forKey: "updates") as? Bool ?? true
+        autoFit = d.object(forKey: "autoFit") as? Bool ?? true
+        closeOnClickOutside = d.object(forKey: "closeOutside") as? Bool ?? true
         chatBanner = d.object(forKey: "chatBanner") as? Bool ?? false
         if let data = try? Data(contentsOf: Paths.file("profile.jpg")), data.count <= 12000 { photo = data.base64EncodedString() }
     }
@@ -158,6 +165,14 @@ struct ChatLine: Identifiable {
     let text: String
     let filePath: String?
     let nudge: Bool
+    /// Identificador del mensaje (vacío en los antiguos): permite borrarlo en los dos lados.
+    var msgId = ""
+    /// Quién lo escribió, en los grupos.
+    var sender = ""
+    /// Se eliminó para todos: queda el aviso, sin el contenido.
+    var deleted = false
+    /// Línea del archivo de la conversación (para borrar los mensajes antiguos sin identificador).
+    var row = 0
 }
 
 struct ChatThread: Identifiable {
@@ -168,6 +183,7 @@ struct ChatThread: Identifiable {
     var when: Date
 }
 
+/// Mismo formato de archivo que Windows (`chat/<id>.txt`): `fecha|in/out|texto|idMensaje|autor`.
 enum ChatStore {
     private static let lock = NSLock()
     private static var folder: URL { Paths.file("chat") }
@@ -178,18 +194,26 @@ enum ChatStore {
         return f
     }()
 
+    static func dataFolder() -> URL { folder }
+    static func newId() -> String { String(UUID().uuidString.replacingOccurrences(of: "-", with: "").lowercased().prefix(8)) }
+
     private static func clean(_ text: String) -> String {
         text.replacingOccurrences(of: "|", with: " ").replacingOccurrences(of: "\r", with: " ")
             .replacingOccurrences(of: "\n", with: " ").trimmingCharacters(in: .whitespaces)
     }
 
-    static func append(_ id: String, name: String, mine: Bool, text raw: String) {
+    private static func threadURL(_ id: String) -> URL { folder.appendingPathComponent(id.replacingOccurrences(of: "-", with: "") + ".txt") }
+
+    /// Guarda un mensaje y devuelve su identificador.
+    @discardableResult
+    static func append(_ id: String, name: String, mine: Bool, text raw: String, msgId: String? = nil, sender: String? = nil) -> String {
         let text = clean(raw)
-        guard !text.isEmpty else { return }
+        guard !text.isEmpty else { return "" }
+        let messageId = (msgId?.isEmpty == false) ? clean(msgId!) : newId()
         lock.lock(); defer { lock.unlock() }
         try? FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
-        let path = folder.appendingPathComponent(id.replacingOccurrences(of: "-", with: "") + ".txt")
-        let line = format.string(from: Date()) + "|" + (mine ? "out" : "in") + "|" + text + "\n"
+        let path = threadURL(id)
+        let line = format.string(from: Date()) + "|" + (mine ? "out" : "in") + "|" + text + "|" + messageId + "|" + clean(sender ?? "") + "\n"
         if let handle = try? FileHandle(forWritingTo: path) {
             handle.seekToEndOfFile(); handle.write(Data(line.utf8)); try? handle.close()
         } else {
@@ -204,13 +228,14 @@ enum ChatStore {
         threads.removeAll { $0.id == id }
         threads.append(thread)
         saveIndex(threads)
+        return messageId
     }
 
     /// Mensaje de otra persona: si imita las marcas internas se neutraliza (no puede hacerse pasar por un archivo).
-    static func appendIncoming(_ id: String, name: String, text: String) {
+    static func appendIncoming(_ id: String, name: String, text: String, msgId: String? = nil, sender: String? = nil) {
         var value = clean(text)
-        if value.hasPrefix("FILE") || value == "NUDGE" { value = "\u{2063}" + value }
-        append(id, name: name, mine: false, text: value)
+        if value.hasPrefix("FILE") || value == "NUDGE" || value == "DELETED" { value = "\u{2063}" + value }
+        append(id, name: name, mine: false, text: value, msgId: msgId, sender: sender)
     }
 
     static func appendFile(_ id: String, name: String, mine: Bool, path: String) {
@@ -221,20 +246,122 @@ enum ChatStore {
         append(id, name: name, mine: mine, text: "NUDGE")
     }
 
-    static func messages(_ id: String) -> [ChatLine] {
-        let path = folder.appendingPathComponent(id.replacingOccurrences(of: "-", with: "") + ".txt")
-        guard let text = try? String(contentsOf: path, encoding: .utf8) else { return [] }
-        return text.split(separator: "\n").suffix(200).compactMap { row in
-            let parts = row.split(separator: "|", maxSplits: 2, omittingEmptySubsequences: false).map(String.init)
-            guard parts.count == 3, let when = format.date(from: parts[0]) else { return nil }
-            let body = parts[2]
-            if body == "NUDGE" { return ChatLine(when: when, mine: parts[1] == "out", text: "Zumbido", filePath: nil, nudge: true) }
-            if body.hasPrefix("FILE\t") {
-                let path = String(body.dropFirst(5))
-                return ChatLine(when: when, mine: parts[1] == "out", text: (path as NSString).lastPathComponent, filePath: path, nudge: false)
-            }
-            return ChatLine(when: when, mine: parts[1] == "out", text: body, filePath: nil, nudge: false)
+    /// Crea la conversación de un grupo (vacía) para que aparezca en la lista.
+    static func ensureThread(_ id: String, name: String) {
+        lock.lock(); defer { lock.unlock() }
+        try? FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
+        var threads = loadIndex()
+        var thread = threads.first { $0.id == id } ?? ChatThread(id: id, name: clean(name), preview: "", unread: 0, when: Date())
+        thread.name = clean(name)
+        threads.removeAll { $0.id == id }
+        threads.append(thread)
+        saveIndex(threads)
+    }
+
+    /// Quita un mensaje solo de este equipo.
+    static func deleteLocal(_ thread: String, _ line: ChatLine) {
+        lock.lock(); defer { lock.unlock() }
+        guard var rows = rows(thread) else { return }
+        guard let at = locate(rows, line) else { return }
+        rows.remove(at: at)
+        write(rows, thread)
+        refreshPreview(thread, rows)
+    }
+
+    /// El mensaje se eliminó para todos: en su lugar queda un aviso. `fromOther`: lo pide otra persona, solo vale para lo suyo.
+    @discardableResult
+    static func markDeleted(_ thread: String, msgId: String, sender: String? = nil, fromOther: Bool = true) -> Bool {
+        guard !msgId.isEmpty else { return false }
+        lock.lock(); defer { lock.unlock() }
+        guard var rows = rows(thread) else { return false }
+        var changed = false
+        for i in rows.indices {
+            var parts = rows[i].split(separator: "|", maxSplits: 4, omittingEmptySubsequences: false).map(String.init)
+            guard parts.count >= 4, parts[3] == msgId else { continue }
+            if fromOther && parts[1] != "in" { continue }
+            if let sender, parts.count < 5 || parts[4] != sender { continue }
+            parts[2] = "DELETED"
+            rows[i] = parts.joined(separator: "|")
+            changed = true
         }
+        if changed { write(rows, thread); refreshPreview(thread, rows) }
+        return changed
+    }
+
+    /// Vacía una conversación. Las de personas desaparecen de la lista; los grupos se quedan.
+    static func clear(_ thread: String) {
+        lock.lock(); defer { lock.unlock() }
+        try? FileManager.default.removeItem(at: threadURL(thread))
+        var threads = loadIndex()
+        guard let index = threads.firstIndex(where: { $0.id == thread }) else { return }
+        if ChatGroups.get(thread) != nil { threads[index].preview = ""; threads[index].unread = 0 } else { threads.remove(at: index) }
+        saveIndex(threads)
+    }
+
+    /// Quita una conversación y su historial (por ejemplo, al salir de un grupo).
+    static func remove(_ thread: String) {
+        lock.lock(); defer { lock.unlock() }
+        try? FileManager.default.removeItem(at: threadURL(thread))
+        var threads = loadIndex()
+        threads.removeAll { $0.id == thread }
+        saveIndex(threads)
+    }
+
+    private static func rows(_ thread: String) -> [String]? {
+        guard let text = try? String(contentsOf: threadURL(thread), encoding: .utf8) else { return nil }
+        return text.split(separator: "\n", omittingEmptySubsequences: true).map(String.init)
+    }
+
+    private static func write(_ rows: [String], _ thread: String) {
+        let text = rows.isEmpty ? "" : rows.joined(separator: "\n") + "\n"
+        try? text.write(to: threadURL(thread), atomically: true, encoding: .utf8)
+    }
+
+    private static func locate(_ rows: [String], _ line: ChatLine) -> Int? {
+        if line.msgId.isEmpty { return line.row >= 0 && line.row < rows.count ? line.row : nil }
+        return rows.firstIndex { row in
+            let parts = row.split(separator: "|", maxSplits: 4, omittingEmptySubsequences: false)
+            return parts.count >= 4 && parts[3] == line.msgId
+        }
+    }
+
+    private static func refreshPreview(_ thread: String, _ rows: [String]) {
+        var threads = loadIndex()
+        guard let index = threads.firstIndex(where: { $0.id == thread }) else { return }
+        if let last = rows.last {
+            let parts = last.split(separator: "|", maxSplits: 4, omittingEmptySubsequences: false).map(String.init)
+            threads[index].preview = parts.count >= 3 ? previewOf(parts[2]) : ""
+        } else { threads[index].preview = "" }
+        saveIndex(threads)
+    }
+
+    static func messages(_ id: String) -> [ChatLine] {
+        guard let all = rows(id) else { return [] }
+        let start = max(0, all.count - 200)
+        var lines: [ChatLine] = []
+        for index in start..<all.count {
+            let parts = all[index].split(separator: "|", maxSplits: 4, omittingEmptySubsequences: false).map(String.init)
+            guard parts.count >= 3, let when = format.date(from: parts[0]) else { continue }
+            let mine = parts[1] == "out"
+            var line: ChatLine
+            let body = parts[2]
+            if body == "DELETED" {
+                line = ChatLine(when: when, mine: mine, text: mine ? "Eliminaste este mensaje" : "Se eliminó este mensaje", filePath: nil, nudge: false)
+                line.deleted = true
+            } else if body == "NUDGE" {
+                line = ChatLine(when: when, mine: mine, text: "Zumbido", filePath: nil, nudge: true)
+            } else if body.hasPrefix("FILE\t") {
+                let path = String(body.dropFirst(5))
+                line = ChatLine(when: when, mine: mine, text: (path as NSString).lastPathComponent, filePath: path, nudge: false)
+            } else {
+                line = ChatLine(when: when, mine: mine, text: body, filePath: nil, nudge: false)
+            }
+            line.row = index
+            if parts.count > 3 { line.msgId = parts[3] }
+            if parts.count > 4 { line.sender = parts[4] }
+            lines.append(line)
+        }
+        return lines
     }
 
     static func threads() -> [ChatThread] {
@@ -263,12 +390,14 @@ enum ChatStore {
 
     private static func saveIndex(_ threads: [ChatThread]) {
         let text = threads.map { "\($0.id)|\(clean($0.name))|\(clean($0.preview))|\($0.unread)|\(format.string(from: $0.when))" }.joined(separator: "\n")
+        try? FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
         try? text.write(to: folder.appendingPathComponent("index.txt"), atomically: true, encoding: .utf8)
     }
 
     private static func previewOf(_ text: String) -> String {
         if text.hasPrefix("FILE\t") { return "Archivo · " + (String(text.dropFirst(5)) as NSString).lastPathComponent }
         if text == "NUDGE" { return "Zumbido" }
+        if text == "DELETED" { return "Mensaje eliminado" }
         return text.count > 42 ? String(text.prefix(42)) + "…" : text
     }
 }
@@ -296,6 +425,9 @@ enum TransferLog {
             try? line.write(to: self.path, atomically: true, encoding: .utf8)
         }
     }
+
+    /// Borra el historial de envíos y recepciones (los archivos no se tocan).
+    static func clear() { try? FileManager.default.removeItem(at: path) }
 
     static func recent(_ count: Int = 30) -> [TransferEntry] {
         guard let text = try? String(contentsOf: path, encoding: .utf8) else { return [] }
