@@ -234,14 +234,23 @@ public final class UDPBroadcaster {
         address.sin_family = sa_family_t(AF_INET)
         address.sin_port = in_port_t(UInt16(port).bigEndian)
         guard inet_pton(AF_INET, host, &address.sin_addr) == 1 else { return }
+        var failed: Int32 = 0
         data.withUnsafeBytes { raw in
-            _ = withUnsafePointer(to: &address) {
+            let result = withUnsafePointer(to: &address) {
                 $0.withMemoryRebound(to: sockaddr.self, capacity: 1) {
                     sendto(fd, raw.baseAddress, raw.count, 0, $0, socklen_t(MemoryLayout<sockaddr_in>.size))
                 }
             }
+            if result < 0 { failed = errno }
+        }
+        // Si el sistema bloquea el envío (por ejemplo, sin permiso de Red local), queda anotado una vez cada 30 s.
+        if failed != 0, Date().timeIntervalSince(lastFailure) > 30 {
+            lastFailure = Date()
+            DiagLog.write("anuncio UDP a \(host) falló: \(String(cString: strerror(failed))) (¿permiso de Red local?)")
         }
     }
+
+    private var lastFailure = Date.distantPast
 
     public func run(_ handler: @escaping (Data, String) -> Void) {
         let thread = Thread { [weak self] in

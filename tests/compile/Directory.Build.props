@@ -1,0 +1,7 @@
+<Project>
+  <!-- Los intermedios y la salida de la comprobación de compilación no van a OneDrive. -->
+  <PropertyGroup>
+    <BaseIntermediateOutputPath>$(HOME)/Library/Caches/lazo-build/wincompile-obj/</BaseIntermediateOutputPath>
+    <OutputPath>$(HOME)/Library/Caches/lazo-build/wincompile-bin/</OutputPath>
+  </PropertyGroup>
+</Project>

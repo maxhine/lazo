@@ -21,8 +21,9 @@ namespace Lazo
     /// Transmisión de pantalla hacia uno o varios compañeros, por el canal cifrado LAZO3 (docs/protocolo-seguro.md).
     /// Emisor → visor: 'S' ancho alto · 'F' cursorX cursorY n [x y w h len jpeg]… · 'K' · 'E' ·
     /// 'H' versión · 'P' permisos · 'D' rechazo · 'A' len trazo · 'M' len puntero de otro visor (v2).
-    /// Visor → emisor: 'H' versión · 'R' permiso · 'A' len trazo · 'I' entrada · 'M' visible x y (v2).
-    /// Los paquetes 'M' solo se cruzan cuando los dos lados saludaron con la versión 2 o superior.
+    /// Visor → emisor: 'H' versión · 'R' permiso · 'A' len trazo · 'I' entrada · 'M' visible x y (v2) · 'Z' ancho alto (v3).
+    /// Los paquetes 'M' solo se cruzan cuando los dos lados saludaron con la versión 2 o superior; 'Z' (ajustar la
+    /// resolución del monitor al tamaño de la ventana de quien mira, 0 0 = restaurar) con la 3 o superior.
     /// El ritmo lo marca el receptor más lento: no hay colas, así que la latencia se mantiene mínima.
     /// </summary>
     internal sealed class ScreenShareSession
@@ -40,9 +41,16 @@ namespace Lazo
             public volatile byte Version;
             public bool PointerShown;
             public readonly HashSet<byte> Asked = new HashSet<byte>();
+            /// <summary>Entró con la contraseña de control remoto: ya tiene todos los permisos y no hay que preguntar.</summary>
+            public bool Remote;
+            /// <summary>Se llama una vez cuando este visor se va (o la transmisión termina).</summary>
+            public Action OnLeft;
+            public int LeftNotified;
         }
 
-        public const byte BackChannelVersion = 2;
+        public const byte BackChannelVersion = 3;
+        /// <summary>Primera versión del canal de retorno que entiende «ajustar la resolución» ('Z').</summary>
+        public const byte ResolutionVersion = 3;
         /// <summary>Primera versión del canal de retorno con punteros colaborativos ('M').</summary>
         public const byte PointerVersion = 2;
 
@@ -145,6 +153,41 @@ namespace Lazo
             });
         }
 
+        /// <summary>
+        /// Control remoto con contraseña: adjunta a quien ya entró (conexión autenticada por <see cref="NetworkEngine.ConnectRemoteAsync"/>)
+        /// como visor con dibujar, control y control total, sin pedir permiso. Solo uno a la vez. <paramref name="left"/> se llama
+        /// una vez cuando esa persona se va o la transmisión termina.
+        /// </summary>
+        public bool AttachRemote(SecureConnection connection, string name, Action left)
+        {
+            Viewer viewer;
+            lock (_lock)
+            {
+                if (!_running || _viewers.Any(v => v.Remote)) return false;
+                viewer = new Viewer
+                {
+                    Id = Interlocked.Increment(ref _nextViewer), Name = name, Connection = connection, Stream = connection.Stream,
+                    Remote = true, OnLeft = left, Granted = RemoteGranted
+                };
+                _viewers.Add(viewer);
+            }
+            _injector.Configure(true);
+            new Thread(() => ReadBack(viewer)) { IsBackground = true, Name = "Lazo screen back-channel" }.Start();
+            Interlocked.Exchange(ref _key, 1);
+            Say("Control remoto: " + name + " entró a este equipo");
+            Raise(Changed);
+            return true;
+        }
+
+        /// <summary>Permisos de quien entra por control remoto: dibujar, controlar y control total.</summary>
+        public const byte RemoteGranted = SharePermission.Draw | SharePermission.Control | SharePermission.FullControl;
+
+        /// <summary>Hay alguien dentro por control remoto con contraseña.</summary>
+        public bool HasRemote
+        {
+            get { lock (_lock) return _viewers.Any(v => v.Remote); }
+        }
+
         public void Start()
         {
             _worker = new Thread(Loop) { IsBackground = true, Name = "Lazo screen share", Priority = ThreadPriority.AboveNormal };
@@ -212,7 +255,7 @@ namespace Lazo
             if ((granted & SharePermission.Control) == 0) granted = (byte)(granted & ~SharePermission.FullControl);
             bool hadControl = (viewer.Granted & SharePermission.Control) != 0;
             viewer.Granted = granted;
-            if (hadControl && (granted & SharePermission.Control) == 0) _injector.ReleaseAll();
+            if (hadControl && (granted & SharePermission.Control) == 0) { _injector.ReleaseAll(); RestoreResolutionIfNoController(); }
             if ((granted & (SharePermission.Draw | SharePermission.Control)) == 0) Pointer(viewer, false, 0, 0);
             Write(viewer, new[] { (byte)'P', granted });
             Raise(Changed);
@@ -361,6 +404,11 @@ namespace Lazo
                         ushort x = reader.ReadUInt16(), y = reader.ReadUInt16();
                         Post(() => { if (viewer.Version >= PointerVersion) Pointer(viewer, visible, x, y); });
                     }
+                    else if (type == (byte)'Z')
+                    {
+                        int wantWidth = reader.ReadUInt16(), wantHeight = reader.ReadUInt16();
+                        Post(() => ApplyResolution(viewer, wantWidth, wantHeight));
+                    }
                     else break;
                 }
             }
@@ -374,11 +422,84 @@ namespace Lazo
                     viewer.Granted = 0;
                     viewer.Capable = false;
                     lock (viewer.Asked) viewer.Asked.Clear();
+                    RestoreResolutionIfNoController();
                     Action<int> left = ViewerLeft;
                     if (left != null) left(viewer.Id);
+                    NotifyLeft(viewer);
                     Raise(Changed);
                 });
             }
+        }
+
+        private static void NotifyLeft(Viewer viewer)
+        {
+            if (Interlocked.Exchange(ref viewer.LeftNotified, 1) == 1) return;
+            Action left = viewer.OnLeft;
+            if (left != null) { try { left(); } catch { } }
+        }
+
+        // ── Ajustar la resolución del monitor compartido al tamaño de la ventana de quien mira ('Z') ──
+
+        private readonly object _displayLock = new object();
+        private DisplayResolution _display;
+        private DateTime _lastModeChange = DateTime.MinValue;
+        private bool _zScheduled;
+        private int _zWidth, _zHeight;
+        private Viewer _zViewer;
+
+        private void ApplyResolution(Viewer viewer, int width, int height)
+        {
+            if (Source.IsWindow || viewer.Version < ResolutionVersion || (viewer.Granted & SharePermission.Control) == 0) return;
+            if (width == 0 && height == 0) { RestoreResolution(); return; }
+            if (width < 320 || height < 200 || width > 16384 || height > 16384) return;
+            // Como mucho un cambio por segundo; la última petición no se pierde.
+            double wait = 1000 - (DateTime.UtcNow - _lastModeChange).TotalMilliseconds;
+            if (wait > 0)
+            {
+                _zViewer = viewer;
+                _zWidth = width;
+                _zHeight = height;
+                if (!_zScheduled)
+                {
+                    _zScheduled = true;
+                    Task.Delay((int)wait + 25).ContinueWith(t => Post(() =>
+                    {
+                        _zScheduled = false;
+                        if (_zViewer != null && _running) ApplyResolution(_zViewer, _zWidth, _zHeight);
+                    }));
+                }
+                return;
+            }
+            string mode;
+            bool announce = false;
+            lock (_displayLock)
+            {
+                if (_display == null) _display = new DisplayResolution(Source);
+                bool before = _display.Changed;
+                mode = _display.Fit(width, height);
+                announce = !before && _display.Changed;
+            }
+            _lastModeChange = DateTime.UtcNow;
+            if (mode == null) { Say("No se pudo ajustar la resolución del monitor al tamaño de " + viewer.Name + "."); return; }
+            Interlocked.Exchange(ref _key, 1);
+            if (announce) Say("Resolución ajustada a " + mode + " mientras " + viewer.Name + " controla este equipo");
+        }
+
+        /// <summary>Devuelve el monitor a su resolución de siempre (si Lazo la había cambiado).</summary>
+        private void RestoreResolution()
+        {
+            bool restored;
+            lock (_displayLock) restored = _display != null && _display.Restore();
+            if (!restored) return;
+            Interlocked.Exchange(ref _key, 1);
+            Say("Resolución restaurada");
+        }
+
+        private void RestoreResolutionIfNoController()
+        {
+            bool any;
+            lock (_lock) any = _viewers.Any(v => (v.Granted & SharePermission.Control) != 0);
+            if (!any) RestoreResolution();
         }
 
         private void Request(Viewer viewer, byte kind)
@@ -515,6 +636,7 @@ namespace Lazo
                 _running = false;
                 _control.CompleteAdding();
                 _injector.ReleaseAll();
+                RestoreResolution();
                 if (grabber != null) grabber.Join(2000);
                 timeEndPeriod(1);
                 if (slots != null) foreach (FrameCapturer slot in slots) if (slot != null) slot.Dispose();
@@ -525,6 +647,7 @@ namespace Lazo
                 {
                     try { lock (viewer.WriteLock) { viewer.Stream.Write(new[] { (byte)'E' }, 0, 1); viewer.Stream.Flush(); } } catch { }
                     viewer.Connection.Dispose();
+                    NotifyLeft(viewer);
                 }
                 Raise(Ended);
             }
@@ -575,6 +698,7 @@ namespace Lazo
                 bool removed;
                 lock (_lock) removed = _viewers.Remove(viewer);
                 viewer.Connection.Dispose();
+                NotifyLeft(viewer);
                 if (!removed) return;
                 Say(viewer.Name + " dejó de ver tu pantalla");
                 Raise(Changed);
@@ -761,6 +885,9 @@ namespace Lazo
         private readonly DispatcherTimer _idle;
         private readonly Button _drawButton;
         private readonly Button _controlButton;
+        private readonly Button _fitButton;
+        private readonly DispatcherTimer _fitTimer;
+        private bool _fit;
         private readonly AnnotationToolbar _tools;
         private readonly Border _hintBox;
         private readonly TextBlock _hint;
@@ -785,6 +912,10 @@ namespace Lazo
         /// <summary>Quien comparte esta pantalla.</summary>
         public string Sender { get; private set; }
         public bool HasEnded { get; private set; }
+        /// <summary>Control remoto con contraseña: en cuanto llega el permiso de control se entra en modo control, sin botón que pulsar.</summary>
+        public bool AutoControl;
+        /// <summary>Junto con <see cref="AutoControl"/>: «Ajustar resolución» empieza activado (el otro equipo adopta el tamaño de esta ventana).</summary>
+        public bool AutoFit;
         /// <summary>Pide ver esta pantalla en grande (F11, el botón de ampliar).</summary>
         public event Action FullRequested;
         /// <summary>Doble clic mientras solo se mira: destacarla entre las demás.</summary>
@@ -855,6 +986,9 @@ namespace Lazo
             _controlButton = BarButton("pointer", "Controlar el equipo (pide permiso)", OnControlClick);
             _controlButton.Visibility = Visibility.Collapsed;
             pill.Children.Add(_controlButton);
+            _fitButton = BarButton("fit", "Ajustar la resolución del otro equipo al tamaño de esta ventana", ToggleFit);
+            _fitButton.Visibility = Visibility.Collapsed;
+            pill.Children.Add(_fitButton);
             pill.Children.Add(BarButton("expand", "Pantalla completa (F11)", () => Raise(FullRequested)));
             pill.Children.Add(BarButton("close", "Dejar de ver", () => Raise(CloseRequested)));
             _tools = new AnnotationToolbar(Layer, "Borrar mis trazos", () => Layer.EraseMine())
@@ -910,6 +1044,10 @@ namespace Lazo
             };
             KeyDown += (s, e) => { if (e.Key == Key.F11) { Raise(FullRequested); e.Handled = true; } };
             _idle.Start();
+            // Con «Ajustar resolución» activo, cada cambio de tamaño de la ventana se pide 500 ms después de que termine.
+            _fitTimer = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(500) };
+            _fitTimer.Tick += (s, e) => { _fitTimer.Stop(); SendFit(); };
+            SizeChanged += (s, e) => { if (_fit) { _fitTimer.Stop(); _fitTimer.Start(); } };
         }
 
         private static void Raise(Action handler)
@@ -945,6 +1083,7 @@ namespace Lazo
             ReleaseInput();
             _idle.Stop();
             _pointerTimer.Stop();
+            _fitTimer.Stop();
             Raise(Closed);
         }
 
@@ -1017,7 +1156,8 @@ namespace Lazo
                 }
                 finally { _bitmap.Unlock(); }
             }
-            if (cursorX >= 0 && cursorY >= 0)
+            // Mientras controlo solo se ve un puntero: el de este equipo. El cursor remoto se oculta.
+            if (cursorX >= 0 && cursorY >= 0 && _mode != ViewerMode.Control)
             {
                 Canvas.SetLeft(_cursor, cursorX);
                 Canvas.SetTop(_cursor, cursorY);
@@ -1051,6 +1191,7 @@ namespace Lazo
             _sharerVersion = version;
             _drawButton.Visibility = Visibility.Visible;
             _controlButton.Visibility = Visibility.Visible;
+            SyncButtons();
         }
 
         internal void SetGranted(byte granted)
@@ -1068,6 +1209,13 @@ namespace Lazo
                     : "Controlas la ventana activa. Pulsa el mismo botón para soltarlo.");
             }
             else if ((gained & _asking & SharePermission.Draw) != 0) { SetMode(ViewerMode.Draw); Hint("Ya puedes dibujar."); }
+            else if (AutoControl && (gained & SharePermission.Control) != 0 && _mode != ViewerMode.Control)
+            {
+                SetMode(ViewerMode.Control);
+                bool canFit = AutoFit && _sharerVersion >= ScreenShareSession.ResolutionVersion;
+                if (canFit) { _fit = true; _fitTimer.Stop(); _fitTimer.Start(); }
+                Hint(canFit ? "Control remoto activo. La resolución del otro equipo se ajusta a esta ventana." : "Control remoto activo.");
+            }
             _asking = (byte)(_asking & ~gained);
             SyncButtons();
         }
@@ -1129,8 +1277,10 @@ namespace Lazo
             Layer.Drawing = mode == ViewerMode.Draw;
             _tools.Visibility = mode == ViewerMode.Draw ? Visibility.Visible : Visibility.Collapsed;
             _image.Cursor = mode == ViewerMode.Control ? Cursors.Arrow : null;
+            if (mode == ViewerMode.Control) _cursor.Visibility = Visibility.Collapsed;
             if (mode != ViewerMode.Watch) { Fade(_bar, 1); Focus(); }
             SyncButtons();
+            if (_fit && mode == ViewerMode.Control) { _fitTimer.Stop(); _fitTimer.Start(); }
         }
 
         private void SyncButtons()
@@ -1142,7 +1292,41 @@ namespace Lazo
             _controlButton.Opacity = (_asking & SharePermission.Control) != 0 ? 0.5 : 1;
             _drawButton.ToolTip = (_granted & SharePermission.Draw) != 0 ? (_mode == ViewerMode.Draw ? "Dejar de dibujar" : "Dibujar") : "Dibujar sobre la pantalla (pide permiso)";
             _controlButton.ToolTip = (_granted & SharePermission.Control) != 0 ? "Soltar el control" : "Controlar el equipo (pide permiso)";
+            // «Ajustar resolución»: solo si quien comparte lo entiende (canal v3) y tengo el control.
+            bool canFit = _back != null && _sharerVersion >= ScreenShareSession.ResolutionVersion && (_granted & SharePermission.Control) != 0;
+            _fitButton.Visibility = canFit ? Visibility.Visible : Visibility.Collapsed;
+            _fitButton.Background = _fit ? active : Brushes.Transparent;
+            _fitButton.ToolTip = _fit ? "Dejar de ajustar la resolución (el otro equipo vuelve a la suya)" : "Ajustar la resolución del otro equipo al tamaño de esta ventana";
         }
+
+        private void ToggleFit()
+        {
+            if (_back == null || _sharerVersion < ScreenShareSession.ResolutionVersion || (_granted & SharePermission.Control) == 0) return;
+            _fit = !_fit;
+            _fitTimer.Stop();
+            if (_fit)
+            {
+                SendFit();
+                Hint("Resolución ajustada a esta ventana mientras controlas.");
+            }
+            else
+            {
+                _back.Send(ResolutionRequest.Packet(0, 0));
+                Hint("El otro equipo vuelve a su resolución.");
+            }
+            SyncButtons();
+        }
+
+        /// <summary>Pide al otro equipo el tamaño de esta ventana en píxeles reales.</summary>
+        private void SendFit()
+        {
+            if (!_fit || _back == null || _mode != ViewerMode.Control || ActualWidth < 16 || ActualHeight < 16) return;
+            DpiScale dpi = VisualTreeHelper.GetDpi(this);
+            int width = (int)Math.Round(ActualWidth * dpi.DpiScaleX), height = (int)Math.Round(ActualHeight * dpi.DpiScaleY);
+            _back.Send(ResolutionRequest.Packet(width, height));
+        }
+
+
 
         private void Hint(string text)
         {
@@ -1297,6 +1481,9 @@ namespace Lazo
             SetMode(ViewerMode.Watch);
             _drawButton.Visibility = Visibility.Collapsed;
             _controlButton.Visibility = Visibility.Collapsed;
+            _fitButton.Visibility = Visibility.Collapsed;
+            _fit = false;
+            _fitTimer.Stop();
             _back = null;
             _center.Text = reason;
             _center.Visibility = Visibility.Visible;
@@ -1681,6 +1868,7 @@ namespace Lazo
         private readonly Button _drawButton;
         private readonly Button _revokeButton;
         private readonly AnnotationToolbar _tools;
+        private Button _stopButton;
 
         public ShareBarWindow(Action stop) : this(stop, null, null)
         {
@@ -1744,6 +1932,7 @@ namespace Lazo
                 row.Children.Add(clear);
             }
             Button stopButton = Theme.Button("Detener", true);
+            _stopButton = stopButton;
             stopButton.MinHeight = 28;
             stopButton.Margin = new Thickness(14, 0, 0, 0);
             { stopButton.Background = Theme.Danger; stopButton.BorderBrush = Theme.Danger; stopButton.Foreground = Brushes.White; }
@@ -1794,6 +1983,15 @@ namespace Lazo
         public void Update(string text)
         {
             _text.Text = text;
+        }
+
+        /// <summary>Sesión de control remoto con contraseña: el aviso lo dice y el botón pasa a «Terminar».</summary>
+        public void SetRemote()
+        {
+            Title = "Lazo · control remoto";
+            if (_stopButton == null) return;
+            _stopButton.Content = "Terminar";
+            _stopButton.ToolTip = "Terminar el control remoto (Ctrl+Alt+X)";
         }
 
         /// <summary>Mientras alguien controla el equipo, quien comparte no puede activar el dibujo.</summary>

@@ -51,6 +51,33 @@ namespace Lazo
             return list;
         }
 
+        /// <summary>El monitor principal (el de la esquina 0,0 del escritorio), o el primero si no se reconoce.</summary>
+        public static ShareSource Primary()
+        {
+            List<ShareSource> list = Screens();
+            foreach (ShareSource screen in list) if (screen.Left == 0 && screen.Top == 0) return screen;
+            return list.Count > 0 ? list[0] : null;
+        }
+
+        /// <summary>Vuelve a leer el tamaño y la posición de un monitor (cambió su resolución). Quien captura y quien inyecta entrada lo ven al instante.</summary>
+        public static void Refresh(ShareSource screen)
+        {
+            if (screen == null || screen.IsWindow || screen.Handle == IntPtr.Zero) return;
+            IntPtr previous = Native.EnterPerMonitorDpi();
+            try
+            {
+                Native.MONITORINFO info = new Native.MONITORINFO { cbSize = Marshal.SizeOf(typeof(Native.MONITORINFO)) };
+                if (!Native.GetMonitorInfo(screen.Handle, ref info)) return;
+                Native.RECT r = info.rcMonitor;
+                screen.Left = r.Left;
+                screen.Top = r.Top;
+                screen.Width = r.Right - r.Left;
+                screen.Height = r.Bottom - r.Top;
+                screen.Detail = screen.Width + " × " + screen.Height + ((info.dwFlags & 1) != 0 ? " · principal" : "");
+            }
+            finally { Native.LeaveDpi(previous); }
+        }
+
         /// <summary>Ventanas de aplicación visibles, sin las de Lazo ni las del escritorio.</summary>
         public static List<ShareSource> Windows()
         {

@@ -4,7 +4,7 @@ import SwiftUI
 import UniformTypeIdentifiers
 
 enum Route: Equatable {
-    case home, settings, chat, history, eyecare, share
+    case home, settings, chat, history, eyecare, share, tools, remote
 }
 
 @MainActor
@@ -13,6 +13,10 @@ final class LauncherState: ObservableObject {
     @Published var query = ""
     @Published var chatPeer: String?
     @Published var shakeTick = 0
+    /// Archivos elegidos con «+» que esperan que se elija a quién enviarlos.
+    @Published var staged: [URL] = []
+    /// Equipo elegido de antemano en «Control remoto».
+    @Published var remoteTarget: String?
 }
 
 final class LauncherPanel: NSPanel {
@@ -38,6 +42,8 @@ final class LauncherController: NSObject, NSWindowDelegate {
         panel = LauncherPanel(contentRect: NSRect(x: 0, y: 0, width: 520, height: 300), styleMask: [.borderless, .fullSizeContentView],
                               backing: .buffered, defer: false)
         panel.isFloatingPanel = true
+        // Un NSPanel se oculta solo cuando la app pierde el foco; eso lo decide el ajuste «Cerrar al hacer clic fuera», no el sistema.
+        panel.hidesOnDeactivate = false
         panel.level = .floating
         panel.backgroundColor = .clear
         panel.isOpaque = false
@@ -46,12 +52,8 @@ final class LauncherController: NSObject, NSWindowDelegate {
         panel.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary]
         panel.delegate = self
         let host = NSHostingView(rootView: LauncherView(state: state))
-        host.sizingOptions = [.preferredContentSize]
+        host.sizingOptions = []
         panel.contentView = host
-        NotificationCenter.default.addObserver(forName: NSView.frameDidChangeNotification, object: host, queue: .main) { _ in
-            Task { @MainActor in LauncherController.shared.keepAnchored() }
-        }
-        host.postsFrameChangedNotifications = true
     }
 
     var isVisible: Bool { panel.isVisible }
@@ -61,8 +63,8 @@ final class LauncherController: NSObject, NSWindowDelegate {
     func show(route: Route? = nil) {
         if let route { state.route = route }
         screen = NSScreen.screens.first { NSMouseInRect(NSEvent.mouseLocation, $0.frame, false) } ?? NSScreen.main
-        let size = panel.contentView?.fittingSize ?? panel.frame.size
-        let target = anchoredFrame(size)
+        let target = anchoredFrame(contentSize())
+        if panel.isVisible == false { panel.setContentSize(target.size) }
         if !panel.isVisible {
             panel.setFrame(target.offsetBy(dx: 0, dy: -40), display: false)
             panel.alphaValue = 0
@@ -75,6 +77,12 @@ final class LauncherController: NSObject, NSWindowDelegate {
             context.timingFunction = CAMediaTimingFunction(controlPoints: 0.2, 0.9, 0.25, 1)
             panel.animator().setFrame(target, display: true)
             panel.animator().alphaValue = 1
+        }
+        // SwiftUI mide el contenido después de ordenar la ventana al frente: se vuelve a ajustar con la medida real.
+        DispatchQueue.main.async { [self] in
+            let size = contentSize()
+            guard abs(panel.frame.width - size.width) > 0.5 || abs(panel.frame.height - size.height) > 0.5 else { return }
+            NSAnimationContext.runAnimationGroup { $0.duration = 0; panel.animator().setFrame(anchoredFrame(size), display: true) }
         }
     }
 
@@ -100,6 +108,18 @@ final class LauncherController: NSObject, NSWindowDelegate {
         hide()
     }
 
+    /// Último tamaño que midió SwiftUI para el contenido (lo informa `LauncherView`); hasta entonces, uno razonable.
+    private var measured = NSSize(width: 560, height: 120)
+
+    private func contentSize() -> NSSize { measured }
+
+    /// SwiftUI midió de nuevo el contenido: la ventana se ajusta, creciendo hacia arriba desde la base.
+    func contentChanged(_ size: CGSize) {
+        guard size.width > 1, size.height > 1, abs(size.width - measured.width) > 0.5 || abs(size.height - measured.height) > 0.5 else { return }
+        measured = size
+        if panel != nil { keepAnchored() }
+    }
+
     private func anchoredFrame(_ size: NSSize) -> NSRect {
         let area = (screen ?? NSScreen.main!).visibleFrame
         return NSRect(x: area.midX - size.width / 2, y: area.minY + 24, width: size.width, height: size.height)
@@ -107,8 +127,8 @@ final class LauncherController: NSObject, NSWindowDelegate {
 
     /// Al cambiar de tamaño, la ventana crece hacia arriba desde la base y sigue centrada.
     func keepAnchored() {
-        guard panel.isVisible, let host = panel.contentView else { return }
-        let size = host.fittingSize
+        guard panel.isVisible else { return }
+        let size = contentSize()
         let frame = panel.frame
         guard abs(frame.width - size.width) > 0.5 || abs(frame.height - size.height) > 0.5 else { return }
         let next = NSRect(x: frame.midX - size.width / 2, y: frame.minY, width: size.width, height: size.height)
@@ -116,7 +136,7 @@ final class LauncherController: NSObject, NSWindowDelegate {
     }
 
     func windowDidResignKey(_ notification: Notification) {
-        guard holding == 0 else { return }
+        guard holding == 0, Prefs.shared.closeOnClickOutside, ProcessInfo.processInfo.environment["LAZO_KEEP_OPEN"] == nil else { return }
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.15) {
             Task { @MainActor in
                 if self.holding == 0, !self.panel.isKeyWindow, NSApp.modalWindow == nil, !(NSApp.keyWindow is NSOpenPanel) { self.hide() }
@@ -175,16 +195,22 @@ struct LauncherView: View {
     var body: some View {
         let p = prefs.palette
         VStack(spacing: 0) {
-            switch state.route {
-            case .home: HomeView(state: state)
-            case .settings: SettingsView(state: state)
-            case .chat: ChatView(state: state)
-            case .history: HistoryView(state: state)
-            case .eyecare: EyeCareView(state: state)
-            case .share: SharePickerView(state: state)
+            if prefs.interface == .standard {
+                StandardShell(state: state)
+            } else {
+                switch state.route {
+                case .home: HomeView(state: state)
+                case .settings: SettingsView(state: state)
+                case .chat: ChatView(state: state)
+                case .history: HistoryView(state: state)
+                case .eyecare: EyeCareView(state: state)
+                case .share: SharePickerView(state: state)
+                case .tools: ToolsView(state: state)
+                case .remote: RemoteView(state: state)
+                }
             }
         }
-        .padding(prefs.interface == .minimal && state.route == .home ? 10 : 16)
+        .padding(prefs.interface == .standard ? 0 : prefs.interface == .minimal && state.route == .home ? 10 : 16)
         .background(Shell(palette: p, glass: prefs.liquidGlass, hero: prefs.theme == .image))
         .clipShape(RoundedRectangle(cornerRadius: 24, style: .continuous))
         .overlay(RoundedRectangle(cornerRadius: 24, style: .continuous).stroke(p.line, lineWidth: 1))
@@ -193,6 +219,11 @@ struct LauncherView: View {
         .environment(\.colorScheme, p.dark ? .dark : .light)
         .animation(NSWorkspace.shared.accessibilityDisplayShouldReduceMotion ? nil : .spring(response: 0.32, dampingFraction: 0.86), value: state.route)
         .padding(1)
+        .fixedSize()
+        .background(GeometryReader { proxy in
+            Color.clear.onAppear { LauncherController.shared.contentChanged(proxy.size) }
+                .onChange(of: proxy.size) { _, size in LauncherController.shared.contentChanged(size) }
+        })
     }
 }
 
@@ -245,12 +276,14 @@ struct Avatar: View {
     let photo: String
     var size: CGFloat = 40
     var online = false
+    /// Fondo del círculo cuando va sobre una superficie del mismo tono (mosaicos).
+    var backdrop: Color?
     @ObservedObject var prefs = Prefs.shared
 
     var body: some View {
         let p = prefs.palette
         ZStack {
-            Circle().fill(p.avatar)
+            Circle().fill(backdrop ?? p.avatar)
             if !photo.isEmpty, let data = Data(base64Encoded: photo), let image = NSImage(data: data) {
                 Image(nsImage: image).resizable().scaledToFill().clipShape(Circle())
             } else {
@@ -293,121 +326,6 @@ struct IconButton: View {
 
 // MARK: - Inicio
 
-struct HomeView: View {
-    @ObservedObject var state: LauncherState
-    @ObservedObject var prefs = Prefs.shared
-    @ObservedObject var model = AppModel.shared
-
-    var body: some View {
-        if prefs.interface == .minimal { MinimalHome(state: state) } else { StandardHome(state: state) }
-    }
-}
-
-/// Fila de iconos común: tu foto abre el perfil; chat, historial, descanso, pantalla y ajustes.
-struct HeaderTools: View {
-    @ObservedObject var state: LauncherState
-    @ObservedObject var prefs = Prefs.shared
-    @ObservedObject var model = AppModel.shared
-
-    var body: some View {
-        HStack(spacing: 2) {
-            Button { state.route = .settings } label: { Avatar(name: prefs.displayName, photo: prefs.photo, size: 30) }
-                .buttonStyle(.plain).help("Tu perfil")
-            Spacer(minLength: 8)
-            IconButton(symbol: "bubble.left.and.bubble.right", tip: "Chat", badge: model.unread > 0) { LauncherController.shared.openChat(nil) }
-            IconButton(symbol: "clock", tip: "Historial") { state.route = .history }
-            IconButton(symbol: "eye", tip: "Descanso Visual") { state.route = .eyecare }
-            IconButton(symbol: "display", tip: "Compartir pantalla", active: model.share != nil) { state.route = .share }
-            IconButton(symbol: "gearshape", tip: "Ajustes") { state.route = .settings }
-        }
-    }
-}
-
-struct MinimalHome: View {
-    @ObservedObject var state: LauncherState
-    @ObservedObject var model = AppModel.shared
-    @ObservedObject var prefs = Prefs.shared
-    @StateObject private var search = SpotlightSearch()
-    @FocusState private var focused: Bool
-
-    var body: some View {
-        VStack(spacing: 8) {
-            if !model.peers.isEmpty && state.query.isEmpty {
-                HStack(spacing: 8) {
-                    ForEach(model.peers) { peer in
-                        PeerCircle(peer: peer, size: 34) { pickAndSend(peer) }
-                    }
-                }.padding(.horizontal, 6)
-            }
-            if !state.query.isEmpty {
-                ResultsList(search: search, peers: model.peers).frame(maxHeight: 320)
-            }
-            HStack(spacing: 8) {
-                Image(systemName: "magnifyingglass").opacity(0.6)
-                TextField("Buscar archivo para enviar", text: $state.query)
-                    .textFieldStyle(.plain).font(.lazo(15)).focused($focused)
-                    .onChange(of: state.query) { _, text in search.run(text) }
-                HeaderTools(state: state).fixedSize()
-            }
-            .padding(.leading, 14).padding(.trailing, 6).padding(.vertical, 6)
-            .surface(22)
-        }
-        .frame(width: 560)
-        .onAppear { focused = true }
-    }
-
-    private func pickAndSend(_ peer: Peer) {
-        let files = LauncherController.shared.pickFiles("Elige qué enviar a \(peer.name)")
-        if !files.isEmpty { model.send(files, to: peer) }
-    }
-}
-
-struct StandardHome: View {
-    @ObservedObject var state: LauncherState
-    @ObservedObject var model = AppModel.shared
-    @ObservedObject var prefs = Prefs.shared
-    @StateObject private var search = SpotlightSearch()
-
-    private var columns: Int { max(1, min(4, model.peers.count)) }
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            HStack {
-                VStack(alignment: .leading, spacing: 2) {
-                    Text(greeting + ", " + (prefs.displayName.split(separator: " ").first.map(String.init) ?? "")).font(.lazo(18, .semibold))
-                    Text(model.peers.isEmpty ? "Nadie conectado en esta red" : model.peers.count == 1 ? "1 equipo conectado" : "\(model.peers.count) equipos conectados")
-                        .font(.lazo(12)).opacity(0.65)
-                }
-                Spacer()
-                HeaderTools(state: state).fixedSize()
-            }
-            HeroCard(state: state)
-            if model.peers.isEmpty {
-                VStack(spacing: 6) {
-                    Image(systemName: "wifi").font(.system(size: 22)).opacity(0.5)
-                    Text(model.networkError ?? "Abre Lazo en otro equipo de esta red privada.").font(.lazo(12)).opacity(0.65).multilineTextAlignment(.center)
-                }.frame(maxWidth: .infinity).padding(.vertical, 18)
-            } else {
-                LazyVGrid(columns: Array(repeating: GridItem(.fixed(118), spacing: 12), count: columns), spacing: 12) {
-                    ForEach(model.peers) { peer in DeviceTile(peer: peer) }
-                }.frame(maxWidth: .infinity)
-            }
-            HStack(spacing: 8) {
-                Image(systemName: "magnifyingglass").opacity(0.6)
-                TextField("Buscar archivo para enviar", text: $state.query).textFieldStyle(.plain).font(.lazo(13))
-                    .onChange(of: state.query) { _, text in search.run(text) }
-            }.padding(.horizontal, 12).padding(.vertical, 8).surface(14)
-            if !state.query.isEmpty { ResultsList(search: search, peers: model.peers).frame(maxHeight: 260) }
-        }
-        .frame(width: max(420, CGFloat(columns) * 130 + 40))
-    }
-
-    private var greeting: String {
-        let hour = Calendar.current.component(.hour, from: Date())
-        return hour < 12 ? "Buenos días" : hour < 19 ? "Buenas tardes" : "Buenas noches"
-    }
-}
-
 /// Tarjeta de inicio con la foto de fondo (clic derecho o los botones al pasar el cursor la cambian).
 struct HeroCard: View {
     @ObservedObject var state: LauncherState
@@ -447,76 +365,6 @@ struct HeroCard: View {
             Button("Cambiar fondo de inicio…") { if let url = LauncherController.shared.pickImage() { prefs.setHero(from: url) } }
             if prefs.hasHero { Button("Restablecer fondo") { prefs.setHero(from: nil) } }
         }
-    }
-}
-
-/// Equipo como círculo con halo al pasar el cursor; acepta archivos soltados desde Finder.
-struct PeerCircle: View {
-    let peer: Peer
-    var size: CGFloat = 64
-    let action: () -> Void
-    @ObservedObject var prefs = Prefs.shared
-    @ObservedObject var model = AppModel.shared
-    @State private var hover = false
-    @State private var dropping = false
-
-    var body: some View {
-        Button(action: action) {
-            Avatar(name: peer.name, photo: peer.photo, size: size, online: true)
-                .overlay(Circle().stroke(prefs.accentColor, lineWidth: dropping ? 3 : 0))
-                .shadow(color: prefs.accentColor.opacity(hover ? 0.55 : 0), radius: hover ? 10 : 0)
-                .overlay(alignment: .topTrailing) {
-                    if peer.identityChanged {
-                        Image(systemName: "exclamationmark.triangle.fill").foregroundStyle(.orange).font(.system(size: size * 0.24))
-                    }
-                }
-        }
-        .buttonStyle(.plain)
-        .help(peer.identityChanged ? "\(peer.name): su identidad cambió" : peer.verified ? peer.name + " · verificado" : peer.name)
-        .onHover { hover = $0 }
-        .onDrop(of: [.fileURL], isTargeted: $dropping) { providers in
-            Drop.files(providers) { urls in model.send(urls, to: peer) }
-            return true
-        }
-    }
-}
-
-struct DeviceTile: View {
-    let peer: Peer
-    @ObservedObject var model = AppModel.shared
-
-    var body: some View {
-        VStack(spacing: 6) {
-            PeerCircle(peer: peer, size: 64) {
-                let files = LauncherController.shared.pickFiles("Elige qué enviar a \(peer.name)")
-                if !files.isEmpty { model.send(files, to: peer) }
-            }
-            Text(peer.name).font(.lazo(12, .medium)).lineLimit(2).multilineTextAlignment(.center)
-            let progress = model.sending.filter { $0.key.hasPrefix(peer.id + "/") }.map(\.value)
-            if !progress.isEmpty {
-                ProgressView(value: progress.reduce(0, +) / Double(progress.count)).frame(width: 70)
-            }
-        }
-        .frame(width: 118)
-        .contextMenu {
-            Button("Abrir chat") { LauncherController.shared.openChat(peer.id) }
-            if peer.paired && !peer.verified { Button("Verificar código…") { model.verify(peer) } }
-        }
-    }
-}
-
-enum Drop {
-    static func files(_ providers: [NSItemProvider], _ done: @escaping ([URL]) -> Void) {
-        var urls: [URL] = []
-        let group = DispatchGroup()
-        for provider in providers {
-            group.enter()
-            _ = provider.loadObject(ofClass: URL.self) { url, _ in
-                if let url, url.isFileURL { DispatchQueue.main.async { urls.append(url) } }
-                group.leave()
-            }
-        }
-        group.notify(queue: .main) { done(urls) }
     }
 }
 

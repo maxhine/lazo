@@ -17,10 +17,10 @@ La interfaz usa Bahnschrift con respaldo en Segoe UI. Paneles, chat y cambios de
 
 ## Instalar y compartir
 
-Comparte **`dist/Lazo-Setup-0.5.3.exe`**. Es un solo archivo: contiene Lazo, crea accesos directos, registra la desinstalación en Configuración de Windows y configura dos reglas entrantes limitadas al perfil **Privado** y a la **subred local**. Solicita permisos de administrador. Puede iniciar con Windows si se deja marcada la opción del instalador.
+Comparte **`dist/Lazo-Setup-0.6.0.exe`**. Es un solo archivo: contiene Lazo, crea accesos directos, registra la desinstalación en Configuración de Windows y configura dos reglas entrantes limitadas al perfil **Privado** y a la **subred local**. Solicita permisos de administrador. Puede iniciar con Windows si se deja marcada la opción del instalador.
 
 1. Cierra cualquier copia anterior de Lazo desde el icono de la bandeja.
-2. Ejecuta `Lazo-Setup-0.5.3.exe` y acepta el aviso de Windows.
+2. Ejecuta `Lazo-Setup-0.6.0.exe` y acepta el aviso de Windows.
 3. Abre Lazo desde el menú Inicio. Repite la instalación en el otro equipo.
 4. Asegúrate de que ambos equipos estén en una red marcada como **Privada** en Windows.
 
@@ -63,13 +63,24 @@ Desde la versión 0.5.0 Lazo usa el protocolo **LAZO3** ([especificación](docs/
 - Lo recibido lleva la marca de origen de internet (Windows) o de cuarentena (macOS), y los ejecutables piden confirmación antes de abrirse.
 - Las actualizaciones solo se instalan si traen una firma válida de la clave de publicación (`scripts/sign-release.sh`).
 
+## Control remoto con contraseña
+
+Entra a un equipo desde otro **sin que nadie tenga que aceptar**, con una contraseña que define su dueño. Pensado para controlar tu PC de trabajo desde el Mac (o al revés).
+
+- **Anfitrión**: en **Ajustes › Control remoto** activa el acceso y elige una contraseña (mínimo 8 caracteres). Solo se guarda un hash (PBKDF2-SHA256, 150 000 iteraciones); la contraseña nunca viaja. Tras 5 contraseñas erróneas, ese equipo queda bloqueado 10 minutos. Mientras alguien está dentro se ve un aviso con **Terminar**, y los atajos de emergencia (Ctrl+Alt+X / Q en Windows, ⌃⌥X / Q en Mac) siguen funcionando.
+- **Visor**: botón **Control remoto** (Utilidades en Windows; barra lateral o menú del equipo en Mac): eliges el equipo, escribes la contraseña y entras directo en modo control. La contraseña no se guarda.
+- **Ajustar resolución**: al empezar a controlar, el equipo remoto toma el tamaño de tu ventana, como un escritorio remoto. Windows cambia de forma temporal el modo del monitor compartido y lo restaura al terminar, al soltar el control o si Lazo se cierra; el Mac no cambia su resolución. Se apaga con el botón de la barra o en Ajustes.
+- En modo control solo se ve **un** puntero: el del sistema local.
+- Especificación del protocolo: [docs/control-remoto.md](docs/control-remoto.md). Windows y Mac se prueban entre sí en `scripts/test-interop.sh`.
+
 ## macOS
 
-Instala **`dist/Lazo-0.5.0-mac.dmg`**: ábrelo y arrastra Lazo a Aplicaciones. Vive en la barra de menús y se abre con **doble ⌥ izquierdo**, **⌃⌥L** o su icono. Tiene lo mismo que en Windows: Minimal y Standard, temas y Liquid Glass, chat, historial, Descanso Visual, compartir pantalla o una ventana, dibujar y control remoto con los dos modos. La búsqueda usa Spotlight en lugar de Everything.
+Instala **`Lazo-0.6.0-mac.dmg`**: ábrelo y arrastra Lazo a Aplicaciones. Vive en la barra de menús y se abre con **doble ⌥ izquierdo**, **⌃⌥L** o su icono. Tiene lo mismo que en Windows salvo el conversor de nubes de puntos (necesita ReCap): Minimal y Standard con la misma interfaz (barra lateral, mosaicos, tema Oscuro por defecto), temas y Liquid Glass, chat con grupos y borrado, historial, carpeta de recepción elegible, Descanso Visual, **Xpace** (espacio en disco con opción de quitar y sugerencias de qué borrar), compartir pantalla con punteros, láser, mosaico y «Compartiendo ahora», dibujar, control remoto con los dos modos y **control remoto con contraseña**. La búsqueda usa Spotlight en lugar de Everything.
 
 - La app no tiene firma de Apple (Developer ID). La primera vez, en otro Mac: clic derecho › **Abrir**.
 - macOS pide permisos: **Red local** (al abrir), **Grabación de pantalla** (para compartir) y **Accesibilidad** (para que alguien controle el Mac y para el doble ⌥). Están en Ajustes › Permisos de macOS.
 - Al controlar un Mac desde Windows, Ctrl se usa como ⌘ (Ctrl+C copia), Alt como ⌥ y la tecla Windows como ⌃.
+- **Cerrar al hacer clic fuera** es un ajuste (Ajustes › Sistema). Si algo no llega, **Ajustes › Abrir registro de diagnóstico** abre `~/Library/Logs/Lazo/lazo.log`.
 
 ## Red y requisitos
 
@@ -100,7 +111,7 @@ No requiere SDK de .NET ni paquetes NuGet en el equipo de desarrollo; usa el com
 En un Mac (requiere Swift y `brew install dotnet`):
 
 ```sh
-./scripts/build-mac.sh        # dist/Lazo-0.5.0-mac.dmg
+./scripts/build-mac.sh        # dist/Lazo-0.6.0-mac.dmg
 ./scripts/test-interop.sh     # motor de Windows (C#) contra el de Mac: archivo y chat en los dos sentidos
 ~/Library/Caches/lazo-build/debug/Lazo --self-test
 ```

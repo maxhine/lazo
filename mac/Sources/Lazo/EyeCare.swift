@@ -137,7 +137,7 @@ struct EyeCareView: View {
             Text("Cada 20 minutos, mira algo a 6 metros durante 20 segundos. Cada 55 minutos, levántate 5 minutos.")
                 .font(.lazo(11)).opacity(0.6).fixedSize(horizontal: false, vertical: true)
         }
-        .frame(width: 360)
+        .panelFrame(360)
     }
 }
 

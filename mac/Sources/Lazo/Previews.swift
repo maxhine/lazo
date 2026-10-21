@@ -16,6 +16,7 @@ enum Previews {
         let b = Peer(id: UUID().uuidString, name: "EQUIPO-OFICINA", address: "192.168.1.21", port: 48352, fingerprint: String(repeating: "b", count: 64))
         var c = Peer(id: UUID().uuidString, name: "Julián Garzón", address: "192.168.1.22", port: 48352, fingerprint: String(repeating: "c", count: 64))
         c.paired = true
+        c.sharing = "Pantalla 1"
         model.peers = [a, b, c]
         let prefs = Prefs.shared
         let saved = (prefs.theme, prefs.interface, prefs.liquidGlass)
@@ -30,12 +31,25 @@ enum Previews {
                 save(LauncherView(state: state), folder, "inicio-\(interface.rawValue)-\(theme.rawValue)")
             }
         }
-        prefs.theme = .wine
+        prefs.theme = .dark
         prefs.interface = .standard
-        for (route, name) in [(Route.settings, "ajustes"), (.eyecare, "descanso"), (.history, "historial"), (.share, "compartir")] {
+        for (route, name) in [(Route.settings, "ajustes"), (.eyecare, "descanso"), (.history, "historial"), (.share, "compartir"), (.remote, "remoto")] {
             state.route = route
             save(LauncherView(state: state), folder, name)
         }
+        let xp = XpaceSession.shared
+        let scanned = XpaceScanner().scan(NSHomeDirectory() + "/Documents")
+        xp.path = scanned.path; xp.result = scanned; xp.mapNode = scanned.root; xp.expanded = [scanned.root]
+        for tab in ["map", "folders", "files", "types"] {
+            xp.tab = tab
+            state.route = .tools
+            save(LauncherView(state: state), folder, "xpace-\(tab)")
+        }
+        xp.suggestions = XpaceSuggestions.known() + XpaceSuggestions.from(scanned)
+        xp.tipsLoaded = true
+        xp.tab = "tips"
+        state.route = .tools
+        save(LauncherView(state: state), folder, "xpace-sugerencias")
         state.route = .chat
         state.chatPeer = a.id
         save(LauncherView(state: state), folder, "chat")

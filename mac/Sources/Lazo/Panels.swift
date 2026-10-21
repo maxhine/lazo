@@ -5,6 +5,7 @@ import SwiftUI
 /// Panel flotante sin bordes con contenido SwiftUI. No aparece en capturas ni en la pantalla compartida.
 final class FloatingPanel: NSPanel {
     init<Content: View>(_ content: Content, width: CGFloat, activates: Bool = false) {
+        fallbackWidth = width
         super.init(contentRect: NSRect(x: 0, y: 0, width: width, height: 120),
                    styleMask: activates ? [.borderless] : [.borderless, .nonactivatingPanel], backing: .buffered, defer: false)
         isFloatingPanel = true
@@ -16,9 +17,25 @@ final class FloatingPanel: NSPanel {
         collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary]
         hidesOnDeactivate = false
         let host = NSHostingView(rootView: content.frame(width: width))
-        host.sizingOptions = [.preferredContentSize]
+        // Con `.preferredContentSize` el tamaño propio de la vista queda en cero en esta versión de macOS y el aviso no se ve.
+        host.sizingOptions = [.intrinsicContentSize]
+        self.host = host
         contentView = host
-        setContentSize(host.fittingSize)
+        refit()
+    }
+
+    private var host: NSView?
+    private let fallbackWidth: CGFloat
+
+    /// Ajusta la altura al contenido (crece al llegar más archivos al mismo aviso) y vuelve a colocar la pila.
+    func refit() {
+        guard let host else { return }
+        host.layoutSubtreeIfNeeded()
+        let fit = host.fittingSize
+        let size = fit.width > 1 && fit.height > 1 ? fit : NSSize(width: fallbackWidth, height: 120)
+        guard abs(frame.height - size.height) > 0.5 || abs(frame.width - size.width) > 0.5 else { return }
+        setContentSize(size)
+        if let index = Stack.panels.firstIndex(where: { $0 === self }) { placeBottomRight(index: index) }
     }
 
     override var canBecomeKey: Bool { true }
@@ -34,7 +51,10 @@ final class FloatingPanel: NSPanel {
 
     func fadeIn() {
         alphaValue = 0
+        refit()
         orderFrontRegardless()
+        DispatchQueue.main.async { [weak self] in self?.refit() }
+        DiagLog.write("panel flotante mostrado en \(frame) visible=\(isVisible)")
         NSAnimationContext.runAnimationGroup { $0.duration = 0.18; animator().alphaValue = 1 }
     }
 
@@ -239,6 +259,7 @@ final class ReceiveCenter {
         let item = IncomingItem(offer: offer, answer: answer)
         if let group = groups.first(where: { $0.peerId == offer.peerId && !$0.pending.isEmpty }) {
             group.items.append(item)
+            DispatchQueue.main.async { group.panel?.refit() }
             return
         }
         let group = IncomingGroup(peerId: offer.peerId, sender: offer.sender)
@@ -275,6 +296,7 @@ final class ReceiveCenter {
         guard let group = groups.first(where: { $0.items.contains { $0.id == id } }), let item = item(id) else { return }
         item.message = message
         item.path = url
+        DispatchQueue.main.async { group.panel?.refit() }
         item.progress = 1
         if let url {
             TransferLog.add(incoming: true, peer: group.sender, name: url.lastPathComponent, path: url.path)

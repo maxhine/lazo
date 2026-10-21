@@ -2,24 +2,43 @@
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
 <dict>
-    <key>CFBundleName</key><string>Lazo</string>
-    <key>CFBundleDisplayName</key><string>Lazo</string>
-    <key>CFBundleIdentifier</key><string>com.jhonandrew.lazo</string>
-    <key>CFBundleExecutable</key><string>Lazo</string>
-    <key>CFBundlePackageType</key><string>APPL</string>
-    <key>CFBundleIconFile</key><string>Lazo</string>
-    <key>CFBundleShortVersionString</key><string>0.5.0</string>
-    <key>CFBundleVersion</key><string>0.5.0</string>
-    <key>CFBundleDevelopmentRegion</key><string>es</string>
-    <key>LSMinimumSystemVersion</key><string>14.0</string>
-    <key>LSUIElement</key><true/>
-    <key>LSApplicationCategoryType</key><string>public.app-category.productivity</string>
-    <key>NSHighResolutionCapable</key><true/>
-    <key>NSHumanReadableCopyright</key><string>Jhon Andrew</string>
-    <key>NSLocalNetworkUsageDescription</key><string>Lazo busca equipos con Lazo en tu red local para enviar archivos, chatear y compartir pantalla, siempre cifrado.</string>
-    <key>NSDownloadsFolderUsageDescription</key><string>Lazo guarda en Descargas/Lazo los archivos que aceptas.</string>
-    <key>NSDesktopFolderUsageDescription</key><string>Para enviar archivos que eliges desde el Escritorio.</string>
-    <key>NSDocumentsFolderUsageDescription</key><string>Para enviar archivos que eliges desde Documentos.</string>
-    <key>NSScreenCaptureUsageDescription</key><string>Para compartir tu pantalla o una ventana con quien tú invites.</string>
+	<key>CFBundleDevelopmentRegion</key>
+	<string>es</string>
+	<key>CFBundleDisplayName</key>
+	<string>Lazo</string>
+	<key>CFBundleExecutable</key>
+	<string>Lazo</string>
+	<key>CFBundleIconFile</key>
+	<string>Lazo</string>
+	<key>CFBundleIdentifier</key>
+	<string>com.jhonandrew.lazo</string>
+	<key>CFBundleName</key>
+	<string>Lazo</string>
+	<key>CFBundlePackageType</key>
+	<string>APPL</string>
+	<key>CFBundleShortVersionString</key>
+	<string>0.6.0</string>
+	<key>CFBundleVersion</key>
+	<string>0.6.0</string>
+	<key>LSApplicationCategoryType</key>
+	<string>public.app-category.productivity</string>
+	<key>LSMinimumSystemVersion</key>
+	<string>14.0</string>
+	<key>LSUIElement</key>
+	<true/>
+	<key>NSDesktopFolderUsageDescription</key>
+	<string>Para enviar archivos que eliges desde el Escritorio.</string>
+	<key>NSDocumentsFolderUsageDescription</key>
+	<string>Para enviar archivos que eliges desde Documentos.</string>
+	<key>NSDownloadsFolderUsageDescription</key>
+	<string>Lazo guarda en Descargas/Lazo los archivos que aceptas.</string>
+	<key>NSHighResolutionCapable</key>
+	<true/>
+	<key>NSHumanReadableCopyright</key>
+	<string>Jhon Andrew</string>
+	<key>NSLocalNetworkUsageDescription</key>
+	<string>Lazo busca equipos con Lazo en tu red local para enviar archivos, chatear y compartir pantalla, siempre cifrado.</string>
+	<key>NSScreenCaptureUsageDescription</key>
+	<string>Para compartir tu pantalla o una ventana con quien tú invites.</string>
 </dict>
 </plist>

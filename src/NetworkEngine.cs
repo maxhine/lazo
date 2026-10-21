@@ -106,6 +106,8 @@ namespace Lazo
         private readonly Guid _id;
         private readonly DeviceIdentity _identity;
         public readonly PairingStore Pairings;
+        /// <summary>Control remoto con contraseña de este equipo (anfitrión): contraseña guardada, activación y bloqueos.</summary>
+        public readonly RemoteAccess Remote;
         public Guid SelfId { get { return _id; } }
         public string SelfFingerprint { get { return _identity.Fingerprint; } }
         public event Action<Guid, string, string> ChatReceived;
@@ -151,6 +153,7 @@ namespace Lazo
             _id = LoadId(_profile);
             _identity = DeviceIdentity.Load(_profile, _id);
             Pairings = new PairingStore(_profile);
+            Remote = new RemoteAccess(_profile);
             Pairings.Changed += () => { lock (_peerLock) PublishPeers(); };
         }
 
@@ -458,6 +461,7 @@ namespace Lazo
                         case (byte)'S': await ReadScreen(client, stream, reader, writer, address, peerId).ConfigureAwait(false); break;
                         case (byte)'J': ReadJoin(reader, writer, peerId); break;
                         case (byte)'Q': ReadShareRequest(reader, writer, peerId); break;
+                        case (byte)'W': await ReadRemoteAccess(client, stream, reader, writer, peerId).ConfigureAwait(false); break;
                     }
                 }
                 catch { /* Conexión no válida, cortada o rechazada. */ }
@@ -806,6 +810,111 @@ namespace Lazo
             bool taken = handler != null && handler(id, name);
             writer.Write((byte)(taken ? 1 : 0));
             writer.Flush();
+        }
+
+        // ── Control remoto con contraseña (docs/control-remoto.md) ───────────
+
+        /// <summary>
+        /// Anfitrión: alguien entró con la contraseña correcta. Recibe el identificador y el nombre del visor y la conexión
+        /// ya autenticada, que desde ahora es la transmisión de pantalla (este equipo es el emisor). La tarea que devuelve
+        /// debe terminar cuando el visor se vaya o la transmisión acabe: hasta entonces la conexión sigue abierta.
+        /// </summary>
+        public event Func<Guid, string, SecureConnection, Task> RemoteAccessAccepted;
+
+        /// <summary>Anfitrión: devuelve true si ya hay otra sesión (de pantalla o remota) y no se puede aceptar una nueva.</summary>
+        public Func<bool> RemoteBusy;
+
+        private async Task ReadRemoteAccess(TcpClient client, SecureStream stream, BinaryReader reader, BinaryWriter writer, Guid peerId)
+        {
+            string name = CleanLabel(ReadText(reader, 80));
+            if (name.Length == 0) return;
+            string viewerId = peerId.ToString("D").ToLowerInvariant();
+            Func<bool> busy = RemoteBusy;
+            Func<Guid, string, SecureConnection, Task> handler = RemoteAccessAccepted;
+            // Desactivado, bloqueado u ocupado: se cierra sin dar pistas de la contraseña.
+            if (handler == null || !Remote.Enabled || Remote.IsLocked(viewerId) || (busy != null && busy()))
+            {
+                writer.Write((byte)0);
+                writer.Flush();
+                return;
+            }
+            RemoteChallenge challenge = Remote.NewChallenge();
+            writer.Write((byte)1);
+            writer.Write(challenge.Salt);
+            writer.Write(challenge.Iterations);
+            writer.Write(challenge.Nonce);
+            writer.Flush();
+            byte[] proof = reader.ReadBytes(RemoteAccess.KeyLength);
+            if (proof.Length != RemoteAccess.KeyLength) throw new EndOfStreamException();
+            if (!Remote.Verify(challenge, proof, viewerId, _id.ToString("D").ToLowerInvariant()))
+            {
+                Remote.RegisterFailure(viewerId);
+                await Task.Delay(1000).ConfigureAwait(false);
+                writer.Write((byte)0);
+                writer.Flush();
+                return;
+            }
+            Remote.RegisterSuccess(viewerId);
+            writer.Write((byte)1);
+            writer.Flush();
+            // A partir de aquí la conexión es la transmisión: este equipo emite y el visor mira, como al aceptar una invitación.
+            client.NoDelay = true;
+            client.SendBufferSize = 1 << 20;
+            client.SendTimeout = 6000;
+            client.ReceiveTimeout = 0;
+            SecureConnection connection = new SecureConnection { Client = client, Stream = stream, PeerId = peerId.ToString("D") };
+            await handler(peerId, name, connection).ConfigureAwait(false);
+        }
+
+        /// <summary>
+        /// Visor: entra al equipo de <paramref name="peer"/> con su contraseña de control remoto. Devuelve la conexión ya
+        /// autenticada, por la que llega la transmisión de pantalla (se usa como la de una invitación aceptada); si algo
+        /// falla lanza una excepción con un mensaje para la persona.
+        /// </summary>
+        public async Task<SecureConnection> ConnectRemoteAsync(Peer peer, string password)
+        {
+            if (string.IsNullOrEmpty(password)) throw new InvalidOperationException("Escribe la contraseña de control remoto.");
+            SecureConnection connection = await OpenAsync(peer).ConfigureAwait(false);
+            try
+            {
+                connection.Client.ReceiveTimeout = 20000;
+                BinaryWriter writer = new BinaryWriter(connection.Stream, Encoding.UTF8, true);
+                BinaryReader reader = new BinaryReader(connection.Stream, Encoding.UTF8, true);
+                writer.Write((byte)'W');
+                WriteText(writer, Label(), 80);
+                writer.Flush();
+                byte status;
+                try { status = await ReadByteAsync(connection.Stream, 10000).ConfigureAwait(false); }
+                catch (Exception ex)
+                {
+                    // Las versiones sin control remoto no conocen la operación y cortan la conexión.
+                    if (ex is EndOfStreamException || ex is IOException) throw new InvalidOperationException(peer.Name + " tiene una versión de Lazo sin control remoto.");
+                    throw;
+                }
+                if (status != 1) throw new InvalidOperationException("El control remoto de " + peer.Name + " está desactivado, bloqueado u ocupado.");
+                byte[] salt = reader.ReadBytes(RemoteAccess.SaltLength);
+                int iterations = reader.ReadInt32();
+                byte[] nonce = reader.ReadBytes(RemoteAccess.NonceLength);
+                if (salt.Length != RemoteAccess.SaltLength || nonce.Length != RemoteAccess.NonceLength) throw new EndOfStreamException();
+                if (iterations < 50000 || iterations > 1000000) throw new InvalidDataException("El otro equipo pidió una derivación de contraseña no válida.");
+                string viewerId = _id.ToString("D").ToLowerInvariant();
+                string hostId = peer.Id.ToString("D").ToLowerInvariant();
+                byte[] proof = await Task.Run(() => RemoteAccess.ComputeProof(password, salt, iterations, nonce, viewerId, hostId)).ConfigureAwait(false);
+                writer.Write(proof);
+                writer.Flush();
+                if (await ReadByteAsync(connection.Stream, 15000).ConfigureAwait(false) != 1)
+                    throw new InvalidOperationException("Contraseña incorrecta.");
+                // Como un visor de pantalla compartida.
+                connection.Client.NoDelay = true;
+                connection.Client.ReceiveBufferSize = 1 << 20;
+                connection.Client.ReceiveTimeout = 15000;
+                return connection;
+            }
+            catch
+            {
+                connection.Dispose();
+                throw;
+            }
         }
 
         private void ReadJoin(BinaryReader reader, BinaryWriter writer, Guid id)
