@@ -2,6 +2,73 @@
   "about": "What's new, shown once in the island after Lazo updates itself (src/whats-new/). Every Windows and Linux release adds its entry here, in the 12 languages: 1 to 4 items, a short title and one line each, an icon from scripts/test-whats-new.py. python3 scripts/test-whats-new.py checks it.",
   "releases": [
     {
+      "version": "0.7.0",
+      "items": [
+        {
+          "icon": "sparkles",
+          "title": {
+            "en": "Lazo lives in the island",
+            "zh-Hans": "Lazo 住进了灵动岛",
+            "hi": "Lazo अब आइलैंड में",
+            "es": "Lazo vive en la isla",
+            "ar": "Lazo صار في الجزيرة",
+            "fr": "Lazo vit dans l’île",
+            "bn": "Lazo এখন আইল্যান্ডে",
+            "pt-BR": "O Lazo vive na ilha",
+            "ru": "Lazo теперь в острове",
+            "id": "Lazo kini di pulau",
+            "de": "Lazo lebt in der Insel",
+            "tr": "Lazo artık adada"
+          },
+          "detail": {
+            "en": "People, chat and files, plus point clouds, Xpace, eye care and TPS to RINEX, open inside the island.",
+            "zh-Hans": "人员、聊天和文件，以及点云、Xpace、护眼和 TPS 转 RINEX，都在灵动岛内打开。",
+            "hi": "लोग, चैट और फ़ाइलें, साथ ही पॉइंट क्लाउड, Xpace, आँखों की देखभाल और TPS से RINEX, आइलैंड में ही खुलते हैं।",
+            "es": "Personas, chat y archivos, más nubes de puntos, Xpace, descanso visual y TPS a RINEX, se abren dentro de la isla.",
+            "ar": "الأشخاص والدردشة والملفات، إضافةً إلى سحب النقاط وXpace والعناية بالعين وTPS إلى RINEX، تُفتح داخل الجزيرة.",
+            "fr": "Personnes, chat et fichiers, plus nuages de points, Xpace, pauses visuelles et TPS vers RINEX, s’ouvrent dans l’île.",
+            "bn": "মানুষ, চ্যাট ও ফাইল, সঙ্গে পয়েন্ট ক্লাউড, Xpace, চোখের যত্ন ও TPS থেকে RINEX, আইল্যান্ডের ভেতরেই খোলে।",
+            "pt-BR": "Pessoas, chat e arquivos, mais nuvens de pontos, Xpace, descanso visual e TPS para RINEX, abrem dentro da ilha.",
+            "ru": "Люди, чат и файлы, а также облака точек, Xpace, отдых для глаз и TPS в RINEX открываются внутри острова.",
+            "id": "Orang, obrolan dan file, plus awan titik, Xpace, istirahat mata dan TPS ke RINEX, terbuka di dalam pulau.",
+            "de": "Personen, Chat und Dateien sowie Punktwolken, Xpace, Augenpausen und TPS zu RINEX öffnen sich in der Insel.",
+            "tr": "Kişiler, sohbet ve dosyalar; ayrıca nokta bulutları, Xpace, göz molası ve TPS’den RINEX’e adanın içinde açılır."
+          }
+        },
+        {
+          "icon": "puzzle",
+          "title": {
+            "en": "Pick your core",
+            "zh-Hans": "选择你的内核",
+            "hi": "अपना कोर चुनें",
+            "es": "Elige tu núcleo",
+            "ar": "اختر نواتك",
+            "fr": "Choisissez votre cœur",
+            "bn": "আপনার কোর বেছে নিন",
+            "pt-BR": "Escolha seu núcleo",
+            "ru": "Выберите ядро",
+            "id": "Pilih inti Anda",
+            "de": "Wähle deinen Kern",
+            "tr": "Çekirdeğini seç"
+          },
+          "detail": {
+            "en": "Not for you? “Use classic Lazo” in Settings goes back to the classic window.",
+            "zh-Hans": "不合适？在设置中选择“使用经典版 Lazo”即可回到经典窗口。",
+            "hi": "पसंद नहीं? सेटिंग्स में “क्लासिक Lazo इस्तेमाल करें” से क्लासिक विंडो पर लौटें।",
+            "es": "¿No te convence? «Usar el Lazo clásico» en Ajustes vuelve a la ventana clásica.",
+            "ar": "لا يناسبك؟ «استخدام Lazo الكلاسيكي» في الإعدادات يعيدك إلى النافذة الكلاسيكية.",
+            "fr": "Pas pour vous ? « Utiliser le Lazo classique » dans les réglages ramène à la fenêtre classique.",
+            "bn": "পছন্দ হয়নি? সেটিংসে “ক্লাসিক Lazo ব্যবহার করুন” ক্লাসিক উইন্ডোতে ফিরিয়ে নেয়।",
+            "pt-BR": "Não curtiu? «Usar o Lazo clássico» nos Ajustes volta à janela clássica.",
+            "ru": "Не подошло? «Использовать классический Lazo» в настройках вернёт классическое окно.",
+            "id": "Kurang cocok? “Gunakan Lazo klasik” di Pengaturan kembali ke jendela klasik.",
+            "de": "Nicht dein Ding? „Klassisches Lazo verwenden“ in den Einstellungen bringt das klassische Fenster zurück.",
+            "tr": "Beğenmedin mi? Ayarlar’daki “Klasik Lazo’yu kullan” klasik pencereye döndürür."
+          }
+        }
+      ]
+    },
+    {
       "version": "0.5.2",
       "items": [
         {
