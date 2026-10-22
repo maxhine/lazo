@@ -12,7 +12,7 @@ La isla (Mac `NotchBuddy/`, Windows `windows/`) es la interfaz; Lazo es la herra
 
 - La app Tauri ejecuta el motor Rust en su mismo proceso (sin programa aparte, sin .NET): descubrimiento, canal cifrado, archivos y chat. La página lo usa por un evento y un comando de Tauri.
 - Pill **Lazo** (`core/lazo.ts`, `island/lazo.ts`, `views/lazo.ts`), activa por defecto: personas en la red, ofertas de archivo con aceptar/rechazar y progreso, y envío (suelta un archivo en la isla con la pill de Lazo al frente y elige a quién). Un archivo ofrecido abre la isla.
-- Falta, en este orden: verificación con código, chat en la isla (el motor ya envía y recibe mensajes y señales), pantalla compartida y control, Xpace, conversor de nubes de puntos y Descanso Visual. Hoy viven en WPF (`ScreenShare`, `XpaceView`, `EyeCare`…); se portan al motor Rust y la vista a la isla, una a una.
+- Falta, en este orden: verificación con código, pantalla compartida y control remoto (necesitan la red), chat guardado en disco, ajustes (nombre, foto, carpeta de recepción) y volver del clásico a la isla. Xpace, el conversor de nubes de puntos y Descanso Visual ya están dentro de la isla.
 - El Lazo clásico y la isla no pueden estar abiertos a la vez (mismo cerrojo y mismos puertos): la tarjeta lo dice.
 
 ## Dos núcleos, y las herramientas dentro de la isla
@@ -22,7 +22,10 @@ Quien use el núcleo nuevo lo usa todo dentro de la isla, que crece al tamaño d
 La lógica de las herramientas es la del Lazo clásico, sin reescribirla: `engine/Lazo.Engine.exe --tools-only` (sin red) compila `XpaceScanner`, `XpaceActions`… tal cual y las sirve con órdenes `herramienta.orden` por el mismo JSON de `engine-protocol.md`. La isla lo arranca al primer uso (`windows/src-tauri/src/lazo_tools.rs`, que retransmite los mensajes como el evento `lazo-tools`) y dibuja la interfaz con TypeScript.
 
 - **Xpace**: dentro de la isla (mapa de rectángulos, lista, archivos grandes, tipos y qué limpiar, con papelera o borrado definitivo con confirmación). Pruebas: `node engine/test-tools.mjs`, `cargo test -p lazo lazo_tools` (contra el programa real) y `windows/tests/xpace.test.mjs`.
-- **Nubes de puntos y Descanso Visual**: por ahora se abren en la ventana del Lazo clásico (`Lazo.exe --tool=cloud|eyecare`, modo aditivo en `lazo/src`), sin red ni bandeja. Siguen funcionando como siempre; el siguiente paso es dibujarlas dentro de la isla sobre la misma lógica.
+- **Nubes de puntos**: dentro de la isla (archivos arrastrados o elegidos, formato rcp/rcs/las/xyz/pts/csv, unidades, reducción con vista previa, sistema de coordenadas de origen y salida, EGM2008, progreso y cancelación). Órdenes `cloud.*` de `engine/CloudTool.cs` sobre `PointCloudConverter`, `CloudExport`, `CloudReprojector` y `CloudPreview` tal cual; las decisiones de quién reproyecta son las de `MainWindow.Tools.cs`, repetidas en C#. Necesita Autodesk ReCap, como el clásico. Pruebas: `engine/test-tools.mjs` (incluye una conversión real a .rcp con DeCap) y `windows/tests/cloud.test.mjs`.
+- **Descanso Visual**: dentro de la isla la tarjeta (reloj digital o análogo, cuentas hasta el próximo descanso visual y pausa activa, conteos del día, pausa, sonido, estilo). Las órdenes `eyecare.*` de `engine/EyeCareTool.cs` corren el mismo `EyeCareService` del clásico en un hilo con Dispatcher (mismo `%APPDATA%\Lazo\eyecare.txt`) y **las ventanas de aviso siguen siendo las WPF del clásico** (aviso o ojos animados). La isla arranca el servicio al iniciar, para que avise con la isla cerrada. `eyecare.trigger` no está en las pruebas automáticas porque abre esa ventana.
+- **Los textos que salen del programa** (progreso y errores de la conversión, de Xpace) vienen en español, como en el clásico: no pasan por `t()`.
+- **Color y movimiento**: cada herramienta tiene su acento y cada persona el suyo (`core/accent.ts`, de la paleta de los pills); botones, chips, fichas y pills usan la curva de resorte de los pills del proyecto base y las mismas animaciones (pop, rise, ring, stripes, sheen) al final de `windows/src/style.css`.
 - **Pantalla compartida y control remoto**: dependen de la red; pendientes.
 
 ## Siguiente (Mac)

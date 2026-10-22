@@ -8,6 +8,7 @@ import { State } from "../core/state";
 import { Lazo, lazoConnected, lazoOffers, lazoPeers, LAZO_COLOR } from "../core/lazo";
 import type { EngineOffer, EnginePeer } from "../lazo/engine";
 import { Bridge } from "../core/bridge";
+import { accentFor } from "../core/accent";
 import { t, tl, type Msg } from "../i18n/i18n";
 import type { ViewActions } from "./views";
 
@@ -41,6 +42,7 @@ export function avatar(peer: EnginePeer): HTMLElement {
   const photo = Lazo.photos[peer.id];
   const el = h("span", { class: photo ? "lazo-avatar photo" : "lazo-avatar", text: photo ? "" : initial(peer.name) });
   if (photo) el.style.backgroundImage = `url(${photo})`;
+  el.style.setProperty("--acc", accentFor(peer.id));
   return el;
 }
 
@@ -70,7 +72,7 @@ function pick(peer: EnginePeer) {
 
 function personRow(peer: EnginePeer): HTMLElement {
   const count = unread(peer.id);
-  const row = h("div", { class: "lazo-row pick" },
+  const row = h("div", { class: "lazo-row pick", style: `--acc:${accentFor(peer.id)}` },
     avatar(peer),
     h("span", { class: "lazo-name", text: peer.name }),
     count > 0 ? h("span", { class: "lazo-unread", text: String(count) }) : null,
@@ -250,7 +252,7 @@ export function buildPeopleChat(): PeopleChatHost {
       clear(strip);
       for (const p of lazoPeers()) {
         const count = unread(p.id);
-        const chip = h("button", { class: p.id === peer?.id ? "pchat-chip on" : "pchat-chip" },
+        const chip = h("button", { class: p.id === peer?.id ? "pchat-chip on" : "pchat-chip", style: `--acc:${accentFor(p.id)}` },
           avatar(p),
           h("span", { class: "lazo-name", text: p.name }),
           count > 0 ? h("span", { class: "lazo-unread", text: String(count) }) : null,
@@ -287,22 +289,22 @@ export function buildPeopleChat(): PeopleChatHost {
 // ── Lazo's tools (the grid icon) ──────────────────────────────────────────────
 
 /** The tools that already work and open as they are, in their own window (src-tauri/src/lazo_tools.rs). */
-const TOOLS: { id: string; name: string | Msg; glyph: string }[] = [
-  { id: "cloud", name: tl("Point clouds"), glyph: "M12 3 3 7.5 12 12l9-4.5L12 3zm-9 9 9 4.5 9-4.5M3 16.5 12 21l9-4.5" },
-  { id: "xpace", name: "Xpace", glyph: "M4 4h9v16H4V4zm11 0h5v7h-5V4zm0 9h5v7h-5v-7z" },
-  { id: "eyecare", name: tl("Eye care"), glyph: "M12 5C6.5 5 3 9.5 2 12c1 2.5 4.5 7 10 7s9-4.5 10-7c-1-2.5-4.5-7-10-7zm0 3.2a3.8 3.8 0 1 1 0 7.6 3.8 3.8 0 0 1 0-7.6z" },
+const TOOLS: { id: string; name: string | Msg; glyph: string; color: string }[] = [
+  { id: "cloud", name: tl("Point clouds"), glyph: "M12 3 3 7.5 12 12l9-4.5L12 3zm-9 9 9 4.5 9-4.5M3 16.5 12 21l9-4.5", color: "#38BDF8" },
+  { id: "xpace", name: "Xpace", glyph: "M4 4h9v16H4V4zm11 0h5v7h-5V4zm0 9h5v7h-5v-7z", color: "#C084FC" },
+  { id: "eyecare", name: tl("Eye care"), glyph: "M12 5C6.5 5 3 9.5 2 12c1 2.5 4.5 7 10 7s9-4.5 10-7c-1-2.5-4.5-7-10-7zm0 3.2a3.8 3.8 0 1 1 0 7.6 3.8 3.8 0 0 1 0-7.6z", color: "#4ADE80" },
 ];
 
 export function buildTools(actions: ViewActions): LazoCardHost {
   const message = h("div", { class: "lazo-sub tools-note" });
   const tiles = h("div", { class: "tools-tiles" });
   for (const tool of TOOLS) {
-    const tile = h("button", { class: "tool-tile" }, svg(tool.glyph, 20, { stroke: 1.7 }), h("span", { text: tool.name }));
+    const tile = h("button", { class: "tool-tile", style: `--acc:${tool.color}` }, svg(tool.glyph, 20, { stroke: 1.7 }), h("span", { text: tool.name }));
     tile.addEventListener("click", () => {
       message.textContent = "";
-      // Xpace is drawn inside the island, which grows to it; the others still open the classic program's window.
-      if (tool.id === "xpace") {
-        actions.setView("xpace");
+      // Xpace, the point clouds and eye care are drawn inside the island, which grows to them; nothing else still opens the classic program's window.
+      if (tool.id === "xpace" || tool.id === "cloud" || tool.id === "eyecare") {
+        actions.setView(tool.id);
         return;
       }
       void Bridge.openLazoTool(tool.id).catch((err) => {
@@ -312,7 +314,7 @@ export function buildTools(actions: ViewActions): LazoCardHost {
     tiles.append(tile);
   }
   // Screen sharing is next: it needs the network engine to carry it.
-  const soon = h("button", { class: "tool-tile soon", disabled: true },
+  const soon = h("button", { class: "tool-tile soon", style: "--acc:#F29B38", disabled: true },
     svg("M3 5h18v11H3V5zm6 14h6", 20, { stroke: 1.7 }), h("span", { text: tl("Screen sharing") }), h("em", { text: tl("Coming soon") }));
   tiles.append(soon);
   const el = h("div", { class: "view" }, h("div", { class: "card tools-card" }, tiles, message));

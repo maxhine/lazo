@@ -10,6 +10,7 @@ import { Lazo, lazoConnected, lazoPeers } from "../core/lazo";
 import { avatar } from "./lazo";
 import type { ViewActions, ViewHost } from "./views";
 import { N_, t, tl } from "../i18n/i18n";
+import { accentFor } from "../core/accent";
 
 /** Dashed rounded rect drawn as SVG so the dashes can march like on macOS. */
 function dashedFrame(): SVGSVGElement {
@@ -62,7 +63,7 @@ export function buildUpload(): ViewHost {
       shown = key;
       clear(people);
       for (const p of peers) {
-        people.append(h("div", { class: p.id === Lazo.dropTarget ? "drop-person hot" : "drop-person", "data-drop-peer": p.id },
+        people.append(h("div", { class: p.id === Lazo.dropTarget ? "drop-person hot" : "drop-person", "data-drop-peer": p.id, style: `--acc:${accentFor(p.id)}` },
           avatar(p), h("span", { class: "lazo-name", text: p.name })));
       }
     },

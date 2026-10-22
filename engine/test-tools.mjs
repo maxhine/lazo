@@ -123,3 +123,140 @@ test("las sugerencias de limpieza llegan con lo que Xpace sabe quitar", async ()
     assert.equal(typeof t.size, "number");
   }
 });
+
+// ── Nubes de puntos ───────────────────────────────────────────────────────────
+
+// Un LAS 1.2 (formato 2, 26 bytes por punto) con una rejilla de n×n puntos cada 1 cm desde (x0, y0).
+function writeLas(path, n, x0, y0) {
+  const scale = 0.001;
+  const header = Buffer.alloc(227);
+  header.write("LASF", 0, "ascii");
+  header[24] = 1; header[25] = 2;
+  header.write("Lazo", 26, "ascii"); header.write("Lazo prueba", 58, "ascii");
+  header.writeUInt16LE(1, 90); header.writeUInt16LE(2026, 92); header.writeUInt16LE(227, 94);
+  header.writeUInt32LE(227, 96); header.writeUInt32LE(0, 100);
+  header[104] = 2; header.writeUInt16LE(26, 105); header.writeUInt32LE(n * n, 107); header.writeUInt32LE(n * n, 111);
+  [scale, scale, scale, 0, 0, 0].forEach((v, i) => header.writeDoubleLE(v, 131 + i * 8));
+  const max = [x0 + n * 0.01, y0 + n * 0.01, 1], min = [x0, y0, -1];
+  [max[0], min[0], max[1], min[1], max[2], min[2]].forEach((v, i) => header.writeDoubleLE(v, 179 + i * 8));
+  const points = Buffer.alloc(n * n * 26);
+  let at = 0;
+  for (let i = 0; i < n; i++) for (let j = 0; j < n; j++) {
+    const x = x0 + i * 0.01, y = y0 + j * 0.01, z = 0.5 * Math.sin(i / 10) * Math.cos(j / 10);
+    points.writeInt32LE(Math.round(x / scale), at); points.writeInt32LE(Math.round(y / scale), at + 4); points.writeInt32LE(Math.round(z / scale), at + 8);
+    points.writeUInt16LE(1000, at + 12); points[at + 14] = 0x11;
+    points.writeUInt16LE(i * 257 % 65535, at + 20); points.writeUInt16LE(j * 257 % 65535, at + 22); points.writeUInt16LE(30000, at + 24);
+    at += 26;
+  }
+  writeFileSync(path, Buffer.concat([header, points]));
+}
+
+const clouds = join(work, "nubes");
+mkdirSync(clouds, { recursive: true });
+const lasPath = join(clouds, "rejilla.las");
+writeLas(lasPath, 100, 1000000, 1000000);
+
+test("nubes: el estado dice qué hay y la lectura del archivo da su tamaño", async () => {
+  send({ cmd: "cloud.status" });
+  const st = await next((m) => m.type === "cloud.status");
+  assert.deepEqual(st.units, ["mm", "cm", "m", "in", "ft", "ft EE. UU."]);
+  assert.ok(st.projections.some((p) => p.ref === "lazo:on"));
+  send({ cmd: "cloud.probe", files: [lasPath, join(clouds, "nada.txt")] });
+  const probe = await next((m) => m.type === "cloud.probe");
+  assert.equal(probe.files.length, 1, "solo entran los formatos que se convierten");
+  assert.equal(probe.files[0].size, 227 + 100 * 100 * 26);
+});
+
+test("nubes: la búsqueda de sistemas mezcla los de Lazo y los de ReCap", async () => {
+  send({ cmd: "cloud.search", query: "3116", source: true });
+  const found = await next((m) => m.type === "cloud.search" && m.query === "3116");
+  assert.ok(found.results.some((r) => r.ref === "lazo:3116"));
+  send({ cmd: "cloud.search", query: "", source: false });
+  const all = await next((m) => m.type === "cloud.search" && m.query === "");
+  assert.ok(all.results.length > 0 && all.results.every((r) => r.ref.startsWith("lazo:")));
+});
+
+test("nubes: la vista previa entrega las dos imágenes y los conteos", async () => {
+  send({ cmd: "cloud.preview", seq: 1, file: lasPath, zone: 0.5, mm: 50, unit: 2, elevation: false });
+  const p = await next((m) => m.type === "cloud.preview" && m.seq === 1);
+  assert.equal(p.ok, true, p.message);
+  assert.ok(p.original.length > 100 && p.reduced.length > 100);
+  assert.ok(p.after > 0 && p.after < p.before, `${p.before} → ${p.after}`);
+  assert.equal(Buffer.from(p.original, "base64").subarray(1, 4).toString(), "PNG");
+});
+
+test("nubes: LAS reproyectado por Lazo (Bogotá → Origen Nacional) con reducción", async () => {
+  send({ cmd: "cloud.convert", files: [lasPath], folder: clouds, name: "salida", format: "las", unit: 2, decimation: "20",
+    source: "lazo:3116", target: "lazo:on", ellipsoidal: false, merge: false });
+  const done = await next((m) => m.type === "cloud.done", 60000);
+  assert.equal(done.ok, true, done.message);
+  assert.ok(existsSync(done.output), done.output);
+  const out = readFileSync(done.output);
+  assert.equal(out.subarray(0, 4).toString(), "LASF");
+  assert.ok(out.readUInt32LE(107) > 0 && out.readUInt32LE(107) < 10000, "menos puntos que los 10000 de entrada");
+});
+
+test("nubes: una combinación imposible se explica y no arranca", async () => {
+  log.length = 0;
+  send({ cmd: "cloud.convert", files: [lasPath], folder: clouds, name: "x", format: "las", unit: 2, decimation: "", source: "", target: "lazo:on" });
+  const done = await next((m) => m.type === "cloud.done");
+  assert.equal(done.ok, false);
+  assert.match(done.message, /en qué sistema está la nube/);
+  log.length = 0;
+  send({ cmd: "cloud.convert", files: [lasPath], folder: clouds, name: "x", format: "las", unit: 2, decimation: "abc" });
+  assert.match((await next((m) => m.type === "cloud.done")).message, /milímetros/);
+});
+
+test("nubes: con ReCap instalado, un proyecto .rcp de verdad", async (t) => {
+  send({ cmd: "cloud.status" });
+  const st = await next((m) => m.type === "cloud.status" && m.deCap !== undefined && log.filter((x) => x.type === "cloud.status").length >= 1);
+  const status = [...log].reverse().find((m) => m.type === "cloud.status");
+  if (!status.deCap) return t.skip("ReCap no está instalado");
+  log.length = 0;
+  send({ cmd: "cloud.convert", files: [lasPath], folder: clouds, name: "proyecto", format: "rcp", unit: 2, decimation: "", merge: false });
+  const done = await next((m) => m.type === "cloud.done", 240000);
+  assert.equal(done.ok, true, done.message);
+  assert.ok(existsSync(done.output), done.output);
+  assert.ok(log.some((m) => m.type === "cloud.progress"), "hubo avances");
+});
+
+// ── Descanso Visual ───────────────────────────────────────────────────────────
+// Usa el eyecare.txt de verdad: cada ajuste se cambia y se devuelve a como estaba. No se prueba «trigger»
+// porque abre la ventana de aviso (y su sonido) en la pantalla de quien corre las pruebas.
+
+test("descanso visual: el estado llega y los ajustes cambian y se devuelven", async () => {
+  const seen = () => [...log].reverse().find((m) => m.type === "eyecare.state");
+  send({ cmd: "eyecare.state" });
+  await next((m) => m.type === "eyecare.state");
+  const first = seen();
+  assert.equal(first.microEvery, 1200);
+  assert.equal(first.activeEvery, 3300);
+  assert.equal(first.microFor, 20);
+  assert.equal(first.activeFor, 300);
+  assert.ok(first.microLeft >= 0 && first.microLeft <= 1200);
+  assert.ok(["digital", "analog"].includes(first.clock) && ["notice", "eyes"].includes(first.rest));
+
+  const flip = async (cmd, value, read) => {
+    log.length = 0;
+    send({ cmd, value });
+    await next((m) => m.type === "eyecare.state" && read(m) === value);
+  };
+  const other = first.clock === "analog" ? "digital" : "analog";
+  await flip("eyecare.clock", other, (m) => m.clock);
+  await flip("eyecare.clock", first.clock, (m) => m.clock);
+  const rest = first.rest === "eyes" ? "notice" : "eyes";
+  await flip("eyecare.rest", rest, (m) => m.rest);
+  await flip("eyecare.rest", first.rest, (m) => m.rest);
+  await flip("eyecare.sound", !first.sound, (m) => m.sound);
+  await flip("eyecare.sound", first.sound, (m) => m.sound);
+  await flip("eyecare.pause", !first.paused, (m) => m.paused);
+  await flip("eyecare.pause", first.paused, (m) => m.paused);
+});
+
+test("descanso visual: el reloj del servicio avanza y lo empuja a la isla cada segundo", async () => {
+  log.length = 0;
+  await next((m) => m.type === "eyecare.state", 5000);
+  const a = log.filter((m) => m.type === "eyecare.state").length;
+  await new Promise((r) => setTimeout(r, 2300));
+  assert.ok(log.filter((m) => m.type === "eyecare.state").length >= a + 1, "llegan estados sin pedirlos");
+});

@@ -19,6 +19,8 @@ namespace Lazo
             switch (tool)
             {
                 case "xpace": await XpaceCommand(client, cmd, m); break;
+                case "cloud": await CloudCommand(client, cmd, m); break;
+                case "eyecare": await EyeCareCommand(client, cmd, m); break;
                 default:
                     await Send(client, new Dictionary<string, object> { { "type", "error" }, { "message", "Utilidad desconocida: " + tool } });
                     break;

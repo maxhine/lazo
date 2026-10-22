@@ -14,6 +14,7 @@ import { Sound } from "../core/sound";
 import { State } from "../core/state";
 import { SPOTIFY_ID, islandDances } from "../core/spotify";
 import { LAZO_ID, Lazo, lazoConnected, lazoPeers } from "../core/lazo";
+import { Cloud } from "../core/lazo-tools";
 import type { EnginePeer } from "../lazo/engine";
 import { t } from "../i18n/i18n";
 import { BotEngine, hexToRGB } from "../nudo/engine";
@@ -557,6 +558,11 @@ export class Island {
   private onDragDrop(e: { type: string; paths?: string[]; x?: number; y?: number }) {
     if (e.type !== "over") void Bridge.log(`drag ${e.type} ${e.paths?.length ?? 0} file(s)`);
     if (State.paused) return;
+    // With the point clouds open, a dropped file is a cloud to convert, not something to send.
+    if (State.mode === "expanded" && State.view === "cloud") {
+      if (e.type === "drop" && e.paths?.length) Cloud.addFiles(e.paths);
+      return;
+    }
     switch (e.type) {
       case "enter":
       case "over": {

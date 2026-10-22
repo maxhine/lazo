@@ -27,6 +27,8 @@ import { buildSpotifyCard, buildSpotifyPill, type SpotifyPillHost } from "./spot
 import { SPOTIFY_ID } from "../core/spotify";
 import { buildLazoCard, buildPeoplePanel, buildTools } from "./lazo";
 import { buildXpace } from "./xpace";
+import { buildCloud } from "./cloud";
+import { buildEyeCare } from "./eyecare";
 import { LAZO_ID, Lazo } from "../core/lazo";
 import type { Outfit, OutfitSelection } from "../nudo/wardrobe";
 import { language, t, tl, type Msg } from "../i18n/i18n";
@@ -145,7 +147,7 @@ export function buildHeader(actions: ViewActions): ViewHost {
       tabHome.classList.toggle("on", v === "overview" || v === "empty");
       tabChat.classList.toggle("on", v === "prompt");
       tabDrop.classList.toggle("on", v === "upload");
-      tabTools.classList.toggle("on", v === "tools" || v === "xpace");
+      tabTools.classList.toggle("on", v === "tools" || v === "xpace" || v === "cloud" || v === "eyecare");
       tabTools.style.display = State.os === "windows" ? "" : "none";
       gearBtn.classList.toggle("on", v === "settings");
       clear(gearBtn);
@@ -889,6 +891,8 @@ export function buildViews(
   map.set("whatsNew", buildWhatsNew());
   map.set("tools", buildTools(actions));
   map.set("xpace", buildXpace());
+  map.set("cloud", buildCloud());
+  map.set("eyecare", buildEyeCare());
   // Not in the Windows v1: sending a file by email, window attach + web result.
   map.set("mail", buildPlaceholder(tl("Sending by email isn't in this version."), ""));
   map.set("searching", buildPlaceholder(tl("Claude is searching…"), ""));

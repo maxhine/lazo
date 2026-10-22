@@ -26,6 +26,8 @@ export type IslandViewName =
   | "wardrobe"
   | "tools"
   | "xpace"
+  | "cloud"
+  | "eyecare"
   | "update"
   | "whatsNew";
 
@@ -108,6 +110,10 @@ export const VIEW_LAYOUTS: Record<IslandViewName, ViewLayout> = {
   tools: { height: 160, botX: 62, botY: null, botDiameter: 54, agentMode: "none" },
   // Xpace opens inside the island, which grows to its size.
   xpace: { height: 520, width: 900, botX: 40, botY: 40, botDiameter: 0, agentMode: "none" },
+  // Point clouds open inside the island too, wider than Xpace for its two columns.
+  cloud: { height: 596, width: 940, botX: 40, botY: 40, botDiameter: 0, agentMode: "none" },
+  // Eye care: the clock, the two countdowns, the day's counts and the settings.
+  eyecare: { height: 500, width: 620, botX: 40, botY: 40, botDiameter: 0, agentMode: "none" },
   // New version: Nudo on the left, the version and Update now (Mac: .update).
   update: { height: 160, botX: 62, botY: null, botDiameter: 58, agentMode: "none" },
   // After an update: what the new version brings, then "Your Lazo so far".

@@ -3,6 +3,7 @@
 
 import { IS_TAURI } from "../core/bridge";
 import { LAZO_ID, Lazo, startLazo } from "../core/lazo";
+import { EyeCare } from "../core/lazo-tools";
 import { Sound } from "../core/sound";
 import { State } from "../core/state";
 
@@ -26,6 +27,8 @@ export function registerLazoHandlers(island: LazoIslandHost) {
     Lazo.chatPeer = peerId;
     island.expand("prompt");
   };
+  // Eye care keeps its reminders in the tools program: it must be running with the island closed too.
+  EyeCare.start();
   startLazo({
     changed: () => State.notify(),
     messaged: () => {
