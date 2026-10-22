@@ -35,6 +35,10 @@ namespace Lazo
                 if (arg.StartsWith("--preview-xpace=")) MainWindow.PreviewXpace = arg.Substring(16);
             }
             if (Array.IndexOf(args, "--preview-share") >= 0) MainWindow.PreviewPanel = "share";
+            // Una sola utilidad en su propia ventana, sin red ni bandeja: la isla las abre así (docs/integracion.md).
+            foreach (string arg in args)
+                if (arg.StartsWith("--tool=")) MainWindow.ToolMode = arg.Substring(7);
+            if (MainWindow.ToolMode != null && MainWindow.ToolMode != "cloud" && MainWindow.ToolMode != "xpace" && MainWindow.ToolMode != "eyecare") return;
             if (Array.IndexOf(args, "--preview-eyecare-alert") >= 0)
             {
                 Theme.Load();
@@ -102,18 +106,23 @@ namespace Lazo
             }
             if (Startup.ShouldExitAtLogon(args)) return;
             bool first;
-            using (Mutex instance = new Mutex(true, "Local\\Lazo.Transfer.App", out first))
+            bool tool = MainWindow.ToolMode != null;
+            string appName = tool ? "Local\\Lazo.Tool." + MainWindow.ToolMode : "Local\\Lazo.Transfer.App";
+            string showName = tool ? "Local\\Lazo.Tool.Show." + MainWindow.ToolMode : "Local\\Lazo.Transfer.Show";
+            using (Mutex instance = new Mutex(true, appName, out first))
             {
                 if (!first)
                 {
-                    try { using (EventWaitHandle signal = EventWaitHandle.OpenExisting("Local\\Lazo.Transfer.Show")) signal.Set(); }
+                    try { using (EventWaitHandle signal = EventWaitHandle.OpenExisting(showName)) signal.Set(); }
                     catch { }
                     return;
                 }
-                using (EventWaitHandle signal = new EventWaitHandle(false, EventResetMode.AutoReset, "Local\\Lazo.Transfer.Show"))
+                using (EventWaitHandle signal = new EventWaitHandle(false, EventResetMode.AutoReset, showName))
                 {
                     Application app = new Application { ShutdownMode = ShutdownMode.OnExplicitShutdown };
                     MainWindow window = new MainWindow();
+                    // Una utilidad termina al cerrar su ventana; Descanso Visual solo se oculta y sigue contando.
+                    if (tool && MainWindow.ToolMode != "eyecare") window.Closed += (s, e) => app.Shutdown();
                     Thread listener = new Thread(() =>
                     {
                         while (true)

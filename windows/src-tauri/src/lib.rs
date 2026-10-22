@@ -16,6 +16,7 @@ mod identity;
 mod integrations;
 mod island;
 mod lazo_net;
+mod lazo_tools;
 mod local_chat;
 mod log;
 mod net;
@@ -858,6 +859,7 @@ pub fn run() {
             shortcuts_status,
             shortcuts_suspend,
             lazo_net::lazo_engine_send,
+            lazo_tools::lazo_tool_open,
             phone_link::phone_link_status,
             phone_link::phone_link_set_enabled,
             phone_link::phone_link_pairing,

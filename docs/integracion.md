@@ -15,6 +15,10 @@ La isla (Mac `NotchBuddy/`, Windows `windows/`) es la interfaz; Lazo es la herra
 - Falta, en este orden: verificación con código, chat en la isla (el motor ya envía y recibe mensajes y señales), pantalla compartida y control, Xpace, conversor de nubes de puntos y Descanso Visual. Hoy viven en WPF (`ScreenShare`, `XpaceView`, `EyeCare`…); se portan al motor Rust y la vista a la isla, una a una.
 - El Lazo clásico y la isla no pueden estar abiertos a la vez (mismo cerrojo y mismos puertos): la tarjeta lo dice.
 
+## Herramientas que ya funcionan
+
+Las utilidades del Lazo clásico que ya sirven (nubes de puntos a ReCap, Xpace y Descanso Visual) no se reescriben: se abren tal cual desde el icono de cuadrícula de la isla. El clásico acepta `--tool=cloud|xpace|eyecare` (`lazo/src/Program.cs`), que abre solo esa utilidad en su ventana, sin red, bandeja ni atajos; la isla lo lanza con el comando `lazo_tool_open` (`windows/src-tauri/src/lazo_tools.rs`) y `npm run dev/build` compila `lazo/bin/Lazo.exe` y lo empaqueta como recurso. Descanso Visual se oculta al cerrar su ventana y sigue contando. Falta la pantalla compartida, que necesita el motor de red; y el control remoto.
+
 ## Siguiente (Mac)
 
 El motor de Mac ya existe como Swift (`lazo/mac/Sources/LazoCore`, interoperable con el de C#). Se integra en `NotchBuddy/` como un módulo más, con los mismos pills. Requiere Xcode (no hay en el Mac de desarrollo todavía).

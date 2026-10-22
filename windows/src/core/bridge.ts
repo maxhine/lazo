@@ -440,6 +440,8 @@ export const Bridge = {
     call<boolean>("spotify_control", { action, value: value ?? null }),
   /** Brings Spotify forward or starts it; without it, its download page. */
   spotifyOpen: () => call<boolean>("spotify_open"),
+  /** Opens one of Lazo's own tools ("cloud", "xpace", "eyecare") in its window; rejects with the reason if it cannot. */
+  openLazoTool: (tool: string) => callOrThrow<void>("lazo_tool_open", { tool }),
   /** Whether there is a Spotify to launch (Settings). */
   spotifyInstalled: () => call<boolean>("spotify_installed"),
 

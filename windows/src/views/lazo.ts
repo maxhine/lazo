@@ -7,7 +7,8 @@ import { ICONS } from "./icons";
 import { State } from "../core/state";
 import { Lazo, lazoConnected, lazoOffers, lazoPeers, LAZO_COLOR } from "../core/lazo";
 import type { EngineOffer, EnginePeer } from "../lazo/engine";
-import { t } from "../i18n/i18n";
+import { Bridge } from "../core/bridge";
+import { t, tl, type Msg } from "../i18n/i18n";
 
 export interface LazoCardHost {
   el: HTMLElement;
@@ -280,4 +281,34 @@ export function buildPeopleChat(): PeopleChatHost {
       input.focus();
     },
   };
+}
+
+// ── Lazo's tools (the grid icon) ──────────────────────────────────────────────
+
+/** The tools that already work and open as they are, in their own window (src-tauri/src/lazo_tools.rs). */
+const TOOLS: { id: string; name: string | Msg; glyph: string }[] = [
+  { id: "cloud", name: tl("Point clouds"), glyph: "M12 3 3 7.5 12 12l9-4.5L12 3zm-9 9 9 4.5 9-4.5M3 16.5 12 21l9-4.5" },
+  { id: "xpace", name: "Xpace", glyph: "M4 4h9v16H4V4zm11 0h5v7h-5V4zm0 9h5v7h-5v-7z" },
+  { id: "eyecare", name: tl("Eye care"), glyph: "M12 5C6.5 5 3 9.5 2 12c1 2.5 4.5 7 10 7s9-4.5 10-7c-1-2.5-4.5-7-10-7zm0 3.2a3.8 3.8 0 1 1 0 7.6 3.8 3.8 0 0 1 0-7.6z" },
+];
+
+export function buildTools(): LazoCardHost {
+  const message = h("div", { class: "lazo-sub tools-note" });
+  const tiles = h("div", { class: "tools-tiles" });
+  for (const tool of TOOLS) {
+    const tile = h("button", { class: "tool-tile" }, svg(tool.glyph, 20, { stroke: 1.7 }), h("span", { text: tool.name }));
+    tile.addEventListener("click", () => {
+      message.textContent = "";
+      void Bridge.openLazoTool(tool.id).catch((err) => {
+        message.textContent = String(err).replace(/^Error:\s*/, "");
+      });
+    });
+    tiles.append(tile);
+  }
+  // Screen sharing is next: it needs the network engine to carry it.
+  const soon = h("button", { class: "tool-tile soon", disabled: true },
+    svg("M3 5h18v11H3V5zm6 14h6", 20, { stroke: 1.7 }), h("span", { text: tl("Screen sharing") }), h("em", { text: tl("Coming soon") }));
+  tiles.append(soon);
+  const el = h("div", { class: "view" }, h("div", { class: "card tools-card" }, tiles, message));
+  return { el, sync() {} };
 }

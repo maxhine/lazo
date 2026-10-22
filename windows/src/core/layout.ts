@@ -24,6 +24,7 @@ export type IslandViewName =
   | "greeting"
   | "recap"
   | "wardrobe"
+  | "tools"
   | "update"
   | "whatsNew";
 
@@ -95,6 +96,8 @@ export const VIEW_LAYOUTS: Record<IslandViewName, ViewLayout> = {
   // to the shared image.
   recap: { height: 184, botX: 62, botY: null, botDiameter: 58, agentMode: "column" },
   wardrobe: { height: 160, botX: 68, botY: null, botDiameter: 58, agentMode: "none" },
+  // Lazo's tools: point clouds, Xpace, eye care, screen sharing.
+  tools: { height: 160, botX: 62, botY: null, botDiameter: 54, agentMode: "none" },
   // New version: Nudo on the left, the version and Update now (Mac: .update).
   update: { height: 160, botX: 62, botY: null, botDiameter: 58, agentMode: "none" },
   // After an update: what the new version brings, then "Your Lazo so far".

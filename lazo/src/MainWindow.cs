@@ -72,6 +72,8 @@ namespace Lazo
         private double _ownAvatarSize = 24;
         private Button _navHome, _navChat, _navHistory, _navSettings, _navEye, _navShare, _navTools;
         internal static string PreviewPanel;
+        /// <summary>Utilidad abierta sola por la isla (--tool=cloud|xpace|eyecare): sin red, bandeja ni atajos.</summary>
+        internal static string ToolMode;
         /// <summary>Vista previa de Utilidades con una nube ya cargada (--preview-cloud=ruta).</summary>
         internal static string PreviewCloud;
         /// <summary>Vista previa de Utilidades con Xpace analizando una carpeta (--preview-xpace=ruta).</summary>
@@ -153,6 +155,8 @@ namespace Lazo
             }
             if (PreviewPanel == "chat") { _chatOpen = true; SyncChrome(); ChatThread first = ChatStore.Threads().OrderByDescending(t => t.When).FirstOrDefault(); if (first != null && _chatPanel != null) _chatPanel.Open(first.Id, first.Name); }
             if (PreviewPanel == "settings") { _settingsOpen = true; SyncChrome(); }
+            if (ToolMode == "cloud" || ToolMode == "xpace") { _toolsOpen = true; _toolId = ToolMode; if (ToolMode == "xpace") XpaceTool(); SyncChrome(); }
+            if (ToolMode == "eyecare") { _eyeCareOpen = true; SyncChrome(); }
             Loaded += (s, e) =>
             {
                 _motion.Enter(_shell, _liquid, EnableGlass);
@@ -182,11 +186,18 @@ namespace Lazo
                     if (!_preview) SetupHotkeys();
                 }
             };
-            Closing += (s, e) => { if (!_exiting && !_preview) { e.Cancel = true; HideAnimated(); } };
+            Closing += (s, e) => { if (!_exiting && !_preview && (ToolMode == null || ToolMode == "eyecare")) { e.Cancel = true; HideAnimated(); } };
             
             Closed += (s, e) => Cleanup();
             KeyDown += OnWindowKeyDown;
-            if (!_preview)
+            if (ToolMode == "eyecare")
+            {
+                // Solo Descanso Visual: sus avisos siguen aunque la ventana esté oculta.
+                EyeCareService.Instance.Ticked += () => Dispatcher.BeginInvoke((Action)RefreshEyeCareCard);
+                EyeCareService.Instance.StateChanged += () => Dispatcher.BeginInvoke((Action)RefreshEyeCareCard);
+                EyeCareService.Instance.Start();
+            }
+            if (!_preview && ToolMode == null)
             {
                 SetupTray();
                 _network.PeersChanged += OnPeersChanged;

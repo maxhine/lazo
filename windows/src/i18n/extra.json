@@ -5519,6 +5519,71 @@
       "id": "Jatuhkan ke seseorang untuk mengirim",
       "de": "Auf jemanden ziehen, um zu senden",
       "tr": "Göndermek için birinin üstüne bırakın"
+    },
+    "Tools": {
+      "zh-Hans": "工具",
+      "hi": "टूल",
+      "es": "Herramientas",
+      "ar": "الأدوات",
+      "fr": "Outils",
+      "bn": "টুলস",
+      "pt-BR": "Ferramentas",
+      "ru": "Инструменты",
+      "id": "Alat",
+      "de": "Werkzeuge",
+      "tr": "Araçlar"
+    },
+    "Point clouds": {
+      "zh-Hans": "点云",
+      "hi": "पॉइंट क्लाउड",
+      "es": "Nubes de puntos",
+      "ar": "سحب النقاط",
+      "fr": "Nuages de points",
+      "bn": "পয়েন্ট ক্লাউড",
+      "pt-BR": "Nuvens de pontos",
+      "ru": "Облака точек",
+      "id": "Awan titik",
+      "de": "Punktwolken",
+      "tr": "Nokta bulutları"
+    },
+    "Eye care": {
+      "zh-Hans": "护眼",
+      "hi": "आँखों की देखभाल",
+      "es": "Descanso visual",
+      "ar": "راحة العين",
+      "fr": "Repos visuel",
+      "bn": "চোখের যত্ন",
+      "pt-BR": "Descanso visual",
+      "ru": "Отдых для глаз",
+      "id": "Istirahat mata",
+      "de": "Augenpause",
+      "tr": "Göz dinlendirme"
+    },
+    "Screen sharing": {
+      "zh-Hans": "屏幕共享",
+      "hi": "स्क्रीन साझा करना",
+      "es": "Compartir pantalla",
+      "ar": "مشاركة الشاشة",
+      "fr": "Partage d’écran",
+      "bn": "স্ক্রিন শেয়ারিং",
+      "pt-BR": "Compartilhar tela",
+      "ru": "Показ экрана",
+      "id": "Berbagi layar",
+      "de": "Bildschirmfreigabe",
+      "tr": "Ekran paylaşımı"
+    },
+    "The Lazo tools were not found.": {
+      "zh-Hans": "未找到 Lazo 的工具。",
+      "hi": "Lazo के टूल नहीं मिले।",
+      "es": "No se encontraron las herramientas de Lazo.",
+      "ar": "لم يتم العثور على أدوات Lazo.",
+      "fr": "Les outils de Lazo sont introuvables.",
+      "bn": "Lazo-র টুলস পাওয়া যায়নি।",
+      "pt-BR": "As ferramentas do Lazo não foram encontradas.",
+      "ru": "Инструменты Lazo не найдены.",
+      "id": "Alat Lazo tidak ditemukan.",
+      "de": "Die Lazo-Werkzeuge wurden nicht gefunden.",
+      "tr": "Lazo araçları bulunamadı."
     }
   }
 }

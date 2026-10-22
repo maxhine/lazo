@@ -3061,3 +3061,58 @@ html[data-dir="rtl"] #views :is(.bubble, .reply .md-p, .reply .md-h, .reply .md-
   height: 24px;
   flex: 0 0 24px;
 }
+
+/* Lazo's tools (views/lazo.ts, the grid icon). */
+
+.tools-card {
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  gap: 8px;
+  padding: 0 24px 0 108px;
+}
+
+.tools-tiles {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.tool-tile {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  width: 92px;
+  height: 64px;
+  border: 0;
+  border-radius: 14px;
+  background: rgba(255, 255, 255, 0.08);
+  color: var(--ink);
+  font: 500 11px var(--font);
+  cursor: default;
+  transition: background 0.1s ease-out, transform 0.1s ease-out;
+}
+
+.tool-tile:hover:not(:disabled) {
+  background: rgba(255, 255, 255, 0.16);
+}
+
+.tool-tile:active:not(:disabled) {
+  transform: scale(0.96);
+}
+
+.tool-tile.soon {
+  opacity: 0.45;
+}
+
+.tool-tile em {
+  font-style: normal;
+  font-size: 9px;
+  color: var(--dim-2);
+}
+
+.tools-note {
+  min-height: 14px;
+}
