@@ -793,6 +793,20 @@ export class Island {
     this.ensureRunning();
   }
 
+  /** The 2×2 pills sit left of the island's edge; the people are one row of faces that ends 14 px inside it. */
+  private positionMiniGrid() {
+    const w = this.width.value;
+    const hh = this.height.value;
+    const faces = Number(this.miniGrid.dataset.faces ?? 0);
+    if (faces > 0) {
+      this.miniGrid.style.left = `${w - 14 - (faces * 13 + (faces - 1) * 3)}px`;
+      this.miniGrid.style.top = `${hh / 2 - 6.5}px`;
+    } else {
+      this.miniGrid.style.left = `${w - 40 - 14.5}px`;
+      this.miniGrid.style.top = `${hh / 2 - 14.5}px`;
+    }
+  }
+
   private applyGeometry() {
     const w = this.width.value;
     const hh = this.height.value;
@@ -803,8 +817,7 @@ export class Island {
     this.islandEl.style.transform = `translateX(-50%)`;
     // These follow the island as it resizes, so they belong here rather than in
     // the state-driven DOM sync.
-    this.miniGrid.style.left = `${w - 40 - 14.5}px`;
-    this.miniGrid.style.top = `${hh / 2 - 14.5}px`;
+    this.positionMiniGrid();
     this.clockEl.style.height = `${hh}px`;
     this.greetingCanvas.style.left = `${(w - EXPANDED_W) / 2}px`;
     this.uploadCanvas.el.style.left = `${(w - EXPANDED_W) / 2}px`;
@@ -1326,17 +1339,20 @@ export class Island {
     this.miniGrid.style.opacity = showGrid ? "1" : "0";
     if (showGrid) {
       // With the setting on, the people on the network (faces) take the place of the pills.
-      const people = State.settings.compactPeople && State.os === "windows" && lazoConnected() ? lazoPeers().slice(0, 4) : null;
+      const people = State.settings.compactPeople && State.os === "windows" && lazoConnected() ? lazoPeers().filter(isOnline).slice(0, 4) : null;
       const others = people ? [] : State.otherTasks.slice(0, 4);
       const key = people
-        ? "people:" + people.map((p) => `${p.id}:${p.name}:${Lazo.photos[p.id] ? 1 : 0}:${isOnline(p) ? 1 : 0}`).join("|")
+        ? "people:" + people.map((p) => `${p.id}:${p.name}:${Lazo.photos[p.id] ? 1 : 0}`).join("|")
         : others.map((t) => t.id).join("|");
       if (this.miniGrid.dataset.key !== key) {
         this.miniGrid.dataset.key = key;
         this.miniGrid.replaceChildren();
+        this.miniGrid.dataset.faces = String(people?.length ?? 0);
+        this.miniGrid.classList.toggle("people", !!people && people.length > 0);
+        this.positionMiniGrid();
         if (people) {
           for (const p of people) {
-            const face = h("span", { class: "mini-face", style: `--acc:${accentFor(p.id)}`, title: p.name }, Lazo.photos[p.id] ? "" : (Array.from(p.name.trim())[0] ?? "?").toUpperCase(), h("i", { class: isOnline(p) ? "on" : "" }));
+            const face = h("span", { class: "mini-face", style: `--acc:${accentFor(p.id)}`, title: p.name }, Lazo.photos[p.id] ? "" : (Array.from(p.name.trim())[0] ?? "?").toUpperCase());
             if (Lazo.photos[p.id]) face.style.backgroundImage = `url(${Lazo.photos[p.id]})`;
             this.miniGrid.append(face);
           }

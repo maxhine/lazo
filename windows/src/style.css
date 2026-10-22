@@ -4490,17 +4490,9 @@ html[data-dir="rtl"] #views :is(.bubble, .reply .md-p, .reply .md-h, .reply .md-
   color: #fff;
 }
 
-#mini-grid .mini-face i {
-  position: absolute;
-  right: -2px;
-  bottom: -2px;
-  width: 5px;
-  height: 5px;
-  border-radius: 50%;
-  background: #6b7078;
-  box-shadow: 0 0 0 1px #000;
-}
-
-#mini-grid .mini-face i.on {
-  background: #4ade80;
+#mini-grid.people {
+  display: flex;
+  width: auto;
+  height: 13px;
+  gap: 3px;
 }
