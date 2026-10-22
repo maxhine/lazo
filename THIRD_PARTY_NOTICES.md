@@ -25,3 +25,10 @@ AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
 LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
+
+## tps2rin.exe (Topcon Positioning Systems)
+
+`engine/tps2rin/tps2rin.exe` (TPS2RIN 1.40) is Topcon's converter from .tps observation files to RINEX. It is included
+unmodified at SARCA's request so the "TPS to RINEX" tool works without asking for it. It is not part of this project, is not
+covered by its license, and remains © Topcon Positioning Systems. Check that its terms allow redistributing it before
+publishing this repository or its installer.

@@ -3,7 +3,7 @@
 
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { TpsModel, baseName, between, clock, isTpsFile, span } from "../src/core/tps.ts";
+import { TpsModel, baseName, between, clock, isTpsFile, span, timeline } from "../src/core/tps.ts";
 
 function model() {
   const sent = [];
@@ -84,4 +84,47 @@ test("times read as people read them", () => {
   assert.equal(baseName("C:\\a\\log1021v.tps"), "log1021v");
   assert.equal(isTpsFile("X.TPS"), true);
   assert.equal(isTpsFile("x.jps"), false);
+});
+
+const file = (name, first, last, leap = 18) => ({ path: `D:/${name}.tps`, name: "", state: "ok", message: "", obs: { ...obs, first, last, leap }, outputs: [] });
+
+test("several files on one day share an axis, in order, with what they have in common", () => {
+  const tl = timeline([
+    file("a", "2026-10-21T21:00:00", "2026-10-21T21:30:00"),
+    file("b", "2026-10-21T21:10:00", "2026-10-21T22:00:00"),
+  ], false);
+  assert.equal(tl.days.length, 1);
+  const [day] = tl.days;
+  assert.equal(day.date, "2026-10-21");
+  assert.deepEqual(day.bars.map((b) => b.label), ["a", "b"]);
+  assert.ok(day.bars[0].left < day.bars[1].left, "a starts before b");
+  assert.ok(day.bars.every((b) => b.left >= 0 && b.left + b.width <= 100.0001));
+  assert.equal(tl.commonSeconds, 20 * 60);
+  assert.equal(tl.commonFrom, "2026-10-21 21:10");
+  assert.equal(tl.commonTo, "2026-10-21 21:30");
+  assert.ok(day.common && day.common.width > 0);
+  assert.ok(day.ticks.length >= 3 && day.ticks.length <= 10);
+  assert.equal(day.bars[0].from, "21:00");
+});
+
+test("files that never overlap have no common time, and the axis can read in UTC", () => {
+  const files = [file("a", "2026-10-21T08:00:00", "2026-10-21T09:00:00"), file("b", "2026-10-21T11:00:00", "2026-10-21T12:00:00")];
+  const tl = timeline(files, false);
+  assert.equal(tl.commonSeconds, 0);
+  assert.equal(tl.days[0].common, null);
+  const utc = timeline(files, true);
+  assert.equal(utc.days[0].bars[0].from, "07:59", "GPS 08:00:00 is UTC 07:59:42");
+});
+
+test("a file crossing midnight is on both days, open where it continues", () => {
+  const tl = timeline([file("a", "2026-10-21T23:30:00", "2026-10-22T00:30:00")], false);
+  assert.deepEqual(tl.days.map((d) => d.date), ["2026-10-21", "2026-10-22"]);
+  assert.equal(tl.days[0].bars[0].openEnd, true);
+  assert.equal(tl.days[1].bars[0].openStart, true);
+});
+
+test("files with no times, or that failed, are left out", () => {
+  const bad = { ...file("x", "2026-10-21T10:00:00", "2026-10-21T11:00:00"), state: "bad" };
+  assert.equal(timeline([bad], false).days.length, 0);
+  assert.equal(timeline([], false).days.length, 0);
 });

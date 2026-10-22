@@ -1,0 +1,3 @@
+tps2rin.exe (TPS2RIN 1.40, Topcon Positioning Systems) es el conversor de archivos .tps a RINEX de Topcon.
+Se incluye sin modificar, a pedido de SARCA, para que Lazo lo use en la herramienta «TPS to RINEX».
+No es software de este proyecto ni está bajo su licencia: su copyright es de Topcon Positioning Systems.

@@ -4,7 +4,8 @@
 import { h, clear } from "./dom";
 import { Bridge } from "../core/bridge";
 import { Tps } from "../core/lazo-tools";
-import { baseName, between, clock, span, type TpsFile } from "../core/tps";
+import { baseName, between, clock, span, timeline, type TpsFile } from "../core/tps";
+import { accentFor } from "../core/accent";
 import { t } from "../i18n/i18n";
 import type { ViewHost } from "./views";
 
@@ -44,13 +45,14 @@ function times(file: TpsFile): HTMLElement {
 export function buildTps(): ViewHost {
   const missing = h("div", { class: "tp-missing" });
   const drop = h("button", { class: "tp-drop" });
+  const timelineBox = h("div", { class: "tp-timeline" });
   const list = h("div", { class: "tp-list" });
   const folder = h("div", { class: "tp-folder" });
   const folderBtn = h("button", { class: "tp-link", text: t("Change…") });
   const status = h("div", { class: "tp-status" });
   const buttons = h("div", { class: "tp-buttons" });
   const footer = h("div", { class: "tp-footer" }, h("div", { class: "tp-folder-row" }, h("span", { class: "tp-key", text: t("Save to") }), folder, folderBtn), status, buttons);
-  const main = h("div", { class: "tp-main" }, drop, list);
+  const main = h("div", { class: "tp-main" }, drop, timelineBox, list);
   const el = h("div", { class: "view" }, h("div", { class: "card tp-card" }, missing, main, footer));
 
   drop.addEventListener("click", () => Tps.pickFiles());
@@ -63,6 +65,37 @@ export function buildTps(): ViewHost {
     drawn[key] = s;
     draw();
   };
+
+  /** Several files at once: each one a bar on a shared time axis, like a timeline. */
+  function drawTimeline() {
+    clear(timelineBox);
+    const tl = timeline(Tps.files, Tps.utc);
+    const bars = tl.days.reduce((n, d) => n + d.bars.length, 0);
+    if (Tps.files.filter((f) => f.state === "ok").length < 2 || bars === 0) return;
+    const gps = h("button", { class: Tps.utc ? "tp-chip" : "tp-chip on", text: "GPS" });
+    const utc = h("button", { class: Tps.utc ? "tp-chip on" : "tp-chip", text: "UTC" });
+    gps.addEventListener("click", () => Tps.setUtc(false));
+    utc.addEventListener("click", () => Tps.setUtc(true));
+    timelineBox.append(h("div", { class: "tp-tl-head" }, h("b", { text: t("Timeline") }),
+      tl.commonSeconds > 0
+        ? h("span", { class: "tp-pill ok", text: t("Common to all: {from} → {to} ({duration})", { from: tl.commonFrom, to: tl.commonTo, duration: span(tl.commonSeconds) }) })
+        : h("span", { class: "tp-pill warn", text: t("No time common to all") }),
+      h("span", { class: "tp-grow" }), gps, utc));
+    for (const day of tl.days) {
+      const axis = h("div", { class: "tp-axis" });
+      for (const tick of day.ticks) axis.append(h("span", { class: "tp-tick", style: `left:${tick.left}%`, text: tick.label }));
+      const dayBox = h("div", { class: "tp-day" }, h("div", { class: "tp-row" }, h("span", { class: "tp-daydate", text: day.date }), axis));
+      for (const bar of day.bars) {
+        const track = h("div", { class: "tp-track" });
+        for (const tick of day.ticks) track.append(h("i", { class: "tp-grid", style: `left:${tick.left}%` }));
+        if (day.common) track.append(h("i", { class: "tp-common", style: `left:${day.common.left}%;width:${day.common.width}%` }));
+        track.append(h("div", { class: `tp-bar${bar.openStart ? " open-start" : ""}${bar.openEnd ? " open-end" : ""}`, style: `left:${bar.left}%;width:${bar.width}%;--acc:${accentFor(bar.path)}`, title: `${bar.label}  ${bar.from} → ${bar.to}` },
+          h("span", { text: `${bar.from} → ${bar.to}` })));
+        dayBox.append(h("div", { class: "tp-row" }, h("span", { class: "tp-label", title: bar.label, text: bar.label }), track));
+      }
+      timelineBox.append(dayBox);
+    }
+  }
 
   function drawList() {
     clear(list);
@@ -105,6 +138,7 @@ export function buildTps(): ViewHost {
       folder.classList.toggle("dim", !Tps.folder);
       (folderBtn as HTMLButtonElement).disabled = Tps.converting;
 
+      redraw("timeline", [Tps.files.map((f) => [f.path, f.name, f.state, f.obs?.first, f.obs?.last]), Tps.utc], drawTimeline);
       redraw("list", [Tps.files.map((f) => [f.path, f.state, f.message, f.obs?.first, f.obs?.last, f.obs?.gaps, f.outputs]), Tps.converting, Tps.exe], drawList);
       redraw("footer", [Tps.converting, Tps.result, Tps.written, Tps.notice, Tps.running, Tps.files.map((f) => f.state)], () => {
         status.className = Tps.result && Tps.result !== "ok" ? "tp-status error" : "tp-status";

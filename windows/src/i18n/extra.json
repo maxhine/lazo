@@ -7183,6 +7183,45 @@
       "id": "Hanya file .tps yang bisa dikonversi",
       "de": "Nur .tps-Dateien können umgewandelt werden",
       "tr": "Yalnızca .tps dosyaları dönüştürülebilir"
+    },
+    "Timeline": {
+      "zh-Hans": "时间线",
+      "hi": "टाइमलाइन",
+      "es": "Línea de tiempo",
+      "ar": "الجدول الزمني",
+      "fr": "Chronologie",
+      "bn": "টাইমলাইন",
+      "pt-BR": "Linha do tempo",
+      "ru": "Хронология",
+      "id": "Garis waktu",
+      "de": "Zeitleiste",
+      "tr": "Zaman çizelgesi"
+    },
+    "Common to all: {from} → {to} ({duration})": {
+      "zh-Hans": "全部共有：{from} → {to}（{duration}）",
+      "hi": "सभी में साझा: {from} → {to} ({duration})",
+      "es": "En común a todos: {from} → {to} ({duration})",
+      "ar": "مشترك بين الجميع: {from} ← {to} ({duration})",
+      "fr": "Commun à tous : {from} → {to} ({duration})",
+      "bn": "সবার মধ্যে সাধারণ: {from} → {to} ({duration})",
+      "pt-BR": "Comum a todos: {from} → {to} ({duration})",
+      "ru": "Общее для всех: {from} → {to} ({duration})",
+      "id": "Sama untuk semua: {from} → {to} ({duration})",
+      "de": "Allen gemeinsam: {from} → {to} ({duration})",
+      "tr": "Hepsinde ortak: {from} → {to} ({duration})"
+    },
+    "No time common to all": {
+      "zh-Hans": "没有全部共有的时间",
+      "hi": "सभी में कोई साझा समय नहीं",
+      "es": "Sin tiempo en común a todos",
+      "ar": "لا وقت مشترك بين الجميع",
+      "fr": "Aucun temps commun à tous",
+      "bn": "সবার মধ্যে কোনো সাধারণ সময় নেই",
+      "pt-BR": "Nenhum tempo comum a todos",
+      "ru": "Нет общего времени для всех",
+      "id": "Tidak ada waktu yang sama untuk semua",
+      "de": "Keine gemeinsame Zeit für alle",
+      "tr": "Hepsinde ortak zaman yok"
     }
   }
 }

@@ -10,7 +10,8 @@
       "../target/release/lazo-hook.exe": null,
       "../target/release/lazo-hook": "lazo-hook",
       "../../lazo/bin/Lazo.exe": null,
-      "../../engine/bin/Lazo.Engine.exe": null
+      "../../engine/bin/Lazo.Engine.exe": null,
+      "../../engine/tps2rin/tps2rin.exe": null
     },
     "linux": {
       "appimage": {

@@ -51,7 +51,8 @@
     "resources": {
       "../target/release/lazo-hook.exe": "lazo-hook.exe",
       "../../lazo/bin/Lazo.exe": "classic/Lazo.exe",
-      "../../engine/bin/Lazo.Engine.exe": "engine/Lazo.Engine.exe"
+      "../../engine/bin/Lazo.Engine.exe": "engine/Lazo.Engine.exe",
+      "../../engine/tps2rin/tps2rin.exe": "engine/tps2rin.exe"
     },
     "copyright": "© SARCA",
     "category": "DeveloperTool",

@@ -87,6 +87,8 @@ export class TpsModel {
   written: string[] = [];
   /** The last conversion's outcome: "" nothing yet, "ok", or the reason it failed. */
   result = "";
+  /** The timeline reads in UTC instead of GPS time. */
+  utc = false;
   /** A message the screen shows that is not a result ("unsupported", an error from a dialog). */
   notice = "";
 
@@ -142,6 +144,11 @@ export class TpsModel {
     this.result = "";
     this.files = [...this.files, ...fresh.map((path): TpsFile => ({ path, name: "", state: "reading", message: "", obs: null, outputs: [] }))];
     this.probe();
+    this.changed();
+  }
+
+  setUtc(value: boolean) {
+    this.utc = value;
     this.changed();
   }
 
@@ -221,4 +228,115 @@ export class TpsModel {
     }
     this.changed();
   }
+}
+
+// ── The timeline of several files ───────────────────────────────────────────────
+
+export interface TimelineBar {
+  path: string;
+  label: string;
+  /** Position and width as a percentage of the day's axis. */
+  left: number;
+  width: number;
+  from: string;
+  to: string;
+  /** The bar continues before or after this day. */
+  openStart: boolean;
+  openEnd: boolean;
+}
+
+export interface TimelineDay {
+  /** "2026-10-21". */
+  date: string;
+  ticks: { left: number; label: string }[];
+  bars: TimelineBar[];
+  /** What all the files have in common, when they share some time. */
+  common: { left: number; width: number } | null;
+}
+
+export interface Timeline {
+  days: TimelineDay[];
+  /** The time all the files were observed together, in the axis' time, when there is one. */
+  commonFrom: string;
+  commonTo: string;
+  commonSeconds: number;
+}
+
+const STEPS = [60, 120, 300, 600, 900, 1800, 3600, 7200, 10800, 21600, 43200];
+const DAY = 86400;
+
+function seconds(iso: string): number {
+  const [d, t] = iso.split("T");
+  const [y, mo, da] = d.split("-").map(Number);
+  const [h, mi, s] = t.split(":").map(Number);
+  return Date.UTC(y, mo - 1, da, h, mi, s) / 1000;
+}
+
+const dayOf = (at: number) => clock(new Date(at * 1000).toISOString().slice(0, 19)).date;
+const hhmm = (at: number) => {
+  const c = clock(new Date(at * 1000).toISOString().slice(0, 19));
+  return c.time.slice(0, 5);
+};
+
+/**
+ * The files as bars on a time axis, one axis for each day they touch (a file that crosses midnight is on both). `utc` moves
+ * every time back by the leap seconds of the file, so the axis reads in UTC instead of GPS time.
+ */
+export function timeline(files: TpsFile[], utc: boolean): Timeline {
+  const ok = files.filter((f) => f.state === "ok" && f.obs?.hasTimes);
+  const spans = ok.map((f) => {
+    const shift = utc ? -f.obs!.leap : 0;
+    return { file: f, from: seconds(f.obs!.first) + shift, to: seconds(f.obs!.last) + shift };
+  });
+  const out: Timeline = { days: [], commonFrom: "", commonTo: "", commonSeconds: 0 };
+  if (spans.length === 0) return out;
+  const cFrom = Math.max(...spans.map((s) => s.from));
+  const cTo = Math.min(...spans.map((s) => s.to));
+  const hasCommon = spans.length > 1 && cTo > cFrom;
+  if (hasCommon) {
+    out.commonFrom = `${dayOf(cFrom)} ${hhmm(cFrom)}`;
+    out.commonTo = `${dayOf(cTo)} ${hhmm(cTo)}`;
+    out.commonSeconds = cTo - cFrom;
+  }
+  const firstDay = Math.floor(Math.min(...spans.map((s) => s.from)) / DAY);
+  const lastDay = Math.floor(Math.max(...spans.map((s) => s.to)) / DAY);
+  for (let day = firstDay; day <= lastDay; day++) {
+    const dayFrom = day * DAY;
+    const dayTo = dayFrom + DAY;
+    const here = spans.filter((s) => s.to >= dayFrom && s.from < dayTo);
+    if (here.length === 0) continue;
+    const lo = Math.max(dayFrom, Math.min(...here.map((s) => s.from)));
+    const hi = Math.min(dayTo, Math.max(...here.map((s) => s.to)));
+    // The axis: a little room around the bars, on round times.
+    const step = STEPS.find((s) => (hi - lo) / s <= 8) ?? 43200;
+    const pad = Math.max(step / 2, (hi - lo) * 0.05);
+    const axisFrom = Math.max(dayFrom, Math.floor((lo - pad) / step) * step);
+    const axisTo = Math.min(dayTo, Math.ceil((hi + pad) / step) * step);
+    const length = Math.max(1, axisTo - axisFrom);
+    const pct = (at: number) => ((at - axisFrom) / length) * 100;
+    const ticks: TimelineDay["ticks"] = [];
+    for (let at = Math.ceil(axisFrom / step) * step; at <= axisTo; at += step) ticks.push({ left: pct(at), label: hhmm(at) });
+    out.days.push({
+      date: dayOf(dayFrom),
+      ticks,
+      bars: here.map((s) => {
+        const a = Math.max(s.from, axisFrom);
+        const b = Math.min(s.to, axisTo);
+        return {
+          path: s.file.path,
+          label: s.file.name.trim() || baseName(s.file.path),
+          left: pct(a),
+          width: Math.max(0.6, pct(b) - pct(a)),
+          from: hhmm(s.from),
+          to: hhmm(s.to),
+          openStart: s.from < dayFrom,
+          openEnd: s.to >= dayTo,
+        };
+      }),
+      common: hasCommon && cTo > dayFrom && cFrom < dayTo
+        ? { left: pct(Math.max(cFrom, axisFrom)), width: Math.max(0.6, pct(Math.min(cTo, axisTo)) - pct(Math.max(cFrom, axisFrom))) }
+        : null,
+    });
+  }
+  return out;
 }
