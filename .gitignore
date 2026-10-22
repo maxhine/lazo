@@ -25,3 +25,4 @@ NotchBuddy/Sources/App/Voice/GitHash.generated.swift
 
 # Generado por XcodeGen (cd NotchBuddy && xcodegen)
 NotchBuddy/NotchBuddy.xcodeproj/
+engine/bin/
