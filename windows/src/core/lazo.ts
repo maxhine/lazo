@@ -111,18 +111,24 @@ export function startLazo(host: LazoHost): LazoEngine {
   );
   Lazo.engine = engine;
   let offers = 0;
-  const wanted = new Set<string>();
-  engine.on((e: EngineEvent) => {
-    if (engine.state.connected) Lazo.error = "";
+  /** When each face was last asked for: asked again if the answer never came (the page reloaded, a message was lost). */
+  const wanted = new Map<string, number>();
+  const askFaces = () => {
     // Faces: asked once for each person who has one, and again if they went away and came back.
     const here = new Set(engine.state.peers.map((p) => p.id));
-    for (const id of [...wanted]) if (!here.has(id)) wanted.delete(id);
+    for (const id of [...wanted.keys()]) if (!here.has(id)) wanted.delete(id);
+    const now = Date.now();
     for (const p of engine.state.peers) {
-      if (p.hasPhoto && !wanted.has(p.id)) {
-        wanted.add(p.id);
+      if (p.hasPhoto && !Lazo.photos[p.id] && now - (wanted.get(p.id) ?? 0) > 4000) {
+        wanted.set(p.id, now);
         engine.requestPhoto(p.id);
       }
     }
+  };
+  window.setInterval(askFaces, 5000);
+  engine.on((e: EngineEvent) => {
+    if (engine.state.connected) Lazo.error = "";
+    askFaces();
     const own = engine.state.self?.photo;
     Lazo.selfPhoto = own ? `data:image/jpeg;base64,${own}` : "";
     if (e.type === "photo" && e.data) Lazo.photos[e.peerId] = `data:image/jpeg;base64,${e.data}`;
