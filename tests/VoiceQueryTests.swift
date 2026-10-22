@@ -17,7 +17,7 @@ struct VoiceQueryTests {
 
     static func main() {
         let pills = PillFixture.available
-        // ── Topics: Louis's own questions ─────────────────────────────────────
+        // ── Topics: Ana's own questions ─────────────────────────────────────
         let topics: [(String, VoiceTopic?)] = [
             ("Quel temps il fait aujourd'hui ?", .weatherToday),
             ("il va pleuvoir demain ?", .weatherTomorrow),
@@ -80,7 +80,7 @@ struct VoiceQueryTests {
         check("mail description → literal", VoiceQuery.mail(of: "envoie un mail à Tana avec le texte rendez-vous demain")?.body, "rendez-vous demain")
         check("body draft", VoiceQuery.bodyAnswer("écris-lui que je serai en retard").instruction, "je serai en retard")
         check("attachment name", VoiceQuery.attachmentAnswer("oui, Goku point png"), "Goku.png")
-        // Louis's example, as dictated
+        // Ana's example, as dictated
         check("Goku mail", VoiceQuery.mail(of: "Il y a une image qui s'appelle Goku.png. J'aimerais que tu la prennes et que tu l'envoies par mail à tana@gmail.com. En objet, tu écris : Voilà votre image. En description, tu écris : Image en 1980 × 1080."),
               VoiceQuery.MailRequest(recipient: "tana@gmail.com", file: "Goku.png", folder: nil,
                                      subject: "Voilà votre image", body: "Image en 1980 × 1080"))

@@ -15,6 +15,7 @@ mod i18n;
 mod identity;
 mod integrations;
 mod island;
+mod lazo_engine;
 mod local_chat;
 mod log;
 mod net;
@@ -802,6 +803,7 @@ pub fn run() {
         })
         .manage(Pending::default())
         .manage(Chat::default())
+        .manage(lazo_engine::LazoEngine::default())
         .manage(shortcuts::Registry::default())
         .manage(recap::load())
         .invoke_handler(tauri::generate_handler![
@@ -855,6 +857,7 @@ pub fn run() {
             set_paused,
             shortcuts_status,
             shortcuts_suspend,
+            lazo_engine::lazo_engine_info,
             phone_link::phone_link_status,
             phone_link::phone_link_set_enabled,
             phone_link::phone_link_pairing,
@@ -994,6 +997,7 @@ pub fn run() {
             pipe::start(handle.clone());
             phone_link::start_if_enabled(&handle);
             integrations::start(handle.clone());
+            lazo_engine::start(&handle);
             spotify::sync(&handle, &loaded.active_integrations);
             shortcuts::apply(&handle, &loaded.shortcuts);
             // New versions: nothing goes to GitHub until the user agrees (update.rs).

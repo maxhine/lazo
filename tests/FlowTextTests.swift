@@ -25,28 +25,28 @@ enum FlowTextTests {
         eq("an empty phrase changes nothing", FlowText.replacing("", with: "x", in: "abc"), "abc")
 
         print("\nSnippets, replacements, dictionary")
-        let snippet = FlowSnippet(trigger: "mon lien de rendez-vous", text: "cal.com/louis/30min")
+        let snippet = FlowSnippet(trigger: "mon lien de rendez-vous", text: "cal.com/ana/30min")
         eq("a snippet becomes its text", FlowText.apply("Mon lien de rendez vous.", words: [], replacements: [], snippets: [snippet]),
-           "cal.com/louis/30min.")
+           "cal.com/ana/30min.")
         eq("the dictionary fixes the spelling", FlowText.apply("on passe sur supabase et n8n", words: ["Supabase", "n8n"],
                                                                replacements: [], snippets: []),
            "on passe sur Supabase et n8n")
         eq("a word with symbols is left alone", FlowText.apply("c'est du c ou du C++", words: ["C++"], replacements: [], snippets: []),
            "c'est du c ou du C++")
-        let link = FlowSnippet(trigger: "mon lien", text: "cal.com/louis/30min")
+        let link = FlowSnippet(trigger: "mon lien", text: "cal.com/ana/30min")
         eq("the dictionary never touches a snippet's text",
-           FlowText.apply("voici mon lien Louis", words: ["Louis"], replacements: [], snippets: [link]),
-           "voici cal.com/louis/30min Louis")
+           FlowText.apply("voici mon lien Ana", words: ["Ana"], replacements: [], snippets: [link]),
+           "voici cal.com/ana/30min Ana")
         let prepared = FlowText.prepare("voici mon lien", words: [], replacements: [], snippets: [link])
         check("the trigger becomes a mark", prepared.text == "voici ⟦1⟧" && prepared.snippets["⟦1⟧"] == link.text)
         check("a rewrite that lost the mark is refused", !FlowText.keepsMarks("voici le lien", prepared.snippets))
-        eq("the mark becomes the text", FlowText.finish("Voici ⟦1⟧.", snippets: prepared.snippets), "Voici cal.com/louis/30min.")
+        eq("the mark becomes the text", FlowText.finish("Voici ⟦1⟧.", snippets: prepared.snippets), "Voici cal.com/ana/30min.")
         let fix = FlowReplacement(from: "heute haine", to: "n8n")
         eq("replacement then dictionary", FlowText.apply("lance heute haine", words: ["N8N"], replacements: [fix], snippets: []),
            "lance N8N")
 
         print("\nNumbers")
-        check("9 words", FlowText.wordCount("Salut, c'est Louis : on se voit à 15 h ?") == 9)
+        check("9 words", FlowText.wordCount("Salut, c'est Ana : on se voit à 15 h ?") == 9)
         check("wpm", FlowText.wordsPerMinute(words: 200, seconds: 60) == 200)
         check("wpm needs a second", FlowText.wordsPerMinute(words: 3, seconds: 0.5) == 0)
         check("saved minutes", abs(FlowText.minutesSaved(words: 450, seconds: 120) - 8) < 0.001)

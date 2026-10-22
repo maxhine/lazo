@@ -289,7 +289,7 @@ extension WhatsAppTests {
             check("a mention needs the whole number", WAMention.textMentions("hey @33612345678!", me: "33612345678@s.whatsapp.net")
                   && !WAMention.textMentions("hey @336", me: "33612345678@s.whatsapp.net"))
             var inbox = WAInbox()
-            inbox.add(WAMessage(id: "o1", chat: "33600000003@s.whatsapp.net", sender: "me", senderName: "Louis", text: "yo",
+            inbox.add(WAMessage(id: "o1", chat: "33600000003@s.whatsapp.net", sender: "me", senderName: "Ana", text: "yo",
                                 date: Date(), fromMe: true), filters: WAFilters())
             check("my own first message doesn't name the chat after me",
                   inbox.conversations["33600000003@s.whatsapp.net"]?.name == "+33600000003")

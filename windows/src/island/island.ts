@@ -13,6 +13,7 @@ import {
 import { Sound } from "../core/sound";
 import { State } from "../core/state";
 import { SPOTIFY_ID, islandDances } from "../core/spotify";
+import { LAZO_ID, Lazo, lazoConnected } from "../core/lazo";
 import { BotEngine, hexToRGB } from "../nudo/engine";
 import { Greeting } from "../nudo/greeting";
 import { createMiniBot, pruneMiniBots, syncMiniBotStates, tickMiniBots } from "../nudo/minibots";
@@ -578,6 +579,16 @@ export class Island {
           this.engine.animateMorph(0);
           this.setView(State.defaultView());
           return;
+        }
+        // With Lazo in front the file is for a person on the network, not for the chat.
+        if (State.focusTask?.id === LAZO_ID && lazoConnected()) {
+          Lazo.pendingFile = { name: path.split(/[\\/]/).pop() || "file", path };
+          Lazo.notice = "";
+          this.engine.animateMorph(0);
+          Sound.play("approve");
+          this.setView(State.defaultView());
+          State.notify();
+          break;
         }
         this.swallow(path);
         break;

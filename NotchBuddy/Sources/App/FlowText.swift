@@ -7,7 +7,7 @@ struct FlowReplacement: Codable, Hashable, Identifiable, Sendable {
     var to: String
 }
 
-/// Say the trigger, get the whole text: "ma signature" → "Belle journée,\nLouis".
+/// Say the trigger, get the whole text: "ma signature" → "Belle journée,\nAna".
 struct FlowSnippet: Codable, Hashable, Identifiable, Sendable {
     var id = UUID()
     var trigger: String

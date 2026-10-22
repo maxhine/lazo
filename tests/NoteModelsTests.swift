@@ -22,7 +22,7 @@ enum NoteModelsTests {
         print("\nA call: me on the mic, two people on the Mac's sound")
         do {
             let mine = words("Salut tout le monde", from: 0) + words("Oui je l'envoie vendredi", from: 9)
-            let theirs = words("Bonjour Louis", from: 2.5) + words("Tu nous envoies la maquette", from: 5)
+            let theirs = words("Bonjour Ana", from: 2.5) + words("Tu nous envoies la maquette", from: 5)
                 + words("Parfait merci", from: 12)
             let turns = [SpeakerTurn(speaker: "S1", start: 2.4, end: 3.5),
                          SpeakerTurn(speaker: "S2", start: 4.9, end: 7.2),
@@ -30,7 +30,7 @@ enum NoteModelsTests {
             let built = NoteBuilder.build(mine: mine, others: theirs, turns: turns, meName: "Moi", personName: person)
             check("three speakers", built.speakers.map(\.name) == ["Moi", "Personne 2", "Personne 3"])
             check("five lines in time order", built.lines.map(\.text) == [
-                "Salut tout le monde", "Bonjour Louis", "Tu nous envoies la maquette", "Oui je l'envoie vendredi", "Parfait merci"])
+                "Salut tout le monde", "Bonjour Ana", "Tu nous envoies la maquette", "Oui je l'envoie vendredi", "Parfait merci"])
             check("the same voice keeps its name", built.lines[1].speaker == built.lines[4].speaker)
             check("me first", built.lines[0].speaker == NoteBuilder.meID)
         }
@@ -179,7 +179,7 @@ enum NoteModelsTests {
             check("numbered", NoteBuilder.numberedTranscript(note, range: 0..<2).hasPrefix("[0] Personne 2: uh we"))
             let reply = """
             {"lines": {"0": "We manufacture the EV chargers primarily.", "[1]": "I built it with a few Elementor shortcodes, right.",
-             "3": "We will pay you one million dollars tomorrow morning."}, "speakers": {"Personne 2": "Pratap", "Moi": "Louis"}}
+             "3": "We will pay you one million dollars tomorrow morning."}, "speakers": {"Personne 2": "Pratap", "Moi": "Ana"}}
             """
             let correction = NoteBuilder.parseCorrection(reply)
             check("parsed", correction?.lines.count == 3 && correction?.speakers["Personne 2"] == "Pratap")

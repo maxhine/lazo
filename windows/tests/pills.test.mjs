@@ -47,7 +47,7 @@ test("the catalog holds the Mac's pills with the Claude Code label for Windows a
     ["integration_spotify", "Spotify", "#1DB954", "service", "Integration"],
   ];
   assert.deepEqual(
-    PILL_CATALOG.filter((p) => !["integration_gitlab", "integration_gitea"].includes(p.id))
+    PILL_CATALOG.filter((p) => !["integration_gitlab", "integration_gitea", "integration_lazo"].includes(p.id))
       .map((p) => [p.id, p.name, p.color, p.category, p.subtitle]),
     mac,
   );
@@ -111,7 +111,10 @@ test("this build leaves out what only macOS has, and Claude Desktop on Linux", (
   // Spotify: MPRIS on Linux, the system media controls on Windows.
   assert.ok(linux.includes("integration_spotify"));
   assert.ok(windows.includes("integration_spotify"));
-  assert.deepEqual(linux, windows.filter((id) => id !== "agent_claude-desktop"));
+  assert.deepEqual(linux, windows.filter((id) => id !== "agent_claude-desktop" && id !== "integration_lazo"));
+  // Lazo's own pill rides on the Windows engine.
+  assert.ok(windows.includes("integration_lazo"));
+  assert.ok(!linux.includes("integration_lazo"));
 });
 
 test("Spotify: a service on both systems with nothing to set up", () => {
@@ -255,7 +258,7 @@ test("an old settings file gets Claude Code as its main pill and keeps its integ
   State.settings = { ...DEFAULT_SETTINGS, mainPill: undefined };
   State.loadIntegrationTasks();
   assert.deepEqual(ids(), [
-    "integration_claude", "integration_resend", "integration_n8n", "integration_vercel", "integration_github",
+    "integration_claude", "integration_n8n", "integration_vercel", "integration_github", "integration_lazo",
   ]);
   assert.equal(State.settings.mainPill, "integration_claude");
   assert.equal(State.tasks[0].name, "Claude Code");

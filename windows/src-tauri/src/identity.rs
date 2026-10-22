@@ -46,22 +46,22 @@ mod tests {
     #[test]
     fn a_real_full_name_gives_its_first_word() {
         assert_eq!(first_name_from("Théodore Riant").as_deref(), Some("Théodore"));
-        assert_eq!(first_name_from("  Louis Raille ").as_deref(), Some("Louis"));
+        assert_eq!(first_name_from("  Ana Rios ").as_deref(), Some("Ana"));
         assert_eq!(first_name_from("Jean-Luc Picard").as_deref(), Some("Jean-Luc"));
         assert_eq!(first_name_from("O'Brien Miles").as_deref(), Some("O'Brien"));
-        assert_eq!(first_name_from("Louis").as_deref(), Some("Louis"));
+        assert_eq!(first_name_from("Ana").as_deref(), Some("Ana"));
         assert_eq!(first_name_from("Zoë").as_deref(), Some("Zoë"));
     }
 
     #[test]
     fn login_handles_and_odd_names_give_nothing() {
-        for name in ["", "   ", "theodoreriant", "t.riant2", "Louis2", "louis_r", "me@example", "Admin_01"] {
+        for name in ["", "   ", "theodoreriant", "t.riant2", "Ana2", "ana_r", "me@example", "Admin_01"] {
             assert_eq!(first_name_from(name), None, "{name}");
         }
         // A first word that is not a name.
         assert_eq!(first_name_from("R2-D2 Unit"), None);
         assert_eq!(first_name_from("Dr. Who"), None);
         // Too long to be a person's name.
-        assert_eq!(first_name_from(&format!("Louis {}", "a".repeat(40))), None);
+        assert_eq!(first_name_from(&format!("Ana {}", "a".repeat(40))), None);
     }
 }

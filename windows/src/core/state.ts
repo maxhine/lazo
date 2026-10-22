@@ -174,7 +174,7 @@ export const DEFAULT_SETTINGS: Settings = {
   showClock: false,
   absenceInterval: 180,
   activeIntegrations: [
-    "integration_resend", "integration_n8n", "integration_vercel", "integration_github",
+    "integration_lazo", "integration_n8n", "integration_vercel", "integration_github",
   ],
   mainPill: DEFAULT_MAIN_PILL,
   screen: "primary",

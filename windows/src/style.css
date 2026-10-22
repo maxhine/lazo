@@ -2758,3 +2758,127 @@ html[data-dir="rtl"] #views :is(.bubble, .reply .md-p, .reply .md-h, .reply .md-
   unicode-bidi: plaintext;
   text-align: start;
 }
+
+/* ── Lazo card (views/lazo.ts) ─────────────────────────────────────────────── */
+
+.lazo-card {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  min-width: 0;
+  padding-right: 24px;
+}
+
+.lazo-title {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  font: 600 12px var(--font);
+  color: var(--ink);
+}
+
+.lazo-body {
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+  min-width: 0;
+}
+
+.lazo-list {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  max-height: 128px;
+  overflow-y: auto;
+}
+
+.lazo-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 4px 6px;
+  border-radius: 8px;
+  min-width: 0;
+}
+
+.lazo-row.pick:hover {
+  background: rgba(255, 255, 255, 0.09);
+}
+
+.lazo-avatar {
+  flex: 0 0 22px;
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  display: grid;
+  place-items: center;
+  background: rgba(255, 255, 255, 0.12);
+  font: 600 11px var(--font);
+  color: var(--ink);
+}
+
+.lazo-name {
+  font: 500 12px var(--font);
+  color: var(--ink);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  min-width: 0;
+}
+
+.lazo-sub {
+  font: 400 11px var(--font);
+  color: var(--dim-2);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  min-width: 0;
+}
+
+.lazo-row .lazo-sub {
+  margin-left: auto;
+}
+
+.lazo-empty {
+  font: 400 11.5px var(--font);
+  color: var(--dim-2);
+  line-height: 1.35;
+}
+
+.lazo-offer {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 7px 8px;
+  border-radius: 10px;
+  background: rgba(255, 255, 255, 0.07);
+}
+
+.lazo-offer-text {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.lazo-actions {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.lazo-actions .lazo-sub {
+  flex: 1;
+}
+
+.lazo-bar {
+  height: 4px;
+  border-radius: 2px;
+  background: rgba(255, 255, 255, 0.12);
+  overflow: hidden;
+}
+
+.lazo-bar i {
+  display: block;
+  height: 100%;
+  background: var(--ink);
+}

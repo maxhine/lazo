@@ -133,7 +133,7 @@ impl Default for Settings {
             open_on_hover: false,
             absence_interval: 180.0,
             active_integrations: vec![
-                "integration_resend".into(),
+                "integration_lazo".into(),
                 "integration_n8n".into(),
                 "integration_vercel".into(),
                 "integration_github".into(),

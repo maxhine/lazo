@@ -214,8 +214,6 @@ const PROJECT_COLORS: Record<string, string> = {
   "morning ai brief": "#F29B38",
   "publication ig": "#7C5CFF",
   "ig post": "#7C5CFF",
-  "louisraille.fr": "#38BDF8",
-  louisraille: "#38BDF8",
   "notch buddy": "#EC4899",
   "notch-buddy": "#EC4899",
   notchbuddy: "#EC4899",

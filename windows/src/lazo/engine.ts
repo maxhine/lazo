@@ -62,10 +62,12 @@ export type EngineEvent =
 
 /** The part of the WebSocket API the client uses. */
 export interface SocketLike {
-  onopen: ((e: unknown) => void) | null;
-  onmessage: ((e: { data: unknown }) => void) | null;
-  onclose: ((e: unknown) => void) | null;
-  onerror: ((e: unknown) => void) | null;
+  // `any`: a browser WebSocket passes its own event types, which a property of this shape must accept.
+  // eslint-disable-next-line -eslint/no-explicit-any
+  onopen: ((e: any) => void) | null;
+  onmessage: ((e: any) => void) | null;
+  onclose: ((e: any) => void) | null;
+  onerror: ((e: any) => void) | null;
   send(data: string): void;
   close(): void;
 }

@@ -138,6 +138,9 @@ export const PILL_CATALOG: readonly PillDefinition[] = [
   // (src-tauri/src/spotify.rs).
   { id: "integration_spotify", name: "Spotify", color: "#1DB954", category: "service",
     subtitle: N_("Integration"), source: "n8n", support: "yes", connect: none },
+  // Lazo itself: the people on the network, files and chat, from the engine (src-tauri/src/lazo_engine.rs).
+  { id: "integration_lazo", name: "Lazo", color: "#E5E7EB", category: "service",
+    subtitle: N_("Files and chat"), source: "n8n", support: "windows", connect: none },
 ];
 
 /** The always-on pill unless the user picks another workspace tool. */

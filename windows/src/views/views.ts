@@ -25,6 +25,8 @@ import { buildUpdate } from "./update";
 import { buildWhatsNew } from "./whatsnew";
 import { buildSpotifyCard, buildSpotifyPill, type SpotifyPillHost } from "./spotify";
 import { SPOTIFY_ID } from "../core/spotify";
+import { buildLazoCard } from "./lazo";
+import { LAZO_ID } from "../core/lazo";
 import type { Outfit, OutfitSelection } from "../nudo/wardrobe";
 import { language, t, tl, type Msg } from "../i18n/i18n";
 import type { ViewCommand } from "../island/shortcuts";
@@ -200,6 +202,7 @@ function buildOverview(actions: ViewActions): ViewHost {
   // Spotify's card and pill are kept and updated in place: the progress bar
   // runs on, and a slider being dragged must not be rebuilt under the pointer.
   const spotifyCard = buildSpotifyCard();
+  const lazoCard = buildLazoCard();
   let spotifyPill: SpotifyPillHost | null = null;
 
   const el = h("div", { class: "view overview" },
@@ -210,7 +213,7 @@ function buildOverview(actions: ViewActions): ViewHost {
   let pillIds = "";
   let detailOpen = false;
   let lastFocus: string | null = null;
-  let mode: "ticker" | "card" | "plan" | "diff" | "spotify" | null = null;
+  let mode: "ticker" | "card" | "plan" | "diff" | "spotify" | "lazo" | null = null;
   let cardKey = "";
   /** The list row highlighted at the last sync, to scroll only when it moves. */
   let shownSelection: number | null = null;
@@ -367,6 +370,15 @@ function buildOverview(actions: ViewActions): ViewHost {
           cardKey = "";
         }
         spotifyCard.sync();
+      } else if (task && task.id === LAZO_ID) {
+        // The people on the network and the files offered, from the engine.
+        if (mode !== "lazo") {
+          clear(leftBody);
+          leftBody.append(lazoCard.el);
+          mode = "lazo";
+          cardKey = "";
+        }
+        lazoCard.sync();
       } else if (task) {
         const info = State.integrations[task.id];
         const key = [

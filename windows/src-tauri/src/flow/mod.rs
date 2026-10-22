@@ -451,7 +451,7 @@ pub struct FlowStatus {
     platform: &'static str,
     /// Lazo started with the computer.
     autostarted: bool,
-    /// The user's first name, for "Hello Louis".
+    /// The user's first name, for "Hello Ana".
     user_name: Option<String>,
 }
 

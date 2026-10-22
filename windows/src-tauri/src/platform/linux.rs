@@ -216,7 +216,7 @@ pub fn relay_socket_path() -> Option<PathBuf> {
 // ── Who we are ────────────────────────────────────────────────────────────────
 
 /// The account's full name: the first field of the passwd GECOS entry
-/// ("Louis Raille,,,"), or nothing when it is unset.
+/// ("Ana Rios,,,"), or nothing when it is unset.
 pub fn user_full_name() -> Option<String> {
     unsafe {
         let mut pwd: libc::passwd = std::mem::zeroed();
