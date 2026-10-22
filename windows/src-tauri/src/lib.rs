@@ -805,6 +805,7 @@ pub fn run() {
         .manage(Pending::default())
         .manage(Chat::default())
         .manage(lazo_net::LazoNet::default())
+        .manage(lazo_tools::LazoTools::default())
         .manage(shortcuts::Registry::default())
         .manage(recap::load())
         .invoke_handler(tauri::generate_handler![
@@ -860,6 +861,10 @@ pub fn run() {
             shortcuts_suspend,
             lazo_net::lazo_engine_send,
             lazo_tools::lazo_tool_open,
+            lazo_tools::lazo_tools_send,
+            lazo_tools::lazo_known_folders,
+            lazo_tools::lazo_reveal,
+            lazo_tools::lazo_use_classic,
             phone_link::phone_link_status,
             phone_link::phone_link_set_enabled,
             phone_link::phone_link_pairing,

@@ -50,7 +50,8 @@
     ],
     "resources": {
       "../target/release/lazo-hook.exe": "lazo-hook.exe",
-      "../../lazo/bin/Lazo.exe": "classic/Lazo.exe"
+      "../../lazo/bin/Lazo.exe": "classic/Lazo.exe",
+      "../../engine/bin/Lazo.Engine.exe": "engine/Lazo.Engine.exe"
     },
     "copyright": "© SARCA",
     "category": "DeveloperTool",

@@ -15,9 +15,15 @@ La isla (Mac `NotchBuddy/`, Windows `windows/`) es la interfaz; Lazo es la herra
 - Falta, en este orden: verificación con código, chat en la isla (el motor ya envía y recibe mensajes y señales), pantalla compartida y control, Xpace, conversor de nubes de puntos y Descanso Visual. Hoy viven en WPF (`ScreenShare`, `XpaceView`, `EyeCare`…); se portan al motor Rust y la vista a la isla, una a una.
 - El Lazo clásico y la isla no pueden estar abiertos a la vez (mismo cerrojo y mismos puertos): la tarjeta lo dice.
 
-## Herramientas que ya funcionan
+## Dos núcleos, y las herramientas dentro de la isla
 
-Las utilidades del Lazo clásico que ya sirven (nubes de puntos a ReCap, Xpace y Descanso Visual) no se reescriben: se abren tal cual desde el icono de cuadrícula de la isla. El clásico acepta `--tool=cloud|xpace|eyecare` (`lazo/src/Program.cs`), que abre solo esa utilidad en su ventana, sin red, bandeja ni atajos; la isla lo lanza con el comando `lazo_tool_open` (`windows/src-tauri/src/lazo_tools.rs`) y `npm run dev/build` compila `lazo/bin/Lazo.exe` y lo empaqueta como recurso. Descanso Visual se oculta al cerrar su ventana y sigue contando. Falta la pantalla compartida, que necesita el motor de red; y el control remoto.
+Quien use el núcleo nuevo lo usa todo dentro de la isla, que crece al tamaño de cada herramienta (`VIEW_LAYOUTS[view].width/height`; la ventana, transparente, mide 1000×640). Quien prefiera el viejo lo elige en los ajustes de la isla («Use classic Lazo»): se anota en `%APPDATA%Lazocore.txt`, la isla se cierra y se abre el Lazo clásico. Falta el camino de vuelta desde el clásico.
+
+La lógica de las herramientas es la del Lazo clásico, sin reescribirla: `engine/Lazo.Engine.exe --tools-only` (sin red) compila `XpaceScanner`, `XpaceActions`… tal cual y las sirve con órdenes `herramienta.orden` por el mismo JSON de `engine-protocol.md`. La isla lo arranca al primer uso (`windows/src-tauri/src/lazo_tools.rs`, que retransmite los mensajes como el evento `lazo-tools`) y dibuja la interfaz con TypeScript.
+
+- **Xpace**: dentro de la isla (mapa de rectángulos, lista, archivos grandes, tipos y qué limpiar, con papelera o borrado definitivo con confirmación). Pruebas: `node engine/test-tools.mjs`, `cargo test -p lazo lazo_tools` (contra el programa real) y `windows/tests/xpace.test.mjs`.
+- **Nubes de puntos y Descanso Visual**: por ahora se abren en la ventana del Lazo clásico (`Lazo.exe --tool=cloud|eyecare`, modo aditivo en `lazo/src`), sin red ni bandeja. Siguen funcionando como siempre; el siguiente paso es dibujarlas dentro de la isla sobre la misma lógica.
+- **Pantalla compartida y control remoto**: dependen de la red; pendientes.
 
 ## Siguiente (Mac)
 

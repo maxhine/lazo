@@ -26,6 +26,7 @@ import { buildWhatsNew } from "./whatsnew";
 import { buildSpotifyCard, buildSpotifyPill, type SpotifyPillHost } from "./spotify";
 import { SPOTIFY_ID } from "../core/spotify";
 import { buildLazoCard, buildPeoplePanel, buildTools } from "./lazo";
+import { buildXpace } from "./xpace";
 import { LAZO_ID, Lazo } from "../core/lazo";
 import type { Outfit, OutfitSelection } from "../nudo/wardrobe";
 import { language, t, tl, type Msg } from "../i18n/i18n";
@@ -144,7 +145,7 @@ export function buildHeader(actions: ViewActions): ViewHost {
       tabHome.classList.toggle("on", v === "overview" || v === "empty");
       tabChat.classList.toggle("on", v === "prompt");
       tabDrop.classList.toggle("on", v === "upload");
-      tabTools.classList.toggle("on", v === "tools");
+      tabTools.classList.toggle("on", v === "tools" || v === "xpace");
       tabTools.style.display = State.os === "windows" ? "" : "none";
       gearBtn.classList.toggle("on", v === "settings");
       clear(gearBtn);
@@ -779,6 +780,26 @@ function buildSettings(actions: ViewActions): ViewHost {
   );
   const claudeBadge = h("span", { class: "status-badge" });
   const apiBadge = h("span", { class: "status-badge" });
+  // Two ways to use Lazo: this island, or the classic program. The second asks for a second click.
+  let leaving = false;
+  const classicBtn = h("button", { class: "link-btn", style: "color:#8e939c;font-size:11.5px" });
+  const drawClassic = () => {
+    classicBtn.textContent = leaving ? t("Close the island and open classic Lazo?") : t("Use classic Lazo");
+  };
+  classicBtn.addEventListener("click", () => {
+    if (!leaving) {
+      leaving = true;
+      drawClassic();
+      window.setTimeout(() => { leaving = false; drawClassic(); }, 6000);
+      return;
+    }
+    void Bridge.useClassicLazo().catch((err) => {
+      leaving = false;
+      State.noteMessage = String(err).replace(/^Error:s*/, "");
+      actions.setView("note");
+    });
+  });
+  drawClassic();
 
   const rows = h(
     "div",
@@ -797,6 +818,7 @@ function buildSettings(actions: ViewActions): ViewHost {
       claudeBadge,
       apiBadge,
       h("div", { class: "grow" }),
+      State.os === "windows" ? classicBtn : null,
       h("button", {
         class: "link-btn",
         style: "color:#8e939c;font-size:11.5px",
@@ -865,7 +887,8 @@ export function buildViews(
   map.set("wardrobe", buildWardrobe(actions));
   map.set("update", buildUpdate());
   map.set("whatsNew", buildWhatsNew());
-  map.set("tools", buildTools());
+  map.set("tools", buildTools(actions));
+  map.set("xpace", buildXpace());
   // Not in the Windows v1: sending a file by email, window attach + web result.
   map.set("mail", buildPlaceholder(tl("Sending by email isn't in this version."), ""));
   map.set("searching", buildPlaceholder(tl("Claude is searching…"), ""));

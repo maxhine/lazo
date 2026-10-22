@@ -16,7 +16,7 @@ namespace Lazo
     /// archivos de ../lazo/src se compilan tal cual), expuestos a la isla por un WebSocket local
     /// con mensajes JSON (docs/engine-protocol.md). Solo escucha en 127.0.0.1 y exige un token.
     /// </summary>
-    internal sealed class EngineHost : IDisposable
+    internal sealed partial class EngineHost : IDisposable
     {
         public const int ProtocolVersion = 1;
         private static readonly string[] AllowedOrigins =
@@ -61,11 +61,14 @@ namespace Lazo
 
         public void Start()
         {
-            _net.PeersChanged += OnPeersChanged;
-            _net.OfferReceived += OnOfferReceived;
-            _net.ReceiveProgress += OnReceiveProgress;
-            _net.ReceiveFinished += OnReceiveFinished;
-            _net.ChatReceived += OnChatReceived;
+            if (_net != null)
+            {
+                _net.PeersChanged += OnPeersChanged;
+                _net.OfferReceived += OnOfferReceived;
+                _net.ReceiveProgress += OnReceiveProgress;
+                _net.ReceiveFinished += OnReceiveFinished;
+                _net.ChatReceived += OnChatReceived;
+            }
             _http.Start();
             Task.Run((Func<Task>)AcceptLoop);
         }
@@ -119,7 +122,7 @@ namespace Lazo
                 try
                 {
                     await Send(client, Hello());
-                    await Send(client, PeersMessage(_net.Snapshot()));
+                    if (_net != null) await Send(client, PeersMessage(_net.Snapshot()));
                     await ReadLoop(client);
                 }
                 finally
@@ -183,6 +186,17 @@ namespace Lazo
             string cmd = Str(m, "cmd");
             try
             {
+                // «herramienta.orden»: las utilidades del Lazo clásico (Xpace, nubes de puntos…), sin red.
+                if (cmd.IndexOf('.') > 0)
+                {
+                    await DispatchTool(client, cmd, m);
+                    return;
+                }
+                if (_net == null && cmd != "ping" && cmd != "state")
+                {
+                    await Send(client, new Dictionary<string, object> { { "type", "error" }, { "message", "El motor de red no está en este modo." } });
+                    return;
+                }
                 switch (cmd)
                 {
                     case "ping":
@@ -190,7 +204,7 @@ namespace Lazo
                         break;
                     case "state":
                         await Send(client, Hello());
-                        await Send(client, PeersMessage(_net.Snapshot()));
+                        if (_net != null) await Send(client, PeersMessage(_net.Snapshot()));
                         break;
                     case "addPeer":
                     {
@@ -368,6 +382,7 @@ namespace Lazo
 
         private Dictionary<string, object> Hello()
         {
+            if (_net == null) return new Dictionary<string, object> { { "type", "hello" }, { "version", ProtocolVersion }, { "tools", true } };
             return new Dictionary<string, object>
             {
                 { "type", "hello" }, { "version", ProtocolVersion },

@@ -442,6 +442,12 @@ export const Bridge = {
   spotifyOpen: () => call<boolean>("spotify_open"),
   /** Opens one of Lazo's own tools ("cloud", "xpace", "eyecare") in its window; rejects with the reason if it cannot. */
   openLazoTool: (tool: string) => callOrThrow<void>("lazo_tool_open", { tool }),
+  /** The drives and the usual folders of the profile: where Xpace can start. */
+  knownFolders: () => call<{ label: string; path: string }[]>("lazo_known_folders"),
+  /** Closes the island and opens the classic Lazo in its place (the choice is kept in core.txt). */
+  useClassicLazo: () => callOrThrow<void>("lazo_use_classic"),
+  /** Shows a file or folder in Explorer, selected. */
+  revealPath: (path: string) => call<void>("lazo_reveal", { path }),
   /** Whether there is a Spotify to launch (Settings). */
   spotifyInstalled: () => call<boolean>("spotify_installed"),
 

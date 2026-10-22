@@ -18,6 +18,7 @@ namespace Lazo
     ///   --ports &lt;d&gt;,&lt;t&gt;       puertos de descubrimiento UDP y transferencia TCP (pruebas)
     ///   --allow-parallel       no exige ser la única copia de Lazo (pruebas)
     ///   --exit-on-stdin-close  termina cuando quien lo lanzó cierra su entrada
+    ///   --tools-only           solo las utilidades (Xpace, nubes de puntos…), sin abrir la red
     /// </summary>
     internal static class EngineProgram
     {
@@ -29,7 +30,7 @@ namespace Lazo
 
         private static int Main(string[] args)
         {
-            bool parallel = Array.IndexOf(args, "--allow-parallel") >= 0;
+            bool parallel = Array.IndexOf(args, "--allow-parallel") >= 0 || Array.IndexOf(args, "--tools-only") >= 0;
             bool first;
             // Mismo cerrojo que el Lazo clásico: los dos usan los mismos puertos, solo uno a la vez.
             string name = parallel ? "Local\\Lazo.Engine.Test." + Guid.NewGuid().ToString("N") : "Local\\Lazo.Transfer.App";
@@ -66,9 +67,11 @@ namespace Lazo
 
             Identity.Load();
             ProfilePhoto.Load();
-            using (NetworkEngine net = new NetworkEngine(receive, discovery, transfer, profile))
+            bool toolsOnly = Array.IndexOf(args, "--tools-only") >= 0;
+            NetworkEngine net = toolsOnly ? null : new NetworkEngine(receive, discovery, transfer, profile);
+            try
             {
-                net.Start();
+                if (net != null) net.Start();
                 string token = NewToken();
                 int requested;
                 string portText = Arg(args, "--port");
@@ -105,6 +108,10 @@ namespace Lazo
                 done.WaitOne();
                 host.Dispose();
                 try { File.Delete(info); } catch { }
+            }
+            finally
+            {
+                if (net != null) net.Dispose();
             }
             return 0;
         }

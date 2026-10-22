@@ -9,6 +9,7 @@ import { Lazo, lazoConnected, lazoOffers, lazoPeers, LAZO_COLOR } from "../core/
 import type { EngineOffer, EnginePeer } from "../lazo/engine";
 import { Bridge } from "../core/bridge";
 import { t, tl, type Msg } from "../i18n/i18n";
+import type { ViewActions } from "./views";
 
 export interface LazoCardHost {
   el: HTMLElement;
@@ -292,13 +293,18 @@ const TOOLS: { id: string; name: string | Msg; glyph: string }[] = [
   { id: "eyecare", name: tl("Eye care"), glyph: "M12 5C6.5 5 3 9.5 2 12c1 2.5 4.5 7 10 7s9-4.5 10-7c-1-2.5-4.5-7-10-7zm0 3.2a3.8 3.8 0 1 1 0 7.6 3.8 3.8 0 0 1 0-7.6z" },
 ];
 
-export function buildTools(): LazoCardHost {
+export function buildTools(actions: ViewActions): LazoCardHost {
   const message = h("div", { class: "lazo-sub tools-note" });
   const tiles = h("div", { class: "tools-tiles" });
   for (const tool of TOOLS) {
     const tile = h("button", { class: "tool-tile" }, svg(tool.glyph, 20, { stroke: 1.7 }), h("span", { text: tool.name }));
     tile.addEventListener("click", () => {
       message.textContent = "";
+      // Xpace is drawn inside the island, which grows to it; the others still open the classic program's window.
+      if (tool.id === "xpace") {
+        actions.setView("xpace");
+        return;
+      }
       void Bridge.openLazoTool(tool.id).catch((err) => {
         message.textContent = String(err).replace(/^Error:\s*/, "");
       });

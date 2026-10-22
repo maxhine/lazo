@@ -25,6 +25,7 @@ export type IslandViewName =
   | "recap"
   | "wardrobe"
   | "tools"
+  | "xpace"
   | "update"
   | "whatsNew";
 
@@ -51,12 +52,19 @@ export interface ViewLayout {
   botY: number | null; // null = auto-centred
   botDiameter: number;
   agentMode: AgentLayoutMode;
+  /** Wider than the usual island (EXPANDED_W): the tools that need room. */
+  width?: number;
 }
 
 // The window is a fixed 720×320 (largest view) like the macOS panel; the island is
 // drawn inside it, glued to the top edge and horizontally centred.
 export const PANEL_W = 720;
 export const PANEL_H = 320;
+
+// Lazo's tools open inside the island, which grows to their size (VIEW_LAYOUTS[view].width): the window
+// that holds it is as large as the largest of them. It is transparent, and only the island takes the mouse.
+export const WINDOW_W = 1000;
+export const WINDOW_H = 640;
 
 // No notch on a PC: these are the hidden/compact sizes from docs/SPEC.md.
 export const NOTCH_W = 184;
@@ -98,6 +106,8 @@ export const VIEW_LAYOUTS: Record<IslandViewName, ViewLayout> = {
   wardrobe: { height: 160, botX: 68, botY: null, botDiameter: 58, agentMode: "none" },
   // Lazo's tools: point clouds, Xpace, eye care, screen sharing.
   tools: { height: 160, botX: 62, botY: null, botDiameter: 54, agentMode: "none" },
+  // Xpace opens inside the island, which grows to its size.
+  xpace: { height: 520, width: 900, botX: 40, botY: 40, botDiameter: 0, agentMode: "none" },
   // New version: Nudo on the left, the version and Update now (Mac: .update).
   update: { height: 160, botX: 62, botY: null, botDiameter: 58, agentMode: "none" },
   // After an update: what the new version brings, then "Your Lazo so far".
@@ -131,7 +141,7 @@ export function islandSize(
       return { w: COMPACT_W, h: NOTCH_H };
     case "expanded": {
       const h = view === "prompt" ? chatPromptHeight(chatCount) : VIEW_LAYOUTS[view].height;
-      return { w: EXPANDED_W, h };
+      return { w: VIEW_LAYOUTS[view].width ?? EXPANDED_W, h };
     }
   }
 }
