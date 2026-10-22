@@ -186,7 +186,7 @@ export function showsUpdateHint(waiting: boolean, state: BotStateName, pending: 
 
 /** The release page of this version, for "All changes". */
 export function releasePage(platform: "windows" | "linux", version: string): string {
-  return `https://github.com/maxhine/lazo-isla/releases/tag/${platform}-v${encodeURIComponent(version)}`;
+  return `https://github.com/maxhine/lazo/releases/tag/${platform}-v${encodeURIComponent(version)}`;
 }
 
 /** The blue of an update, and of the arrow badge. */

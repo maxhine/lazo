@@ -30,7 +30,7 @@ const T = {
   get longestSession() { return t("Longest session"); },
   get approved() { return t("Approved"); },
   get denied() { return t("Denied"); },
-  footer: "Lazo · github.com/maxhine/lazo-isla",
+  footer: "Lazo · github.com/maxhine/lazo",
 };
 
 /**

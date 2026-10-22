@@ -114,7 +114,7 @@ const out = (version = "0.6.0") => ({
   ...NO_UPDATE,
   consent: true,
   current: "0.5.2",
-  latest: { version, headline: null, pageUrl: "https://github.com/maxhine/lazo-isla/releases/tag/windows-v0.6.0" },
+  latest: { version, headline: null, pageUrl: "https://github.com/maxhine/lazo/releases/tag/windows-v0.6.0" },
 });
 
 test("Nudo is blue while a version waits", () => {
@@ -154,6 +154,6 @@ test("the blue only when Nudo has nothing else to say", () => {
 });
 
 test("All changes", () => {
-  assert.equal(releasePage("windows", "0.5.2"), "https://github.com/maxhine/lazo-isla/releases/tag/windows-v0.5.2");
-  assert.equal(releasePage("linux", "0.5.2"), "https://github.com/maxhine/lazo-isla/releases/tag/linux-v0.5.2");
+  assert.equal(releasePage("windows", "0.5.2"), "https://github.com/maxhine/lazo/releases/tag/windows-v0.5.2");
+  assert.equal(releasePage("linux", "0.5.2"), "https://github.com/maxhine/lazo/releases/tag/linux-v0.5.2");
 });

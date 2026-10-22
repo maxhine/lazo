@@ -15,7 +15,7 @@ import { Updates } from "../island/update";
 import { sampleHistory, previousWeekStart, type RecapHistory } from "../recap/summary";
 import FILE from "./whats-new.json";
 import {
-  decideOnLaunch, releaseFor, soFar, usedBefore,
+  decideOnLaunch, releaseFor, soFar,
   type Stat, type WhatsNewFile, type WhatsNewRelease,
 } from "./whats-new";
 
@@ -95,12 +95,8 @@ class WhatsNewController {
     const decision = decideOnLaunch({
       current,
       lastSeen,
-      usedBefore: usedBefore({
-        consent: Updates.status.consent,
-        history,
-        dictations: flow?.all.dictations ?? 0,
-        notes: notes?.notes.length ?? 0,
-      }),
+      // Everyone here comes from Lazo (the classic one or an older island): the first run shows what this version brings.
+      usedBefore: true,
       hasEntry: release != null,
     });
     if (!decision.show || !release) {
@@ -136,6 +132,11 @@ class WhatsNewController {
   }
 
   next() {
+    // "Your Lazo so far" has nothing to say without numbers (they come from Claude Code sessions, Flow and the Notetaker).
+    if (this.stats.length === 0) {
+      this.done();
+      return;
+    }
     this.step = 2;
     State.notify();
   }
