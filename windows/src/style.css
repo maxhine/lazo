@@ -3016,3 +3016,48 @@ html[data-dir="rtl"] #views :is(.bubble, .reply .md-p, .reply .md-h, .reply .md-
 .lazo-link:hover {
   color: var(--ink);
 }
+
+/* Faces, and the people as places to drop a file (views/lazo.ts, views/upload.ts). */
+
+.lazo-avatar.photo {
+  background-size: cover;
+  background-position: center;
+  color: transparent;
+}
+
+.pills {
+  /* Room for the Pills | People switch above the first row. */
+  padding-top: 16px;
+}
+
+.drop-people {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+  margin-top: 8px;
+}
+
+.drop-person {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 10px 4px 4px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.08);
+  border: 1px solid transparent;
+  color: var(--ink-2);
+  transition: background 0.1s ease-out, border-color 0.1s ease-out, transform 0.1s ease-out;
+}
+
+.drop-person.hot {
+  background: rgba(255, 255, 255, 0.2);
+  border-color: rgba(255, 255, 255, 0.55);
+  transform: scale(1.06);
+  color: var(--ink);
+}
+
+.drop-person .lazo-avatar {
+  width: 24px;
+  height: 24px;
+  flex: 0 0 24px;
+}

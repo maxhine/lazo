@@ -5506,6 +5506,19 @@
       "id": "Tanya AI saja",
       "de": "Stattdessen die KI fragen",
       "tr": "Bunun yerine yapay zekâya sor"
+    },
+    "Drop on someone to send it": {
+      "zh-Hans": "拖到某个人身上即可发送",
+      "hi": "किसी पर छोड़ें और उसे भेजें",
+      "es": "Suelta sobre alguien para enviárselo",
+      "ar": "أفلته على شخص لإرساله إليه",
+      "fr": "Déposez sur quelqu’un pour l’envoyer",
+      "bn": "কাউকে পাঠাতে তার উপর ছেড়ে দিন",
+      "pt-BR": "Solte em alguém para enviar",
+      "ru": "Бросьте на человека, чтобы отправить",
+      "id": "Jatuhkan ke seseorang untuk mengirim",
+      "de": "Auf jemanden ziehen, um zu senden",
+      "tr": "Göndermek için birinin üstüne bırakın"
     }
   }
 }

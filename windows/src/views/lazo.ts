@@ -34,6 +34,14 @@ function initial(name: string): string {
   return (Array.from(name.trim())[0] ?? "?").toUpperCase();
 }
 
+/** A person's face: their photo when they have one, else their initial. */
+export function avatar(peer: EnginePeer): HTMLElement {
+  const photo = Lazo.photos[peer.id];
+  const el = h("span", { class: photo ? "lazo-avatar photo" : "lazo-avatar", text: photo ? "" : initial(peer.name) });
+  if (photo) el.style.backgroundImage = `url(${photo})`;
+  return el;
+}
+
 function unread(peerId: string): number {
   return Lazo.engine?.unread[peerId] ?? 0;
 }
@@ -61,7 +69,7 @@ function pick(peer: EnginePeer) {
 function personRow(peer: EnginePeer): HTMLElement {
   const count = unread(peer.id);
   const row = h("div", { class: "lazo-row pick" },
-    h("span", { class: "lazo-avatar", text: initial(peer.name) }),
+    avatar(peer),
     h("span", { class: "lazo-name", text: peer.name }),
     count > 0 ? h("span", { class: "lazo-unread", text: String(count) }) : null,
     h("span", { class: "lazo-sub", text: peer.identityChanged ? t("Changed identity") : peer.sharing ? t("Sharing") : t("Available") }),
@@ -95,7 +103,7 @@ function offerRow(offer: EngineOffer): HTMLElement {
 
 /** What changes the people list as drawn: names, who is sharing, unread counts. */
 function peopleKey(): string {
-  return JSON.stringify(lazoPeers().map((p) => [p.id, p.name, p.sharing, p.identityChanged, unread(p.id)]));
+  return JSON.stringify(lazoPeers().map((p) => [p.id, p.name, p.sharing, p.identityChanged, unread(p.id), Lazo.photos[p.id] ? 1 : 0]));
 }
 
 // ── The Lazo pill's card ──────────────────────────────────────────────────────
@@ -241,7 +249,7 @@ export function buildPeopleChat(): PeopleChatHost {
       for (const p of lazoPeers()) {
         const count = unread(p.id);
         const chip = h("button", { class: p.id === peer?.id ? "pchat-chip on" : "pchat-chip" },
-          h("span", { class: "lazo-avatar", text: initial(p.name) }),
+          avatar(p),
           h("span", { class: "lazo-name", text: p.name }),
           count > 0 ? h("span", { class: "lazo-unread", text: String(count) }) : null,
         );

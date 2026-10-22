@@ -22,6 +22,12 @@ export const Lazo = {
   chatMode: "ai" as "ai" | "people",
   /** The person whose conversation is open in the people chat. */
   chatPeer: null as string | null,
+  /** A file is being held over the island: the people show as places to drop it. */
+  dragging: false,
+  /** The person under the pointer while a file is held over the island. */
+  dropTarget: null as string | null,
+  /** Faces of the people around, as data URLs, by person (asked from the engine once each). */
+  photos: {} as Record<string, string>,
   /** What the views ask of the island (set by island/lazo.ts). */
   hooks: {
     /** "Ask the AI instead": send a dropped file to the AI chat. */
@@ -103,8 +109,19 @@ export function startLazo(host: LazoHost): LazoEngine {
   );
   Lazo.engine = engine;
   let offers = 0;
+  const wanted = new Set<string>();
   engine.on((e: EngineEvent) => {
     if (engine.state.connected) Lazo.error = "";
+    // Faces: asked once for each person who has one, and again if they went away and came back.
+    const here = new Set(engine.state.peers.map((p) => p.id));
+    for (const id of [...wanted]) if (!here.has(id)) wanted.delete(id);
+    for (const p of engine.state.peers) {
+      if (p.hasPhoto && !wanted.has(p.id)) {
+        wanted.add(p.id);
+        engine.requestPhoto(p.id);
+      }
+    }
+    if (e.type === "photo" && e.data) Lazo.photos[e.peerId] = `data:image/jpeg;base64,${e.data}`;
     if (e.type === "chat") host.messaged(e.chat.peerId, e.chat.name, e.chat.text);
     if (e.type === "sendDone") {
       Lazo.notice = e.ok ? "sent" : e.message;

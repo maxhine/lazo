@@ -587,6 +587,9 @@ export type BridgeEvent =
 export interface DragDropPayload {
   type: "enter" | "over" | "drop" | "leave";
   paths?: string[];
+  /** Where the pointer is in the page, when it is known (to tell which person a file is dropped on). */
+  x?: number;
+  y?: number;
 }
 
 interface WebView2Bridge {
@@ -613,18 +616,24 @@ export async function onDragDrop(handler: (e: DragDropPayload) => void) {
   const hasFiles = (e: DragEvent) => e.dataTransfer?.types.includes("Files") ?? false;
   // dragenter/dragleave fire for every element crossed; only the outermost pair counts.
   let depth = 0;
+  // The drop reaches us from Rust without a position: the last one the page saw stands for it.
+  let point: { x: number; y: number } = { x: -1, y: -1 };
+  const at = (e: DragEvent) => {
+    point = { x: e.clientX, y: e.clientY };
+    return point;
+  };
 
   const onEnter = (e: DragEvent) => {
     if (!hasFiles(e)) return;
     e.preventDefault();
-    if (depth++ === 0) handler({ type: "enter" });
+    if (depth++ === 0) handler({ type: "enter", ...at(e) });
   };
   const onOver = (e: DragEvent) => {
     if (!hasFiles(e)) return;
     // Without this WebView2 refuses the drop — or navigates to the file.
     e.preventDefault();
     if (e.dataTransfer) e.dataTransfer.dropEffect = "copy";
-    handler({ type: "over" });
+    handler({ type: "over", ...at(e) });
   };
   const onLeave = (e: DragEvent) => {
     if (!hasFiles(e) || depth === 0) return;
@@ -633,9 +642,10 @@ export async function onDragDrop(handler: (e: DragDropPayload) => void) {
   const onDrop = (e: DragEvent) => {
     e.preventDefault();
     depth = 0;
+    at(e);
     const files = e.dataTransfer?.files;
     if (!files || files.length === 0) {
-      handler({ type: "drop", paths: [] });
+      handler({ type: "drop", paths: [], ...point });
       return;
     }
     webview.postMessageWithAdditionalObjects("lazo-file-drop", files);
@@ -645,7 +655,7 @@ export async function onDragDrop(handler: (e: DragDropPayload) => void) {
   window.addEventListener("dragover", onOver);
   window.addEventListener("dragleave", onLeave);
   window.addEventListener("drop", onDrop);
-  const unlisten = await listen<DragDropPayload>("file-drag", (e) => handler(e.payload));
+  const unlisten = await listen<DragDropPayload>("file-drag", (e) => handler({ ...e.payload, ...point }));
   return () => {
     window.removeEventListener("dragenter", onEnter);
     window.removeEventListener("dragover", onOver);

@@ -13,7 +13,9 @@ import {
 import { Sound } from "../core/sound";
 import { State } from "../core/state";
 import { SPOTIFY_ID, islandDances } from "../core/spotify";
-import { LAZO_ID, Lazo, lazoConnected } from "../core/lazo";
+import { LAZO_ID, Lazo, lazoConnected, lazoPeers } from "../core/lazo";
+import type { EnginePeer } from "../lazo/engine";
+import { t } from "../i18n/i18n";
 import { BotEngine, hexToRGB } from "../nudo/engine";
 import { Greeting } from "../nudo/greeting";
 import { createMiniBot, pruneMiniBots, syncMiniBotStates, tickMiniBots } from "../nudo/minibots";
@@ -116,6 +118,8 @@ export class Island {
   private silentReveal = false;
   /** A file is being held over the island and Lazo's people are showing instead of the drop animation. */
   private lazoDrag = false;
+  /** A dropped file is being sent to this person; the drop animation is playing. */
+  private lazoSend: { name: string } | null = null;
 
   /** Drop sequence bookkeeping: last tick played, and whether the ✓ has fired. */
   private uploadTens = 0;
@@ -550,37 +554,34 @@ export class Island {
 
   // ── File drop ───────────────────────────────────────────────────────────────
 
-  private onDragDrop(e: { type: string; paths?: string[] }) {
+  private onDragDrop(e: { type: string; paths?: string[]; x?: number; y?: number }) {
     if (e.type !== "over") void Bridge.log(`drag ${e.type} ${e.paths?.length ?? 0} file(s)`);
     if (State.paused) return;
     switch (e.type) {
       case "enter":
       case "over": {
+        if (this.lazoDrag) this.trackDropTarget(e.x, e.y);
         if (State.fileDragOver) return;
         State.fileDragOver = true;
-        // With Lazo up, a file is for somebody on the network: show who is there while it is held over the island.
-        if (this.lazoReady()) {
-          this.lazoDrag = true;
-          State.setFocus(LAZO_ID);
-          Lazo.pendingFile = null;
-          this.alert("overview");
-          break;
-        }
+        // With Lazo up, a file is for somebody on the network: the people show as places to drop it.
+        this.lazoDrag = this.lazoReady();
+        Lazo.dragging = this.lazoDrag;
+        Lazo.dropTarget = null;
+        if (this.lazoDrag) Lazo.pendingFile = null;
         this.engine.animateMorph(1);
         // enterZone must run before the island expands, so the sequence is
         // already active by the time the view becomes `upload`.
         UploadSeq.enterZone(State.mouseInIsland.x, State.mouseInIsland.y);
         this.alert("upload");
+        if (this.lazoDrag) this.trackDropTarget(e.x, e.y);
         break;
       }
       case "leave": {
         if (!State.fileDragOver) return;
         State.fileDragOver = false;
-        if (this.lazoDrag) {
-          this.lazoDrag = false;
-          State.notify();
-          break;
-        }
+        this.lazoDrag = false;
+        Lazo.dragging = false;
+        Lazo.dropTarget = null;
         this.engine.animateMorph(0);
         // The island deliberately stays open: the drag session is still alive.
         UploadSeq.exitZone();
@@ -589,15 +590,25 @@ export class Island {
       }
       case "drop": {
         State.fileDragOver = false;
+        const wasLazoDrag = this.lazoDrag;
+        const target = Lazo.dropTarget;
         this.lazoDrag = false;
+        Lazo.dragging = false;
+        Lazo.dropTarget = null;
         const path = e.paths?.[0];
         if (!path) {
           this.engine.animateMorph(0);
           this.setView(State.defaultView());
           return;
         }
-        // The file is for a person on the network; the card offers the AI as the other choice.
-        if (this.lazoReady()) {
+        if (wasLazoDrag && this.lazoReady()) {
+          // On somebody: it goes to them, with the animation. Anywhere else: the card asks who (or the AI).
+          const peer = lazoPeers().find((p) => p.id === target);
+          if (peer && !peer.identityChanged) {
+            this.sendToPerson(path, peer);
+            break;
+          }
+          UploadSeq.exitZone();
           State.setFocus(LAZO_ID);
           Lazo.pendingFile = { name: path.split(/[\\/]/).pop() || "file", path };
           Lazo.notice = "";
@@ -611,6 +622,42 @@ export class Island {
         break;
       }
     }
+  }
+
+  /** Which person the pointer is over while a file is held above the island. */
+  private trackDropTarget(x?: number, y?: number) {
+    let id: string | null = null;
+    if (x != null && y != null && x >= 0) {
+      id = document.elementFromPoint(x, y)?.closest<HTMLElement>("[data-drop-peer]")?.dataset.dropPeer ?? null;
+    }
+    if (id !== Lazo.dropTarget) {
+      Lazo.dropTarget = id;
+      State.notify();
+    }
+  }
+
+  /** The file goes to somebody: Nudo eats it as ever, and the engine really sends it. */
+  private sendToPerson(path: string, peer: EnginePeer) {
+    const name = path.split(/[\\/]/).pop() || "file";
+    State.droppedFile = { name, path };
+    State.promptContext = null;
+    this.lazoSend = { name: peer.name };
+    UploadSeq.performDrop(State.uploadDuration);
+    this.uploadTens = 0;
+    this.uploadDone = false;
+    this.engine.gulp();
+    Sound.play("approve");
+    this.engine.triggerEmote("happy");
+    this.engine.animateMorph(0);
+    State.uploadProgress = 0;
+    Lazo.notice = "";
+    this.setView("uploading");
+    this.ensureRunning();
+    void Lazo.engine?.sendFile(peer.id, path).then((r) => {
+      Lazo.notice = r.ok ? t("Sent to {name}", { name: peer.name }) : r.message;
+      Sound.play(r.ok ? "finish" : "error");
+      State.notify();
+    });
   }
 
   /** The Lazo pill is there and its engine is up: dropped files go to people first. */
@@ -697,7 +744,15 @@ export class Island {
     }
     // The extra second is the grow-back, after which the choose card is up.
     if (since >= PRE_PROGRESS + dur + 1 && State.view === "uploading") {
-      this.setView("choose");
+      if (this.lazoSend) {
+        // A file that went to somebody: back to Lazo's card, which tells how the sending went.
+        this.lazoSend = null;
+        State.droppedFile = null;
+        State.setFocus(LAZO_ID);
+        this.setView("overview");
+      } else {
+        this.setView("choose");
+      }
     }
   }
 

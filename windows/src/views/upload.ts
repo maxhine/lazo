@@ -6,6 +6,8 @@
 
 import { h, clear } from "./dom";
 import { State } from "../core/state";
+import { Lazo, lazoConnected, lazoPeers } from "../core/lazo";
+import { avatar } from "./lazo";
 import type { ViewActions, ViewHost } from "./views";
 import { N_, t, tl } from "../i18n/i18n";
 
@@ -36,18 +38,33 @@ export function buildUpload(): ViewHost {
     { class: "drop-tags" },
     ...[N_("PDF"), N_("Images"), N_("Code"), N_("Docs")].map((chip) => h("span", { text: tl(chip) })),
   );
+  // With Lazo up, the people on the network are the places to drop the file.
+  const people = h("div", { class: "drop-people" });
   const card = h(
     "div",
     { class: "card drop-card" },
     frame,
-    h("div", { class: "drop-body" }, title, tags),
+    h("div", { class: "drop-body" }, title, tags, people),
   );
   const el = h("div", { class: "view" }, card);
+  let shown = "";
 
   return {
     el,
     sync() {
       card.classList.toggle("over", State.fileDragOver);
+      const peers = State.os === "windows" && lazoConnected() ? lazoPeers().slice(0, 6) : [];
+      const key = JSON.stringify([peers.map((p) => [p.id, p.name, Lazo.photos[p.id] ? 1 : 0, p.identityChanged]), Lazo.dropTarget]);
+      tags.style.display = peers.length ? "none" : "";
+      people.style.display = peers.length ? "" : "none";
+      title.textContent = peers.length ? t("Drop on someone to send it") : t("Drop your files here");
+      if (key === shown) return;
+      shown = key;
+      clear(people);
+      for (const p of peers) {
+        people.append(h("div", { class: p.id === Lazo.dropTarget ? "drop-person hot" : "drop-person", "data-drop-peer": p.id },
+          avatar(p), h("span", { class: "lazo-name", text: p.name })));
+      }
     },
   };
 }
