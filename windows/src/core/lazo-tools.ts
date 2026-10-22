@@ -7,6 +7,7 @@ import { LazoTools } from "../lazo/tools";
 import { XpaceModel } from "./xpace";
 import { CloudModel } from "./cloud";
 import { EyeCareModel } from "./eyecare";
+import { TpsModel } from "./tps";
 import { State } from "./state";
 import { Lazo } from "./lazo";
 
@@ -24,5 +25,8 @@ Tools.on((m) => Cloud.handle(m));
 export const EyeCare = new EyeCareModel((command) => Tools.post(command), () => State.notify(), () => State.view === "eyecare" && State.mode === "expanded");
 Tools.on((m) => EyeCare.handle(m));
 
+export const Tps = new TpsModel((command) => Tools.post(command), () => State.notify());
+Tools.on((m) => Tps.handle(m));
+
 // Development only: the browser harness swaps the transport for one to a program started by hand.
-if (import.meta.env.DEV) (window as unknown as { __lazoTools: unknown }).__lazoTools = { Tools, Xpace, Cloud, EyeCare, Lazo, State };
+if (import.meta.env.DEV) (window as unknown as { __lazoTools: unknown }).__lazoTools = { Tools, Xpace, Cloud, EyeCare, Tps, Lazo, State };

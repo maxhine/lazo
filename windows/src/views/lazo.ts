@@ -311,6 +311,7 @@ const TOOLS: { id: string; name: string | Msg; glyph: string; color: string }[] 
   { id: "cloud", name: tl("Point clouds"), glyph: "M12 3 3 7.5 12 12l9-4.5L12 3zm-9 9 9 4.5 9-4.5M3 16.5 12 21l9-4.5", color: "#38BDF8" },
   { id: "xpace", name: "Xpace", glyph: "M4 4h9v16H4V4zm11 0h5v7h-5V4zm0 9h5v7h-5v-7z", color: "#C084FC" },
   { id: "eyecare", name: tl("Eye care"), glyph: "M12 5C6.5 5 3 9.5 2 12c1 2.5 4.5 7 10 7s9-4.5 10-7c-1-2.5-4.5-7-10-7zm0 3.2a3.8 3.8 0 1 1 0 7.6 3.8 3.8 0 0 1 0-7.6z", color: "#4ADE80" },
+  { id: "tps", name: tl("TPS to RINEX"), glyph: "M5 19 12 12m0 0 3-3m-3 3-3-3m3 3 3 3M3 9a9 9 0 0 1 9-6m-6 6a6 6 0 0 1 6-3M17 21h4M19 17v4", color: "#2DD4BF" },
 ];
 
 export function buildTools(actions: ViewActions): LazoCardHost {
@@ -321,7 +322,7 @@ export function buildTools(actions: ViewActions): LazoCardHost {
     tile.addEventListener("click", () => {
       message.textContent = "";
       // Xpace, the point clouds and eye care are drawn inside the island, which grows to them; nothing else still opens the classic program's window.
-      if (tool.id === "xpace" || tool.id === "cloud" || tool.id === "eyecare") {
+      if (tool.id === "xpace" || tool.id === "cloud" || tool.id === "eyecare" || tool.id === "tps") {
         actions.setView(tool.id);
         return;
       }

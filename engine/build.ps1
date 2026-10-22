@@ -13,7 +13,7 @@ if (!(Test-Path -LiteralPath $csc)) { throw '.NET Framework 4.8 es necesario par
 $core = 'AppInfo','ChatEvents','ChatStore','CloudExport','CloudReaders','CloudReprojector','CoordinateSystems','DiagLog','Geodesy',
         'Identity','NetworkEngine','PointCloudConverter','ProfilePhoto','RemoteAccess','SecureChannel','Startup','TransferLog',
         'Updater','ViewerPrefs','XpaceActions','XpaceScanner','CloudPreview','EyeCare','Theme','Icons','WindowPlacement','ImageTheme','HeroBackground'
-$sources = @($core | ForEach-Object { Join-Path $shared "$_.cs" }) + (Join-Path $root 'EngineHost.cs') + (Join-Path $root 'EngineProgram.cs') + (Join-Path $root 'XpaceTool.cs') + (Join-Path $root 'CloudTool.cs') + (Join-Path $root 'EyeCareTool.cs')
+$sources = @($core | ForEach-Object { Join-Path $shared "$_.cs" }) + (Join-Path $root 'EngineHost.cs') + (Join-Path $root 'EngineProgram.cs') + (Join-Path $root 'XpaceTool.cs') + (Join-Path $root 'CloudTool.cs') + (Join-Path $root 'EyeCareTool.cs') + (Join-Path $root 'Tps2RinTool.cs')
 $arguments = @('/nologo', '/target:exe', '/platform:anycpu', '/utf8output', '/warn:4', ('/out:' + (Join-Path $output 'Lazo.Engine.exe')))
 $arguments += if ($Release) { '/optimize+' } else { '/debug+' }
 $arguments += '/reference:System.IO.Compression.dll', '/reference:System.IO.Compression.FileSystem.dll', '/reference:System.Drawing.dll',

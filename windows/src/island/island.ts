@@ -14,7 +14,7 @@ import { Sound } from "../core/sound";
 import { State } from "../core/state";
 import { SPOTIFY_ID, islandDances } from "../core/spotify";
 import { LAZO_ID, Lazo, lazoConnected, lazoPeers } from "../core/lazo";
-import { Cloud } from "../core/lazo-tools";
+import { Cloud, Tps } from "../core/lazo-tools";
 import { accentFor } from "../core/accent";
 import { isOnline } from "../views/lazo";
 import type { EnginePeer } from "../lazo/engine";
@@ -565,8 +565,8 @@ export class Island {
     if (e.type !== "over") void Bridge.log(`drag ${e.type} ${e.paths?.length ?? 0} file(s)`);
     if (State.paused) return;
     // With the point clouds open, a dropped file is a cloud to convert, not something to send.
-    if (State.mode === "expanded" && State.view === "cloud") {
-      if (e.type === "drop" && e.paths?.length) Cloud.addFiles(e.paths);
+    if (State.mode === "expanded" && (State.view === "cloud" || State.view === "tps")) {
+      if (e.type === "drop" && e.paths?.length) (State.view === "cloud" ? Cloud : Tps).addFiles(e.paths);
       return;
     }
     switch (e.type) {

@@ -26,6 +26,8 @@ namespace Lazo
                 Thread thread = new Thread(() =>
                 {
                     Dispatcher dispatcher = Dispatcher.CurrentDispatcher;
+                    // Los avisos usan los colores del tema del clásico (acento, paleta): hay que cargarlo antes de crear una ventana.
+                    Theme.Load();
                     EyeCareService service = EyeCareService.Instance;
                     service.Ticked += () => { PushEyeCare(); };
                     service.StateChanged += () => { PushEyeCare(); };

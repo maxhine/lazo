@@ -260,3 +260,87 @@ test("descanso visual: el reloj del servicio avanza y lo empuja a la isla cada s
   await new Promise((r) => setTimeout(r, 2300));
   assert.ok(log.filter((m) => m.type === "eyecare.state").length >= a + 1, "llegan estados sin pedirlos");
 });
+
+// ── TPS a RINEX ───────────────────────────────────────────────────────────────
+// Con un TPS2RIN de mentiras (fake-tps2rin.cs: misma línea de órdenes y mismos nombres de salida que el de Topcon): lo que se
+// prueba es todo lo de Lazo (leer los tiempos del RINEX, huecos, nombres de salida, no pisar archivos). El programa de Topcon
+// no se incluye en las pruebas; con un .tps de verdad hay que probarlo a mano.
+
+const tpsDir = join(work, "tps");
+mkdirSync(tpsDir, { recursive: true });
+const appData = process.env.APPDATA;
+const tpsConfig = join(appData, "Lazo", "tps2rin.txt");
+const tpsConfigBefore = existsSync(tpsConfig) ? readFileSync(tpsConfig, "utf8") : null;
+const fakeExe = join(tpsDir, "tps2rin.exe");
+{
+  const csc = "C:/Windows/Microsoft.NET/Framework64/v4.0.30319/csc.exe";
+  const r = spawnSync(csc, ["/nologo", "/target:exe", `/out:${fakeExe}`, join(here, "fake-tps2rin.cs")], { encoding: "utf8" });
+  assert.equal(r.status, 0, r.stdout + r.stderr);
+}
+after(() => {
+  try {
+    if (tpsConfigBefore === null) rmSync(tpsConfig, { force: true });
+    else writeFileSync(tpsConfig, tpsConfigBefore);
+  } catch {}
+});
+writeFileSync(join(tpsDir, "log1021v.tps"), Buffer.alloc(64, 1));
+writeFileSync(join(tpsDir, "vacio.tps"), Buffer.alloc(0));
+
+test("tps: se elige el programa de Topcon y se recuerda", async () => {
+  log.length = 0;
+  send({ cmd: "tps.setExe", path: join(tpsDir, "no-esta.exe") });
+  assert.match((await next((m) => m.type === "tps.status" && m.problem)).problem, /No existe/);
+  log.length = 0;
+  send({ cmd: "tps.setExe", path: fakeExe });
+  const ok = await next((m) => m.type === "tps.status" && m.exe);
+  assert.equal(ok.exe, fakeExe);
+  assert.equal(ok.problem, "");
+});
+
+test("tps: se ven los tiempos observados, el intervalo y los huecos", async () => {
+  log.length = 0;
+  send({ cmd: "tps.probe", files: [join(tpsDir, "log1021v.tps"), join(tpsDir, "notas.txt")] });
+  const file = await next((m) => m.type === "tps.file");
+  await next((m) => m.type === "tps.probed");
+  assert.equal(log.filter((m) => m.type === "tps.file").length, 1, "solo los .tps");
+  assert.equal(file.ok, true, file.message);
+  assert.equal(file.baseName, "log1021v");
+  assert.deepEqual(file.obs.first, "2026-10-21T21:02:25");
+  assert.deepEqual(file.obs.last, "2026-10-21T21:02:34");
+  assert.equal(file.obs.interval, 1);
+  assert.equal(file.obs.epochs, 7);
+  assert.equal(file.obs.expected, 10);
+  assert.equal(file.obs.gaps, 1);
+  assert.equal(file.obs.missing, 3);
+  assert.equal(file.obs.leap, 18);
+  assert.equal(file.obs.marker, "log1021v_M490");
+  assert.match(file.obs.receiver, /TPS BX10/);
+  assert.equal(file.obs.systems, "GR");
+  assert.deepEqual(file.outputs.map((o) => o.ext).sort(), [".26G", ".26N", ".26O"]);
+});
+
+test("tps: un archivo que no se puede convertir dice por qué", async () => {
+  log.length = 0;
+  send({ cmd: "tps.probe", files: [join(tpsDir, "vacio.tps")] });
+  const file = await next((m) => m.type === "tps.file");
+  assert.equal(file.ok, false);
+  assert.match(file.message, /Empty TPS file/);
+});
+
+test("tps: se convierte con el nombre elegido, sin pisar lo que ya hay", async () => {
+  const out = join(tpsDir, "salida");
+  log.length = 0;
+  send({ cmd: "tps.convert", folder: out, items: [{ file: join(tpsDir, "log1021v.tps"), name: "Lote 4: base/A" }] });
+  const done = await next((m) => m.type === "tps.done");
+  assert.equal(done.ok, true, done.message);
+  assert.deepEqual(done.written.map((p) => p.slice(out.length + 1)).sort(), ["Lote 4 baseA.26G", "Lote 4 baseA.26N", "Lote 4 baseA.26O"]);
+  assert.match(readFileSync(join(out, "Lote 4 baseA.26O"), "utf8"), /MARKER NAME/);
+  log.length = 0;
+  send({ cmd: "tps.convert", folder: out, items: [{ file: join(tpsDir, "log1021v.tps"), name: "Lote 4 baseA" }] });
+  const again = await next((m) => m.type === "tps.done");
+  assert.deepEqual(again.written.map((p) => p.slice(out.length + 1)).sort(), ["Lote 4 baseA (2).26G", "Lote 4 baseA (2).26N", "Lote 4 baseA (2).26O"]);
+  log.length = 0;
+  send({ cmd: "tps.convert", folder: out, items: [{ file: join(tpsDir, "log1021v.tps"), name: "" }] });
+  const plain = await next((m) => m.type === "tps.done");
+  assert.ok(plain.written[0].endsWith("log1021v.26G") || plain.written.some((p) => p.endsWith("log1021v.26O")), "sin nombre: el del .tps");
+});
