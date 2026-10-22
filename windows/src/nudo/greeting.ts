@@ -4,6 +4,7 @@
 // Everything is laid out in the same 640×150 reference space as on macOS.
 
 import { closeCurve } from "../core/anim";
+import { bowPath } from "./bow";
 import { Sound } from "../core/sound";
 import { COMPACT_W, NOTCH_H, NOTCH_W } from "../core/layout";
 
@@ -366,20 +367,7 @@ function rr(x: CanvasRenderingContext2D, X: number, Y: number, W: number, H: num
 }
 
 function nudoPath(hw: number, hh: number): Path2D {
-  const n = 3.2;
-  const p = new Path2D();
-  const steps = 96;
-  for (let i = 0; i <= steps; i++) {
-    const a = (i / steps) * 2 * Math.PI;
-    const ca = Math.cos(a);
-    const sa = Math.sin(a);
-    const px = hw * (ca < 0 ? -1 : 1) * Math.pow(Math.abs(ca), 2 / n);
-    const py = hh * (sa < 0 ? -1 : 1) * Math.pow(Math.abs(sa), 2 / n);
-    if (i === 0) p.moveTo(px, py);
-    else p.lineTo(px, py);
-  }
-  p.closePath();
-  return p;
+  return bowPath(hw, hh);
 }
 
 /** White body gradient. A canvas gradient pads past its ends, so the corners are never left unpainted. */

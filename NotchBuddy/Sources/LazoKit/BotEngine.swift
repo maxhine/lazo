@@ -1380,26 +1380,20 @@ final class BotEngine: ObservableObject {
     // MARK: - Private draw helpers
 
     private func nudoPath(rx: CGFloat, ry: CGFloat, morph: CGFloat, R: CGFloat) -> Path {
-        let n = 72
-        let expN: CGFloat = 2.0 / 2.7
-        // Target mailbox dims (spec: 1.0R wide, 0.94R tall, 0.42R corner radius)
+        // Target mailbox dims (1.0R wide, 0.94R tall, 0.42R corner radius)
         let tw = R * 1.0
         let th = R * 0.94
         let tr = R * 0.42
         var path = Path()
-        for i in 0...n {
-            let a = CGFloat(i) / CGFloat(n) * .pi * 2
-            let ca = cos(a), sa = sin(a)
-            let px0 = rx * (ca >= 0 ? pow(ca, expN) : -pow(-ca, expN))
-            let py0 = ry * (sa >= 0 ? pow(sa, expN) : -pow(-sa, expN))
-            let px: CGFloat
-            let py: CGFloat
-            if morph < 0.005 {
-                px = px0; py = py0
-            } else {
-                let rr = rrPoint(ca: ca, sa: sa, W: tw, H: th, cr: tr)
-                px = lerp(px0, rr.x, morph)
-                py = lerp(py0, rr.y, morph)
+        for (i, v) in BowShape.points(rx: rx, ry: ry).enumerated() {
+            var px = v.x
+            var py = v.y
+            if morph >= 0.005 {
+                // The morph pulls every vertex onto the rounded rectangle along its own angle.
+                let a = atan2(v.y, v.x)
+                let rr = rrPoint(ca: cos(a), sa: sin(a), W: tw, H: th, cr: tr)
+                px = lerp(v.x, rr.x, morph)
+                py = lerp(v.y, rr.y, morph)
             }
             if i == 0 { path.move(to: CGPoint(x: px, y: py)) }
             else { path.addLine(to: CGPoint(x: px, y: py)) }

@@ -183,18 +183,12 @@ private func mInvert(_ p: Path, H: NudoH) -> Path {
     return q
 }
 
-// nudoOutfitPath — clean superellipse (n=96), same exponent as JS nudoPath
+// nudoOutfitPath — the bow outline (BowShape), same shape as the main body
 func nudoOutfitPath(_ rx: CGFloat, _ ry: CGFloat) -> Path {
-    let n = 96
-    let e: CGFloat = 2.0 / kEXP
     var p = Path()
-    for i in 0...n {
-        let a = CGFloat(i) / CGFloat(n) * .pi * 2
-        let ca = cos(a), sa = sin(a)
-        let x = rx * (ca >= 0 ? pow(ca, e) : -pow(-ca, e))
-        let y = ry * (sa >= 0 ? pow(sa, e) : -pow(-sa, e))
-        if i == 0 { p.move(to: CGPoint(x: x, y: y)) }
-        else       { p.addLine(to: CGPoint(x: x, y: y)) }
+    for (i, v) in BowShape.points(rx: rx, ry: ry).enumerated() {
+        if i == 0 { p.move(to: v) }
+        else       { p.addLine(to: v) }
     }
     p.closeSubpath()
     return p

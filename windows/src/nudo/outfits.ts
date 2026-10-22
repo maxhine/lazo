@@ -12,6 +12,7 @@
 // flips to a top-down view.
 
 import { Ease } from "../core/anim";
+import { bowPath } from "./bow";
 import type { Outfit, OutfitSelection } from "./wardrobe";
 import { SCRIPT_FONTS } from "../core/fonts";
 
@@ -144,20 +145,7 @@ function fillAll(ctx: Ctx, H: Head) {
 
 /** Nudo's body outline, same superellipse as the engine. */
 export function bodyOutline(rx: number, ry: number): Path2D {
-  const p = new Path2D();
-  const n = 96;
-  const e = 2 / EXP;
-  for (let i = 0; i <= n; i++) {
-    const a = (i / n) * Math.PI * 2;
-    const ca = Math.cos(a);
-    const sa = Math.sin(a);
-    const x = rx * Math.sign(ca) * Math.pow(Math.abs(ca), e);
-    const y = ry * Math.sign(sa) * Math.pow(Math.abs(sa), e);
-    if (i === 0) p.moveTo(x, y);
-    else p.lineTo(x, y);
-  }
-  p.closePath();
-  return p;
+  return bowPath(rx, ry);
 }
 
 function lin(ctx: Ctx, x0: number, y0: number, x1: number, y1: number, stops: [number, string][]) {

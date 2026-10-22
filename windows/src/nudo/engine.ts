@@ -8,6 +8,7 @@ import { Ease, lerp, type EaseFn } from "../core/anim";
 import { Sound } from "../core/sound";
 import type { BotEmoteName, BotStateName } from "../core/layout";
 import { PUMPKIN_BODY, drawOutfitBehind, drawOutfitFront, makeHead } from "./outfits";
+import { BOW_OUTLINE } from "./bow";
 import type { Outfit } from "./wardrobe";
 
 // ── Types ─────────────────────────────────────────────────────────────────────
@@ -854,31 +855,47 @@ export class BotEngine {
   }
 
   private bodyPath(rx: number, ry: number, R: number): Path2D {
-    const n = 72;
-    const expN = 2.0 / 2.7;
     const tw = R * 1.0;
     const th = R * 0.94;
     const tr = R * 0.42;
     const p = new Path2D();
     const m = this.morph;
-    for (let i = 0; i <= n; i++) {
-      const a = (i / n) * Math.PI * 2;
-      const ca = Math.cos(a);
-      const sa = Math.sin(a);
-      const px0 = rx * (ca >= 0 ? Math.pow(ca, expN) : -Math.pow(-ca, expN));
-      const py0 = ry * (sa >= 0 ? Math.pow(sa, expN) : -Math.pow(-sa, expN));
+    BOW_OUTLINE.forEach((v, i) => {
+      const px0 = v.x * rx;
+      const py0 = v.y * ry;
       let px = px0;
       let py = py0;
       if (m >= 0.005) {
-        const rr = rrPoint(ca, sa, tw, th, tr);
+        // The morph (cup shape) pulls every vertex onto the rounded rectangle along its own angle.
+        const a = Math.atan2(py0, px0);
+        const rr = rrPoint(Math.cos(a), Math.sin(a), tw, th, tr);
         px = lerp(px0, rr.x, m);
         py = lerp(py0, rr.y, m);
       }
       if (i === 0) p.moveTo(px, py);
       else p.lineTo(px, py);
-    }
+    });
     p.closePath();
     return p;
+  }
+
+  /** The knot of the bow: a slim band across the waist, a little taller than the waist itself. */
+  private drawKnot(x: CanvasRenderingContext2D, rx: number, ry: number) {
+    const k = 1 - this.morph;
+    if (k < 0.05) return;
+    const w = rx * 0.17;
+    const h = ry * 0.68;
+    const g = x.createLinearGradient(-w, 0, w, 0);
+    g.addColorStop(0, `rgba(0,0,0,${0.16 * k})`);
+    g.addColorStop(0.45, `rgba(255,255,255,${0.22 * k})`);
+    g.addColorStop(1, `rgba(0,0,0,${0.2 * k})`);
+    x.fillStyle = g;
+    roundRectPath(x, -w, -h, w * 2, h * 2, w * 0.9);
+    x.fill();
+    x.strokeStyle = `rgba(0,0,0,${0.14 * k})`;
+    x.lineWidth = Math.max(1, rx * 0.025);
+    roundRectPath(x, -w, -h, w * 2, h * 2, w * 0.9);
+    x.stroke();
   }
 
   /** How much of the pumpkin's orange shows on the body (it comes and goes with the outfit). */
@@ -934,6 +951,7 @@ export class BotEngine {
     hl.addColorStop(1, "rgba(255,255,255,0)");
     x.fillStyle = hl;
     x.fill(body);
+    this.drawKnot(x, rx, ry);
     x.restore();
   }
 

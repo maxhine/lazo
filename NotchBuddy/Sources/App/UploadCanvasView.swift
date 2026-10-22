@@ -560,11 +560,14 @@ func usBodyPath(m: Double, R: Double) -> (path: Path, rx: Double, ry: Double) {
     let rx = R * (1.04 - 0.04*mc)
     let ry = R * (0.97 - 0.03*mc)
     var path = Path()
-    for i in 0...96 {
-        let a  = Double(i)/96 * .pi*2
+    // The bow (BowShape) at rest; the morph pulls every vertex toward the box along its own angle.
+    for (i, v) in BowShape.points(rx: CGFloat(rx), ry: CGFloat(ry)).enumerated() {
+        let a  = atan2(Double(v.y), Double(v.x))
         let ca = cos(a), sa = sin(a)
-        let px = rx * (ca<0 ? -1 : ca>0 ? 1 : 0) * pow(abs(ca), 2/n)
-        let py = ry * (sa<0 ? -1 : sa>0 ? 1 : 0) * pow(abs(sa), 2/n)
+        let bx = rx * (ca<0 ? -1 : ca>0 ? 1 : 0) * pow(abs(ca), 2/n)
+        let by = ry * (sa<0 ? -1 : sa>0 ? 1 : 0) * pow(abs(sa), 2/n)
+        let px = Double(v.x) + (bx - Double(v.x)) * mc
+        let py = Double(v.y) + (by - Double(v.y)) * mc
         if i == 0 { path.move(to:    CGPoint(x:px,y:py)) }
         else       { path.addLine(to: CGPoint(x:px,y:py)) }
     }

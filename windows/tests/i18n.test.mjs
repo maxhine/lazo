@@ -308,9 +308,9 @@ test("generated, Rust and Apple language registrations agree with the picker", (
   assert.equal(Number(registered[1]), LANGUAGE_CODES.length);
   assert.deepEqual(JSON.parse(registered[2]), [...LANGUAGE_CODES]);
   // The Mac may have languages Windows and Linux don't have yet, never the other way round.
-  // Both Mac targets (Info.plist files and project.yml) declare the same ones.
+  // The Mac target (Info.plist and project.yml) declares the same ones.
   const apple = [];
-  for (const file of ["Info.plist", "InfoAppStore.plist"]) {
+  for (const file of ["Info.plist"]) {
     const plist = readFileSync(join(WINDOWS, "../NotchBuddy/Resources", file), "utf8");
     const array = plist.match(/<key>CFBundleLocalizations<\/key>\s*<array>([\s\S]*?)<\/array>/);
     assert.ok(array, file);
@@ -318,7 +318,7 @@ test("generated, Rust and Apple language registrations agree with the picker", (
   }
   const project = readFileSync(join(WINDOWS, "../NotchBuddy/project.yml"), "utf8");
   const arrays = [...project.matchAll(/CFBundleLocalizations:\r?\n((?:[ \t]+- [^\r\n]+\r?\n)+)/g)];
-  assert.equal(arrays.length, 2);
+  assert.equal(arrays.length, 1);
   for (const array of arrays) apple.push([...array[1].matchAll(/- ([^\r\n]+)/g)].map((m) => m[1]).sort());
   for (const list of apple) assert.deepEqual(list, apple[0]);
   for (const code of LANGUAGE_CODES) assert.ok(apple[0].includes(code), `${code} is not a Mac language`);

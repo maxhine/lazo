@@ -325,16 +325,10 @@ private func gRR(_ ctx: CGContext, _ x: CGFloat, _ y: CGFloat,
 }
 
 private func nudoPath(hw: CGFloat, hh: CGFloat) -> CGPath {
-    let n: CGFloat = 3.2
     let path = CGMutablePath()
-    let steps = 96
-    for i in 0...steps {
-        let a = CGFloat(i)/CGFloat(steps)*2 * .pi
-        let ca = cos(a), sa = sin(a)
-        let px = hw * (ca < 0 ? -1 : 1) * pow(abs(ca), 2/n)
-        let py = hh * (sa < 0 ? -1 : 1) * pow(abs(sa), 2/n)
-        if i == 0 { path.move(to: CGPoint(x: px, y: py)) }
-        else { path.addLine(to: CGPoint(x: px, y: py)) }
+    for (i, v) in BowShape.points(rx: hw, ry: hh).enumerated() {
+        if i == 0 { path.move(to: v) }
+        else { path.addLine(to: v) }
     }
     path.closeSubpath(); return path
 }
