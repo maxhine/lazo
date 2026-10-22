@@ -1,6 +1,6 @@
 # Motor de Lazo para la isla (protocolo 1)
 
-El motor de Lazo en Windows es Rust y vive dentro de la isla (`windows/src-tauri/src/lazo_net`): descubrimiento, canal cifrado LAZO3, archivos y chat, con el mismo protocolo de red que el Lazo clásico y el Mac (`lazo/docs/protocolo-seguro.md`). Comparte con el clásico los archivos de `%APPDATA%Lazo` (`device.id`, `identity.key`, `paired.txt`, `name.txt`, `receive-folder.txt`), así que un equipo que tenía Lazo clásico no tiene que emparejarse otra vez.
+El motor de Lazo en Windows es Rust y vive dentro de la isla (`windows/src-tauri/src/lazo_net`): descubrimiento, canal cifrado LAZO3, archivos y chat, con el mismo protocolo de red que el Lazo clásico y el Mac (`lazo/docs/protocolo-seguro.md`). Comparte con el clásico los archivos de `%APPDATA%\Lazo` (`device.id`, `identity.key`, `paired.txt`, `name.txt`, `receive-folder.txt`), así que un equipo que tenía Lazo clásico no tiene que emparejarse otra vez.
 
 La página y el motor hablan con mensajes JSON, un texto por mensaje. En la isla viajan por el canal de Tauri: el motor los emite como el evento `lazo-engine` y la página manda órdenes con el comando `lazo_engine_send`. Mientras el motor no está (por ejemplo, con el Lazo clásico abierto, que usa los mismos puertos), el comando responde con el motivo y el cliente (`windows/src/lazo/engine.ts`) lo vuelve a intentar.
 
