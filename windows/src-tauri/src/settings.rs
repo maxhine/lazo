@@ -101,6 +101,8 @@ pub struct Settings {
     pub phone_relay_url: String,
     /// The date and time in the middle of the compact island. Off by default.
     pub show_clock: bool,
+    /// The island's right-hand column lists the people on Lazo's network instead of the pills.
+    pub show_people: bool,
 }
 
 #[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
@@ -168,6 +170,7 @@ impl Default for Settings {
             phone_relay: false,
             phone_relay_url: String::new(),
             show_clock: false,
+            show_people: true,
         }
     }
 }
@@ -456,7 +459,8 @@ mod tests {
   "phoneServices": ["integration_stripe"],
   "phoneRelay": true,
   "phoneRelayUrl": "wss://relay.example.workers.dev",
-  "showClock": true
+  "showClock": true,
+  "showPeople": false
 }"##;
 
     fn custom() -> Value {
@@ -975,6 +979,7 @@ mod tests {
                 "phoneRelay",
                 "phoneRelayUrl",
                 "showClock",
+                "showPeople",
             ]
         );
         let _ = std::fs::remove_dir_all(&dir);

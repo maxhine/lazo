@@ -36,6 +36,20 @@ export interface EngineChat {
   text: string;
 }
 
+/** One line of a conversation with a person. */
+export interface EngineMessage {
+  peerId: string;
+  /** Written here (true) or by them (false). */
+  own: boolean;
+  text: string;
+  /** Unix ms. */
+  at: number;
+  /** Sent here and not confirmed yet. */
+  pending?: boolean;
+  /** Sent here and not delivered. */
+  failed?: boolean;
+}
+
 export interface EngineSelf {
   id: string;
   name: string;
@@ -81,6 +95,13 @@ export function engineUrl(port: number, token: string): string {
 
 export class LazoEngine {
   state: EngineState = { connected: false, self: null, peers: [], offers: [], sending: {} };
+
+  /** Conversations by person, oldest first. They outlive a lost connection. */
+  chats: Record<string, EngineMessage[]> = {};
+  /** Messages not read yet, by person. */
+  unread: Record<string, number> = {};
+  /** The person whose conversation is open on screen: what they write is read at once. */
+  activeChat: string | null = null;
 
   private socket: SocketLike | null = null;
   private listeners = new Set<(e: EngineEvent) => void>();
@@ -164,8 +185,33 @@ export class LazoEngine {
     });
   }
 
+  /** Sends a message and puts it in the conversation at once; `chatSent` confirms or marks it failed. */
   sendChat(peerId: string, text: string) {
-    this.post({ cmd: "chat", peerId, text });
+    text = text.trim();
+    if (!text) return;
+    const message: EngineMessage = { peerId, own: true, text, at: Date.now(), pending: true };
+    (this.chats[peerId] ??= []).push(message);
+    if (!this.post({ cmd: "chat", peerId, text })) {
+      message.pending = false;
+      message.failed = true;
+    }
+    this.emit({ type: "state" });
+  }
+
+  messages(peerId: string): EngineMessage[] {
+    return this.chats[peerId] ?? [];
+  }
+
+  /** The conversation was looked at. */
+  markRead(peerId: string) {
+    if (this.unread[peerId]) {
+      delete this.unread[peerId];
+      this.emit({ type: "state" });
+    }
+  }
+
+  unreadTotal(): number {
+    return Object.values(this.unread).reduce((a, b) => a + b, 0);
   }
 
   decideOffer(id: string, accept: boolean) {
@@ -245,12 +291,24 @@ export class LazoEngine {
         this.emit({ type: "state" });
         break;
       }
-      case "chat":
+      case "chat": {
+        (this.chats[m.peerId] ??= []).push({ peerId: m.peerId, own: false, text: m.text, at: Date.now() });
+        if (this.activeChat !== m.peerId) this.unread[m.peerId] = (this.unread[m.peerId] ?? 0) + 1;
         this.emit({ type: "chat", chat: { peerId: m.peerId, name: m.name, text: m.text } });
+        this.emit({ type: "state" });
         break;
-      case "chatSent":
+      }
+      case "chatSent": {
+        // Answers come in the order the messages went out.
+        const waiting = (this.chats[m.peerId] ?? []).find((c) => c.own && c.pending);
+        if (waiting) {
+          waiting.pending = false;
+          waiting.failed = !m.ok;
+        }
         this.emit({ type: "chatSent", peerId: m.peerId, ok: !!m.ok, message: m.message ?? "" });
+        this.emit({ type: "state" });
         break;
+      }
       case "photo":
         this.emit({ type: "photo", peerId: m.peerId, data: m.data });
         break;

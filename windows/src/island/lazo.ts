@@ -2,19 +2,36 @@
 // while the island is closed, brings the card up (as a permission request would).
 
 import { IS_TAURI } from "../core/bridge";
-import { LAZO_ID, startLazo } from "../core/lazo";
+import { LAZO_ID, Lazo, startLazo } from "../core/lazo";
 import { Sound } from "../core/sound";
 import { State } from "../core/state";
 
 export interface LazoIslandHost {
   /** Opens the island on its usual view. */
   alert(view: "overview"): void;
+  /** Shows the island's compact bar. */
+  reveal(): void;
+  /** Opens the island on a view. */
+  expand(view: "prompt"): void;
+  /** A dropped file goes to the AI chat. */
+  askAboutFile(path: string): void;
 }
 
 export function registerLazoHandlers(island: LazoIslandHost) {
-  if (!IS_TAURI || !State.settings.activeIntegrations.includes(LAZO_ID)) return;
+  // Windows has the engine inside the app; the people and the chat work even if the Lazo pill is not declared.
+  if (!IS_TAURI || State.os !== "windows") return;
+  Lazo.hooks.askAboutFile = (path) => island.askAboutFile(path);
+  Lazo.hooks.openChat = (peerId) => {
+    Lazo.chatMode = "people";
+    Lazo.chatPeer = peerId;
+    island.expand("prompt");
+  };
   startLazo({
     changed: () => State.notify(),
+    messaged: () => {
+      Sound.play("blip");
+      if (State.mode === "hidden") island.reveal();
+    },
     offered: () => {
       State.setFocus(LAZO_ID);
       Sound.play("question");

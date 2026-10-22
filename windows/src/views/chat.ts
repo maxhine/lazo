@@ -15,6 +15,8 @@ import {
 } from "../core/providers";
 import { Sound } from "../core/sound";
 import { State, type ChatMessage } from "../core/state";
+import { Lazo } from "../core/lazo";
+import { buildPeopleChat } from "./lazo";
 import type { ViewHost } from "./views";
 import { N_, t, tl } from "../i18n/i18n";
 
@@ -231,7 +233,20 @@ export function buildPrompt(onHeightChange: () => void): ViewHost {
   });
   body.append(chipRow, log, picker.el, modelRow, bar);
 
-  const el = h("div", { class: "view" }, h("div", { class: "card wash chat-card" }, body));
+  // On Windows the message icon has two uses: the AI (as on the Mac), and the people on Lazo's network.
+  const peopleChat = buildPeopleChat();
+  const peopleBadge = h("i", { class: "right-badge" });
+  const setMode = (mode: "ai" | "people") => {
+    if (Lazo.chatMode === mode) return;
+    Lazo.chatMode = mode;
+    State.notify();
+    window.setTimeout(() => (mode === "ai" ? input.focus() : peopleChat.focus()), 0);
+  };
+  const modeAi = h("button", { class: "right-tab", onclick: () => setMode("ai") }, h("span", { text: "Nudo" }));
+  const modePeople = h("button", { class: "right-tab", onclick: () => setMode("people") }, h("span", { text: tl("People") }), peopleBadge);
+  const modeRow = h("div", { class: "mode-row right-switch" }, modeAi, modePeople);
+
+  const el = h("div", { class: "view" }, h("div", { class: "card wash chat-card" }, modeRow, body, peopleChat.el));
   (el.querySelector(".card") as HTMLElement).style.setProperty("--wash", "rgba(99,102,241,0.5)");
 
   let sending = false;
@@ -319,6 +334,19 @@ export function buildPrompt(onHeightChange: () => void): ViewHost {
   return {
     el,
     sync() {
+      const lazoHere = State.os === "windows";
+      const people = lazoHere && Lazo.chatMode === "people";
+      modeRow.style.display = lazoHere ? "" : "none";
+      modeAi.classList.toggle("on", !people);
+      modePeople.classList.toggle("on", people);
+      body.style.display = people ? "none" : "";
+      peopleChat.el.style.display = people ? "" : "none";
+      const unreadNow = Lazo.engine?.unreadTotal() ?? 0;
+      peopleBadge.textContent = unreadNow > 0 ? String(unreadNow) : "";
+      peopleBadge.style.display = unreadNow > 0 ? "" : "none";
+      peopleChat.sync();
+      if (people) return;
+
       const file = State.droppedFile;
       const wantChip = file?.name ?? "";
       if (chipRow.dataset.label !== wantChip) {
@@ -345,6 +373,10 @@ export function buildPrompt(onHeightChange: () => void): ViewHost {
       input.disabled = sending;
     },
     focus() {
+      if (State.os === "windows" && Lazo.chatMode === "people") {
+        peopleChat.focus();
+        return;
+      }
       input.focus();
       input.select();
     },

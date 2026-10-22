@@ -42,6 +42,8 @@ async function main() {
   }
 
   const island = new Island(root);
+  // Only in `vite` development: lets the browser console drive the island (docs/integracion.md).
+  if (import.meta.env.DEV) (window as unknown as { __island: Island }).__island = island;
 
   const boot = await Bridge.boot();
   if (boot) {

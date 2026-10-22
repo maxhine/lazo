@@ -114,6 +114,8 @@ export class Island {
 
   /** The next reveal from hidden makes no peek (music starting, as on macOS). */
   private silentReveal = false;
+  /** A file is being held over the island and Lazo's people are showing instead of the drop animation. */
+  private lazoDrag = false;
 
   /** Drop sequence bookkeeping: last tick played, and whether the ✓ has fired. */
   private uploadTens = 0;
@@ -556,6 +558,14 @@ export class Island {
       case "over": {
         if (State.fileDragOver) return;
         State.fileDragOver = true;
+        // With Lazo up, a file is for somebody on the network: show who is there while it is held over the island.
+        if (this.lazoReady()) {
+          this.lazoDrag = true;
+          State.setFocus(LAZO_ID);
+          Lazo.pendingFile = null;
+          this.alert("overview");
+          break;
+        }
         this.engine.animateMorph(1);
         // enterZone must run before the island expands, so the sequence is
         // already active by the time the view becomes `upload`.
@@ -566,6 +576,11 @@ export class Island {
       case "leave": {
         if (!State.fileDragOver) return;
         State.fileDragOver = false;
+        if (this.lazoDrag) {
+          this.lazoDrag = false;
+          State.notify();
+          break;
+        }
         this.engine.animateMorph(0);
         // The island deliberately stays open: the drag session is still alive.
         UploadSeq.exitZone();
@@ -574,19 +589,21 @@ export class Island {
       }
       case "drop": {
         State.fileDragOver = false;
+        this.lazoDrag = false;
         const path = e.paths?.[0];
         if (!path) {
           this.engine.animateMorph(0);
           this.setView(State.defaultView());
           return;
         }
-        // With Lazo in front the file is for a person on the network, not for the chat.
-        if (State.focusTask?.id === LAZO_ID && lazoConnected()) {
+        // The file is for a person on the network; the card offers the AI as the other choice.
+        if (this.lazoReady()) {
+          State.setFocus(LAZO_ID);
           Lazo.pendingFile = { name: path.split(/[\\/]/).pop() || "file", path };
           Lazo.notice = "";
           this.engine.animateMorph(0);
           Sound.play("approve");
-          this.setView(State.defaultView());
+          this.setView("overview");
           State.notify();
           break;
         }
@@ -594,6 +611,16 @@ export class Island {
         break;
       }
     }
+  }
+
+  /** The Lazo pill is there and its engine is up: dropped files go to people first. */
+  private lazoReady(): boolean {
+    return lazoConnected() && State.tasks.some((t) => t.id === LAZO_ID);
+  }
+
+  /** "Ask the AI instead": the file goes to the chat as it would without Lazo. */
+  askAboutFile(path: string) {
+    this.swallow(path);
   }
 
   /**

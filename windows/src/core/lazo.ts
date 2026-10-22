@@ -18,6 +18,17 @@ export const Lazo = {
   pendingFile: null as { name: string; path: string } | null,
   /** The last thing that happened to a transfer, for the card's footer. */
   notice: "",
+  /** What the message icon opens: the AI, or the people on the network. */
+  chatMode: "ai" as "ai" | "people",
+  /** The person whose conversation is open in the people chat. */
+  chatPeer: null as string | null,
+  /** What the views ask of the island (set by island/lazo.ts). */
+  hooks: {
+    /** "Ask the AI instead": send a dropped file to the AI chat. */
+    askAboutFile: (_path: string): void => {},
+    /** Open the conversation with somebody. */
+    openChat: (_peerId: string): void => {},
+  },
 };
 
 export function lazoConnected(): boolean {
@@ -43,6 +54,8 @@ export interface LazoHost {
   changed(): void;
   /** A file is offered while the island may be closed: bring the card up. */
   offered(offer: EngineOffer): void;
+  /** Somebody wrote to us. */
+  messaged(peerId: string, name: string, text: string): void;
 }
 
 /**
@@ -92,6 +105,7 @@ export function startLazo(host: LazoHost): LazoEngine {
   let offers = 0;
   engine.on((e: EngineEvent) => {
     if (engine.state.connected) Lazo.error = "";
+    if (e.type === "chat") host.messaged(e.chat.peerId, e.chat.name, e.chat.text);
     if (e.type === "sendDone") {
       Lazo.notice = e.ok ? "sent" : e.message;
     }

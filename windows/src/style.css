@@ -2766,7 +2766,8 @@ html[data-dir="rtl"] #views :is(.bubble, .reply .md-p, .reply .md-h, .reply .md-
   flex-direction: column;
   gap: 8px;
   min-width: 0;
-  padding-right: 24px;
+  /* Nudo stands on the left of every card: the same room the other cards leave him. */
+  padding: 0 24px 0 108px;
 }
 
 .lazo-title {
@@ -2788,7 +2789,7 @@ html[data-dir="rtl"] #views :is(.bubble, .reply .md-p, .reply .md-h, .reply .md-
   display: flex;
   flex-direction: column;
   gap: 2px;
-  max-height: 128px;
+  max-height: 60px;
   overflow-y: auto;
 }
 
@@ -2796,7 +2797,7 @@ html[data-dir="rtl"] #views :is(.bubble, .reply .md-p, .reply .md-h, .reply .md-
   display: flex;
   align-items: center;
   gap: 8px;
-  padding: 4px 6px;
+  padding: 2px 6px;
   border-radius: 8px;
   min-width: 0;
 }
@@ -2806,9 +2807,9 @@ html[data-dir="rtl"] #views :is(.bubble, .reply .md-p, .reply .md-h, .reply .md-
 }
 
 .lazo-avatar {
-  flex: 0 0 22px;
-  width: 22px;
-  height: 22px;
+  flex: 0 0 20px;
+  width: 20px;
+  height: 20px;
   border-radius: 50%;
   display: grid;
   place-items: center;
@@ -2881,4 +2882,137 @@ html[data-dir="rtl"] #views :is(.bubble, .reply .md-p, .reply .md-h, .reply .md-
   display: block;
   height: 100%;
   background: var(--ink);
+}
+
+/* Where the pills are, the people can stand instead; and the same switch in the chat (views/lazo.ts, views.ts, chat.ts). */
+
+.right-switch {
+  position: absolute;
+  top: 5px;
+  right: 10px;
+  z-index: 3;
+  display: flex;
+  gap: 2px;
+  padding: 2px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.07);
+}
+
+.right-tab {
+  border: 0;
+  background: transparent;
+  color: var(--dim-2);
+  font: 500 10px var(--font);
+  padding: 2px 8px;
+  border-radius: 999px;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  cursor: default;
+}
+
+.right-tab.on {
+  background: rgba(255, 255, 255, 0.16);
+  color: var(--ink);
+}
+
+.right-badge,
+.lazo-unread {
+  min-width: 13px;
+  height: 13px;
+  padding: 0 3px;
+  border-radius: 7px;
+  background: #f4505e;
+  color: #fff;
+  font: 600 9px var(--font);
+  font-style: normal;
+  display: inline-grid;
+  place-items: center;
+  box-sizing: border-box;
+}
+
+.people-col {
+  position: relative;
+  z-index: 1;
+  height: 100%;
+  box-sizing: border-box;
+  padding: 26px 8px 8px;
+}
+
+.lazo-people {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  max-height: 100%;
+  overflow-y: auto;
+  scrollbar-width: thin;
+  scrollbar-color: rgba(255, 255, 255, 0.18) transparent;
+}
+
+.mode-row {
+  top: 8px;
+  right: 14px;
+}
+
+.pchat {
+  position: relative;
+  z-index: 1;
+  height: 100%;
+  box-sizing: border-box;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 12px 16px 14px 84px;
+}
+
+.pchat-strip {
+  display: flex;
+  gap: 6px;
+  overflow-x: auto;
+  padding-right: 140px;
+  flex: 0 0 auto;
+  scrollbar-width: none;
+}
+
+.pchat-chip {
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  border: 0;
+  border-radius: 999px;
+  padding: 3px 9px 3px 4px;
+  background: rgba(255, 255, 255, 0.07);
+  color: var(--ink-2);
+  font: 500 11px var(--font);
+  cursor: default;
+}
+
+.pchat-chip.on {
+  background: rgba(255, 255, 255, 0.18);
+  color: var(--ink);
+}
+
+.pchat-failed {
+  color: #f4505e;
+}
+
+.lazo-links {
+  margin-left: auto;
+  margin-right: 14px;
+  display: flex;
+  gap: 10px;
+}
+
+.lazo-link {
+  border: 0;
+  background: transparent;
+  padding: 0;
+  color: var(--dim-2);
+  font: 500 11px var(--font);
+  cursor: default;
+}
+
+.lazo-link:hover {
+  color: var(--ink);
 }

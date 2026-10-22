@@ -25,3 +25,7 @@ El motor de Mac ya existe como Swift (`lazo/mac/Sources/LazoCore`, interoperable
 - Firma propia: `DEVELOPMENT_TEAM`, perfil de aprovisionamiento y `MacUpdate.teamId`; canal de actualizaciones propio.
 - El vestuario del personaje (sombreros, bufanda) se dibujó para el cuerpo redondo; con el moño hay que redibujarlo o quitarlo.
 - Los nombres de pantalla del personaje (`Nudo`) son provisionales.
+
+## Probar la interfaz sin otro equipo
+
+Con `npx vite` en `windows/` y la página abierta en un navegador, `window.__island` (solo en desarrollo) deja abrir vistas desde la consola: `__island.alert("overview")`, `__island.expand("prompt")`. Un motor simulado se monta con `LazoEngine` y un socket falso (ver `windows/tests/lazo-engine.test.mjs`), importado con `import('/src/lazo/engine.ts')` y asignado a `Lazo.engine` de `/src/core/lazo.ts`.

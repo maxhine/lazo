@@ -109,6 +109,38 @@ test("chat messages and results reach the listeners", async () => {
   assert.deepEqual(seen.find((e) => e.type === "chatSent"), { type: "chatSent", peerId: "p1", ok: false, message: "sin conexión" });
 });
 
+test("conversations keep what was said, count what was not read and mark what failed", async () => {
+  const { engine, push, socket } = await connected();
+  push({ type: "chat", peerId: "p1", name: "Luis", text: "hola" });
+  assert.equal(engine.unread.p1, 1);
+  assert.equal(engine.unreadTotal(), 1);
+  engine.markRead("p1");
+  assert.equal(engine.unreadTotal(), 0);
+  engine.activeChat = "p1";
+  push({ type: "chat", peerId: "p1", name: "Luis", text: "¿sigues ahí?" });
+  assert.equal(engine.unreadTotal(), 0, "the conversation on screen is read as it arrives");
+  engine.sendChat("p1", "  sí  ");
+  engine.sendChat("p1", "otro");
+  assert.deepEqual(socket.sent.slice(-2).map((m) => m.text), ["sí", "otro"]);
+  assert.deepEqual(engine.messages("p1").map((m) => [m.own, m.text, !!m.pending]), [
+    [false, "hola", false], [false, "¿sigues ahí?", false], [true, "sí", true], [true, "otro", true],
+  ]);
+  push({ type: "chatSent", peerId: "p1", ok: true, message: "" });
+  push({ type: "chatSent", peerId: "p1", ok: false, message: "sin conexión" });
+  const own = engine.messages("p1").filter((m) => m.own);
+  assert.deepEqual(own.map((m) => [!!m.pending, !!m.failed]), [[false, false], [false, true]]);
+  engine.sendChat("p1", "   ");
+  assert.equal(engine.messages("p1").length, 4, "an empty message is not sent");
+  assert.deepEqual(engine.messages("nadie"), []);
+});
+
+test("a message written without a connection is kept and marked failed", () => {
+  const engine = new LazoEngine("ws://x", () => fakeSocket(), 5);
+  engine.sendChat("p1", "hola");
+  assert.equal(engine.messages("p1")[0].failed, true);
+  assert.equal(engine.messages("p1")[0].pending, false);
+});
+
 test("losing the socket clears the state, fails what was in flight and reconnects", async () => {
   const sockets = [];
   const engine = new LazoEngine(async () => "ws://x", () => { const s = fakeSocket(); sockets.push(s); return s; }, 5);

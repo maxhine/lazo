@@ -4027,16 +4027,16 @@
     },
     "Not delivered": {
       "zh-Hans": "未送达",
-      "hi": "नहीं पहुँचा",
+      "hi": "पहुँचा नहीं",
       "es": "No entregado",
-      "ar": "لم يتم التسليم",
+      "ar": "لم تُسلَّم",
       "fr": "Non remis",
       "bn": "পৌঁছায়নি",
       "pt-BR": "Não entregue",
       "ru": "Не доставлено",
       "id": "Tidak terkirim",
       "de": "Nicht zugestellt",
-      "tr": "Teslim edilmedi"
+      "tr": "İletilmedi"
     },
     "Show these services on the phone": {
       "zh-Hans": "在手机上显示这些服务",
@@ -5441,6 +5441,71 @@
       "id": "Jatuhkan file ke pulau untuk mengirimnya.",
       "de": "Zieh eine Datei auf die Insel, um sie zu senden.",
       "tr": "Göndermek için bir dosyayı adaya bırakın."
+    },
+    "People": {
+      "zh-Hans": "联系人",
+      "hi": "लोग",
+      "es": "Personas",
+      "ar": "الأشخاص",
+      "fr": "Personnes",
+      "bn": "মানুষ",
+      "pt-BR": "Pessoas",
+      "ru": "Люди",
+      "id": "Orang",
+      "de": "Personen",
+      "tr": "Kişiler"
+    },
+    "Pills": {
+      "zh-Hans": "胶囊",
+      "hi": "पिल्स",
+      "es": "Pills",
+      "ar": "الأقراص",
+      "fr": "Pills",
+      "bn": "পিলস",
+      "pt-BR": "Pills",
+      "ru": "Таблетки",
+      "id": "Pill",
+      "de": "Pills",
+      "tr": "Haplar"
+    },
+    "Message {name}…": {
+      "zh-Hans": "给 {name} 发消息…",
+      "hi": "{name} को संदेश भेजें…",
+      "es": "Escribe a {name}…",
+      "ar": "اكتب رسالة إلى {name}…",
+      "fr": "Écrire à {name}…",
+      "bn": "{name}-কে বার্তা লিখুন…",
+      "pt-BR": "Escreva para {name}…",
+      "ru": "Написать {name}…",
+      "id": "Tulis pesan untuk {name}…",
+      "de": "Nachricht an {name}…",
+      "tr": "{name} kişisine yaz…"
+    },
+    "No messages yet.": {
+      "zh-Hans": "还没有消息。",
+      "hi": "अभी कोई संदेश नहीं।",
+      "es": "Aún no hay mensajes.",
+      "ar": "لا توجد رسائل بعد.",
+      "fr": "Aucun message pour l’instant.",
+      "bn": "এখনো কোনো বার্তা নেই।",
+      "pt-BR": "Ainda não há mensagens.",
+      "ru": "Сообщений пока нет.",
+      "id": "Belum ada pesan.",
+      "de": "Noch keine Nachrichten.",
+      "tr": "Henüz mesaj yok."
+    },
+    "Ask the AI instead": {
+      "zh-Hans": "改为问 AI",
+      "hi": "इसके बजाय AI से पूछें",
+      "es": "Preguntar a la IA",
+      "ar": "اسأل الذكاء الاصطناعي بدلًا من ذلك",
+      "fr": "Demander à l’IA à la place",
+      "bn": "বদলে AI-কে জিজ্ঞেস করুন",
+      "pt-BR": "Perguntar à IA",
+      "ru": "Спросить ИИ",
+      "id": "Tanya AI saja",
+      "de": "Stattdessen die KI fragen",
+      "tr": "Bunun yerine yapay zekâya sor"
     }
   }
 }

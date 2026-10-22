@@ -25,8 +25,8 @@ import { buildUpdate } from "./update";
 import { buildWhatsNew } from "./whatsnew";
 import { buildSpotifyCard, buildSpotifyPill, type SpotifyPillHost } from "./spotify";
 import { SPOTIFY_ID } from "../core/spotify";
-import { buildLazoCard } from "./lazo";
-import { LAZO_ID } from "../core/lazo";
+import { buildLazoCard, buildPeoplePanel } from "./lazo";
+import { LAZO_ID, Lazo } from "../core/lazo";
 import type { Outfit, OutfitSelection } from "../nudo/wardrobe";
 import { language, t, tl, type Msg } from "../i18n/i18n";
 import type { ViewCommand } from "../island/shortcuts";
@@ -195,7 +195,20 @@ function buildOverview(actions: ViewActions): ViewHost {
   );
   const left = card(null, leftBody, jump);
   const pills = h("div", { class: "pills" });
-  const right = card(null, pills);
+  // Where the pills are, the people on Lazo's network can stand instead (a choice kept in the settings).
+  const peoplePanel = buildPeoplePanel();
+  const people = h("div", { class: "people-col" }, peoplePanel.el);
+  const showPeopleBy = (on: boolean) => {
+    if (State.settings.showPeople === on) return;
+    State.settings = { ...State.settings, showPeople: on };
+    void Bridge.saveSettings(State.settings);
+    State.notify();
+  };
+  const pillsTab = h("button", { class: "right-tab", onclick: () => showPeopleBy(false) }, h("span", { text: tl("Pills") }));
+  const unreadBadge = h("i", { class: "right-badge" });
+  const peopleTab = h("button", { class: "right-tab", onclick: () => showPeopleBy(true) }, h("span", { text: tl("People") }), unreadBadge);
+  const rightSwitch = h("div", { class: "right-switch" }, pillsTab, peopleTab);
+  const right = card(null, pills, people, rightSwitch);
   // Opened from a plan pill in the header: stands in for the left card.
   const plan = new PlanCard();
   let planTimer: number | null = null;
@@ -402,6 +415,18 @@ function buildOverview(actions: ViewActions): ViewHost {
       if (State.cardSelection != null && State.cardSelection >= rows.length) State.cardSelection = null;
       highlightRow(rows, State.cardSelection, State.cardSelection !== shownSelection);
       shownSelection = State.cardSelection;
+
+      const lazoHere = State.os === "windows";
+      const peopleMode = lazoHere && State.settings.showPeople;
+      pills.style.display = peopleMode ? "none" : "";
+      people.style.display = peopleMode ? "" : "none";
+      rightSwitch.style.display = lazoHere ? "" : "none";
+      pillsTab.classList.toggle("on", !peopleMode);
+      peopleTab.classList.toggle("on", peopleMode);
+      const unreadNow = Lazo.engine?.unreadTotal() ?? 0;
+      unreadBadge.textContent = unreadNow > 0 ? String(unreadNow) : "";
+      unreadBadge.style.display = unreadNow > 0 ? "" : "none";
+      if (peopleMode) peoplePanel.sync();
 
       const others = State.otherTasks.slice(0, 4);
       const pillKey = others.map((t) => `${t.id}:${t.color}:${t.pillBadge ?? ""}`).join("|");
