@@ -28,6 +28,8 @@ export const Lazo = {
   dropTarget: null as string | null,
   /** Faces of the people around, as data URLs, by person (asked from the engine once each). */
   photos: {} as Record<string, string>,
+  /** Our own face, as a data URL ("" when there is none). */
+  selfPhoto: "",
   /** What the views ask of the island (set by island/lazo.ts). */
   hooks: {
     /** "Ask the AI instead": send a dropped file to the AI chat. */
@@ -121,6 +123,8 @@ export function startLazo(host: LazoHost): LazoEngine {
         engine.requestPhoto(p.id);
       }
     }
+    const own = engine.state.self?.photo;
+    Lazo.selfPhoto = own ? `data:image/jpeg;base64,${own}` : "";
     if (e.type === "photo" && e.data) Lazo.photos[e.peerId] = `data:image/jpeg;base64,${e.data}`;
     if (e.type === "chat") host.messaged(e.chat.peerId, e.chat.name, e.chat.text);
     if (e.type === "sendDone") {

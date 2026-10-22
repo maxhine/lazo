@@ -166,3 +166,11 @@ test("close() stops the retries", async () => {
   await new Promise((r) => setTimeout(r, 30));
   assert.equal(sockets.length, 1);
 });
+
+test("our own photo comes with hello, and its absence is an empty string", async () => {
+  const { engine, push } = await connected();
+  push({ ...hello, photo: "QUJD" });
+  assert.equal(engine.state.self.photo, "QUJD");
+  push(hello);
+  assert.equal(engine.state.self.photo, "");
+});

@@ -106,6 +106,24 @@ function offerRow(offer: EngineOffer): HTMLElement {
 }
 
 /** What changes the people list as drawn: names, who is sharing, unread counts. */
+/** Green while we can talk to them, grey when we should not (their identity changed). */
+export function isOnline(peer: EnginePeer): boolean {
+  return lazoConnected() && !peer.identityChanged;
+}
+
+/** A person as a little tile, like a pill: their face, their name and a dot (green: here, grey: not trusted). */
+function personTile(peer: EnginePeer): HTMLElement {
+  const count = unread(peer.id);
+  const tile = h("div", { class: "person-tile", style: `--acc:${accentFor(peer.id)}`, title: peer.identityChanged ? t("Changed identity") : peer.name },
+    avatar(peer),
+    h("span", { class: "person-name", text: peer.name }),
+    h("i", { class: isOnline(peer) ? "status-dot on" : "status-dot" }),
+    count > 0 ? h("span", { class: "lazo-unread person-unread", text: String(count) }) : null,
+  );
+  tile.addEventListener("click", () => pick(peer));
+  return tile;
+}
+
 function peopleKey(): string {
   return JSON.stringify(lazoPeers().map((p) => [p.id, p.name, p.sharing, p.identityChanged, unread(p.id), Lazo.photos[p.id] ? 1 : 0]));
 }
@@ -191,7 +209,7 @@ export function buildPeoplePanel(): LazoCardHost {
       } else if (peers.length === 0) {
         el.append(h("div", { class: "lazo-empty", text: t("Nobody nearby yet. Open Lazo on another computer in this network.") }));
       } else {
-        for (const p of peers) el.append(personRow(p));
+        for (const p of peers) el.append(personTile(p));
       }
     },
   };

@@ -103,6 +103,8 @@ pub struct Settings {
     pub show_clock: bool,
     /// The island's right-hand column lists the people on Lazo's network instead of the pills.
     pub show_people: bool,
+    /// The compact island shows the profile photo and the people on the network (with their photos) instead of Nudo and the pills.
+    pub compact_people: bool,
 }
 
 #[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
@@ -171,6 +173,7 @@ impl Default for Settings {
             phone_relay_url: String::new(),
             show_clock: false,
             show_people: true,
+            compact_people: false,
         }
     }
 }
@@ -460,7 +463,8 @@ mod tests {
   "phoneRelay": true,
   "phoneRelayUrl": "wss://relay.example.workers.dev",
   "showClock": true,
-  "showPeople": false
+  "showPeople": false,
+  "compactPeople": true
 }"##;
 
     fn custom() -> Value {
@@ -980,6 +984,7 @@ mod tests {
                 "phoneRelayUrl",
                 "showClock",
                 "showPeople",
+                "compactPeople",
             ]
         );
         let _ = std::fs::remove_dir_all(&dir);

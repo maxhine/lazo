@@ -6845,6 +6845,32 @@
       "id": "Mata beranimasi",
       "de": "Animierte Augen",
       "tr": "Animasyonlu gözler"
+    },
+    "Photos in the compact island": {
+      "zh-Hans": "在紧凑灵动岛中显示照片",
+      "hi": "कॉम्पैक्ट आइलैंड में फ़ोटो",
+      "es": "Fotos en la isla compacta",
+      "ar": "الصور في الجزيرة المصغّرة",
+      "fr": "Photos dans l’île compacte",
+      "bn": "কমপ্যাক্ট আইল্যান্ডে ছবি",
+      "pt-BR": "Fotos na ilha compacta",
+      "ru": "Фото в компактном острове",
+      "id": "Foto di pulau ringkas",
+      "de": "Fotos in der kompakten Insel",
+      "tr": "Kompakt adada fotoğraflar"
+    },
+    "When the island is compact it shows your Lazo photo and, instead of the pills, the people who are on your network with theirs.": {
+      "zh-Hans": "灵动岛收起时显示你的 Lazo 照片，并用网络中的在线用户及其照片取代药丸。",
+      "hi": "आइलैंड कॉम्पैक्ट होने पर आपकी Lazo फ़ोटो दिखती है और पिल्स की जगह आपके नेटवर्क के लोग उनकी फ़ोटो के साथ दिखते हैं।",
+      "es": "Cuando la isla está compacta muestra tu foto de Lazo y, en vez de los pills, a las personas de tu red con las suyas.",
+      "ar": "عندما تكون الجزيرة مصغّرة تعرض صورتك في Lazo، وبدلًا من الحبوب تعرض الأشخاص على شبكتك مع صورهم.",
+      "fr": "Quand l’île est compacte, elle affiche votre photo Lazo et, à la place des pills, les personnes de votre réseau avec la leur.",
+      "bn": "আইল্যান্ড কমপ্যাক্ট হলে আপনার Lazo ছবি দেখায় এবং পিলের জায়গায় আপনার নেটওয়ার্কের মানুষদের তাঁদের ছবিসহ দেখায়।",
+      "pt-BR": "Quando a ilha está compacta, mostra sua foto do Lazo e, no lugar dos pills, as pessoas da sua rede com as fotos delas.",
+      "ru": "В компактном режиме остров показывает ваше фото Lazo и вместо пилюль — людей из вашей сети с их фото.",
+      "id": "Saat pulau ringkas, tampil foto Lazo Anda dan, sebagai ganti pill, orang-orang di jaringan Anda beserta foto mereka.",
+      "de": "Ist die Insel kompakt, zeigt sie dein Lazo-Foto und statt der Pills die Personen in deinem Netzwerk mit ihren Fotos.",
+      "tr": "Ada kompakt olduğunda Lazo fotoğrafınızı ve hapların yerine ağınızdaki kişileri fotoğraflarıyla gösterir."
     }
   }
 }

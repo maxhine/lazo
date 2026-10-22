@@ -4368,3 +4368,139 @@ html[data-dir="rtl"] #views :is(.bubble, .reply .md-p, .reply .md-h, .reply .md-
     animation: none;
   }
 }
+
+/* People as tiles, like the pills (views/lazo.ts): face, name and a dot for the state. */
+.lazo-people {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  grid-auto-rows: 28px;
+  gap: 4px;
+  align-content: safe center;
+  padding: 0 8px;
+  max-height: 100%;
+}
+
+.person-tile {
+  position: relative;
+  height: 28px;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 0 14px 0 4px;
+  border-radius: 999px;
+  background: var(--card-flat);
+  border: 1px solid color-mix(in srgb, var(--acc) 30%, transparent);
+  box-sizing: border-box;
+  cursor: default;
+  transition: transform 0.2s cubic-bezier(0.3, 1.2, 0.4, 1), background 0.18s, border-color 0.18s, box-shadow 0.18s;
+  animation: rise 0.4s cubic-bezier(0.3, 1.2, 0.4, 1) backwards;
+}
+
+.person-tile:nth-child(2) {
+  animation-delay: 0.04s;
+}
+
+.person-tile:nth-child(3) {
+  animation-delay: 0.08s;
+}
+
+.person-tile:nth-child(4) {
+  animation-delay: 0.12s;
+}
+
+.person-tile:hover {
+  transform: scale(1.04);
+  background: color-mix(in srgb, var(--acc) 18%, var(--card-flat));
+  border-color: color-mix(in srgb, var(--acc) 70%, transparent);
+  box-shadow: 0 2px 10px color-mix(in srgb, var(--acc) 35%, transparent);
+}
+
+.person-tile:active {
+  transform: scale(0.95);
+}
+
+.person-tile .lazo-avatar {
+  width: 20px;
+  height: 20px;
+  flex: 0 0 20px;
+}
+
+.person-name {
+  flex: 1 1 auto;
+  min-width: 0;
+  text-align: center;
+  font: 600 10px var(--font);
+  color: var(--dim-3);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.person-tile:hover .person-name {
+  color: var(--ink);
+}
+
+.status-dot {
+  position: absolute;
+  right: 6px;
+  top: 50%;
+  width: 6px;
+  height: 6px;
+  margin-top: -3px;
+  border-radius: 50%;
+  background: #6b7078;
+}
+
+.status-dot.on {
+  background: #4ade80;
+  box-shadow: 0 0 6px rgba(74, 222, 128, 0.7);
+}
+
+.person-unread {
+  position: absolute;
+  top: -4px;
+  right: 3px;
+}
+
+/* The compact island: our own photo where Nudo is, and the people where the pills are. */
+#self-photo {
+  position: absolute;
+  border-radius: 50%;
+  background-size: cover;
+  background-position: center;
+  box-shadow: 0 0 0 1.5px rgba(255, 255, 255, 0.85), 0 2px 8px rgba(0, 0, 0, 0.5);
+  pointer-events: none;
+  opacity: 0;
+  transition: opacity 0.25s ease-in-out;
+}
+
+#mini-grid .mini-face {
+  position: relative;
+  width: 13px;
+  height: 13px;
+  border-radius: 50%;
+  display: grid;
+  place-items: center;
+  background-size: cover;
+  background-position: center;
+  background-color: color-mix(in srgb, var(--acc) 45%, #1a1a1a);
+  box-shadow: 0 0 0 1px color-mix(in srgb, var(--acc) 70%, transparent);
+  font: 700 7px var(--font);
+  color: #fff;
+}
+
+#mini-grid .mini-face i {
+  position: absolute;
+  right: -2px;
+  bottom: -2px;
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+  background: #6b7078;
+  box-shadow: 0 0 0 1px #000;
+}
+
+#mini-grid .mini-face i.on {
+  background: #4ade80;
+}

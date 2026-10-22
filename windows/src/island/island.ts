@@ -15,6 +15,8 @@ import { State } from "../core/state";
 import { SPOTIFY_ID, islandDances } from "../core/spotify";
 import { LAZO_ID, Lazo, lazoConnected, lazoPeers } from "../core/lazo";
 import { Cloud } from "../core/lazo-tools";
+import { accentFor } from "../core/accent";
+import { isOnline } from "../views/lazo";
 import type { EnginePeer } from "../lazo/engine";
 import { t } from "../i18n/i18n";
 import { BotEngine, hexToRGB } from "../nudo/engine";
@@ -64,6 +66,8 @@ export class Island {
   private botGlow!: HTMLElement;
   private greetingCanvas!: HTMLCanvasElement;
   private miniGrid!: HTMLElement;
+  /** Our own Lazo photo, where Nudo is, while the island is compact and the setting is on. */
+  private selfPhoto!: HTMLElement;
   private clockEl!: HTMLElement;
   private clockTimer?: number;
   private countdown!: HTMLElement;
@@ -272,6 +276,7 @@ export class Island {
     this.botCanvas = h("canvas", { id: "bot-canvas" });
     this.greetingCanvas = h("canvas", { id: "greeting-canvas" });
     this.miniGrid = h("div", { id: "mini-grid" });
+    this.selfPhoto = h("div", { id: "self-photo" });
     this.clockEl = h("div", { id: "island-clock" });
     this.countdown = h("div", { id: "countdown" });
 
@@ -306,6 +311,7 @@ export class Island {
       this.clipEl,
       this.botGlow,
       this.botCanvas,
+      this.selfPhoto,
       this.miniGrid,
       this.clockEl,
       this.countdown,
@@ -1147,7 +1153,21 @@ export class Island {
     // desktop, he isn't here at all.
     const away = State.nudoOnDesktop;
     const visible = p.opacity > 0 && !greetingActive && !this.uploadActive && !away;
-    this.botCanvas.style.opacity = visible ? "1" : "0";
+    // Compact, with the setting on and a photo of ours: the photo stands where Nudo would.
+    const photo = State.mode === "compact" && State.settings.compactPeople && State.os === "windows" && !!Lazo.selfPhoto;
+    this.botCanvas.style.opacity = visible && !photo ? "1" : "0";
+    this.selfPhoto.style.opacity = visible && photo ? "1" : "0";
+    if (photo) {
+      const d = p.diameter * 0.9;
+      if (this.selfPhoto.dataset.src !== Lazo.selfPhoto) {
+        this.selfPhoto.dataset.src = Lazo.selfPhoto;
+        this.selfPhoto.style.backgroundImage = `url(${Lazo.selfPhoto})`;
+      }
+      this.selfPhoto.style.width = `${d}px`;
+      this.selfPhoto.style.height = `${d}px`;
+      this.selfPhoto.style.left = `${this.botCx.value - d / 2}px`;
+      this.selfPhoto.style.top = `${this.botCy.value - d / 2}px`;
+    }
 
     if (State.mode === "expanded" && State.view !== "uploading" && !greetingActive && !this.uploadActive && !away) {
       const d = p.diameter;
@@ -1305,11 +1325,22 @@ export class Island {
     const showGrid = State.mode === "compact";
     this.miniGrid.style.opacity = showGrid ? "1" : "0";
     if (showGrid) {
-      const others = State.otherTasks.slice(0, 4);
-      const key = others.map((t) => t.id).join("|");
+      // With the setting on, the people on the network (faces) take the place of the pills.
+      const people = State.settings.compactPeople && State.os === "windows" && lazoConnected() ? lazoPeers().slice(0, 4) : null;
+      const others = people ? [] : State.otherTasks.slice(0, 4);
+      const key = people
+        ? "people:" + people.map((p) => `${p.id}:${p.name}:${Lazo.photos[p.id] ? 1 : 0}:${isOnline(p) ? 1 : 0}`).join("|")
+        : others.map((t) => t.id).join("|");
       if (this.miniGrid.dataset.key !== key) {
         this.miniGrid.dataset.key = key;
         this.miniGrid.replaceChildren();
+        if (people) {
+          for (const p of people) {
+            const face = h("span", { class: "mini-face", style: `--acc:${accentFor(p.id)}`, title: p.name }, Lazo.photos[p.id] ? "" : (Array.from(p.name.trim())[0] ?? "?").toUpperCase(), h("i", { class: isOnline(p) ? "on" : "" }));
+            if (Lazo.photos[p.id]) face.style.backgroundImage = `url(${Lazo.photos[p.id]})`;
+            this.miniGrid.append(face);
+          }
+        }
         for (const t of others) {
           this.miniGrid.append(createMiniBot(t, 13));
         }

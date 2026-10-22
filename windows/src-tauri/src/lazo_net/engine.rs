@@ -153,7 +153,8 @@ impl Engine {
         name.unwrap_or_else(|| "Lazo".to_string())
     }
 
-    fn photo(&self) -> String {
+    /// The profile photo as base64 JPEG, or empty when there is none (shared %APPDATA%Lazoprofile.jpg).
+    pub fn photo(&self) -> String {
         use base64::Engine as _;
         match std::fs::read(self.profile.join("profile.jpg")) {
             Ok(bytes) if !bytes.is_empty() && bytes.len() <= 9000 => base64::engine::general_purpose::STANDARD.encode(bytes),

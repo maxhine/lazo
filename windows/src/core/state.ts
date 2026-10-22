@@ -107,6 +107,8 @@ export interface Settings {
   showClock: boolean;
   /** The right-hand column lists the people on Lazo's network instead of the pills. */
   showPeople: boolean;
+  /** The compact island shows the profile photo and the people (with photos) instead of Nudo and the pills. */
+  compactPeople: boolean;
   absenceInterval: number;
   /** Declared pills next to the main one (at most 4), in the order they were added. */
   activeIntegrations: string[];
@@ -175,6 +177,7 @@ export const DEFAULT_SETTINGS: Settings = {
   openOnHover: false,
   showClock: false,
   showPeople: true,
+  compactPeople: false,
   absenceInterval: 180,
   activeIntegrations: [
     "integration_lazo", "integration_n8n", "integration_vercel", "integration_github",

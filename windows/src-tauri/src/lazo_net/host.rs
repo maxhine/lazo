@@ -91,6 +91,7 @@ impl Host {
         json!({
             "type": "hello", "version": PROTOCOL_VERSION, "selfId": self.engine.self_id(), "name": self.engine.display_name(),
             "fingerprint": self.engine.fingerprint(), "receiveDir": self.engine.receive_dir().to_string_lossy(),
+            "photo": self.engine.photo(),
         })
     }
 

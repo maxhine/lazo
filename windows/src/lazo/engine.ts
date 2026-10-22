@@ -55,6 +55,8 @@ export interface EngineSelf {
   name: string;
   fingerprint: string;
   receiveDir: string;
+  /** Our own profile photo, base64 JPEG ("" when there is none). */
+  photo: string;
 }
 
 export interface EngineState {
@@ -250,7 +252,7 @@ export class LazoEngine {
           this.close();
           return;
         }
-        s.self = { id: m.selfId, name: m.name, fingerprint: m.fingerprint, receiveDir: m.receiveDir };
+        s.self = { id: m.selfId, name: m.name, fingerprint: m.fingerprint, receiveDir: m.receiveDir, photo: m.photo ?? "" };
         this.emit({ type: "state" });
         break;
       case "peers":
