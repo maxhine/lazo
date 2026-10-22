@@ -1,4 +1,6 @@
-*.cs text eol=lf
-*.ps1 text eol=lf
-*.md text eol=lf
-*.manifest text eol=lf
+docs/** linguist-documentation
+design/** linguist-documentation
+
+android/gradlew text eol=lf
+android/**/*.sh text eol=lf
+android/**/*.mjs text eol=lf

@@ -1,0 +1,11 @@
+bin/
+dist/
+obj/
+*.pdb
+*.user
+*.suo
+tests/interop/obj/
+tests/interop/bin/
+mac/.build/
+mac/.swiftpm/
+.DS_Store
