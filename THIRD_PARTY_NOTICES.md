@@ -1,3 +1,9 @@
+# Avisos de terceros
+
+Esta rama de Lazo incorpora código de una aplicación de código abierto (isla de notch para agentes de IA) publicada bajo licencia MIT. El código se usa conforme a esa licencia. No se usan su nombre, su personaje, sus íconos, sus sonidos ni sus medios, que no están cubiertos por la licencia; los equivalentes de esta rama son propios.
+
+## Aviso de licencia MIT del código incorporado
+
 MIT License
 
 Copyright (c) 2026 Louis Raillé

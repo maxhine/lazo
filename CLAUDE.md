@@ -1,34 +1,17 @@
-# Lazo — guide for AI coding agents
+# Lazo Isla — guía para agentes
 
-Lazo is a native macOS app (`NotchBuddy/`); `windows/` is the Tauri version for Windows and Linux. Nudo, a small animated character living in the MacBook notch, shows AI coding agent sessions (Claude Code, Gemini CLI, Antigravity and more) and a few integrations, and lets the user approve, answer, chat and drop files from the notch.
+Rama de Lazo: interfaz de isla (Mac `NotchBuddy/`, Windows `windows/`) con el motor de Lazo integrado. Lazo clásico vive en `lazo/` y no se toca desde aquí salvo para extraer su motor.
 
-## Where things are
-- `NotchBuddy/Sources/App/` — Mac-only Swift code. `NotchBuddy/Sources/LazoKit/` — code shared with the iPhone app (Nudo's BotEngine and outfits, pills, diff, models). `NotchBuddy/Sources/Phone/` — iPhone app (`LazoPhone` target), with its widgets in `Sources/Widgets/` and the expanded approval notification in `Sources/NotificationContent/`. `NotchBuddy/Resources/sounds/` — the 28 WAV sounds. `NotchBuddy/project.yml` — XcodeGen project (never edit the `.xcodeproj` by hand).
-- `NotchBuddy/Sources/LazoKit/PillCatalog.swift` — single source of truth for all declared pills (workspace tools, agents, AI providers, services). Every pill ID, color, category and subtitle lives here.
-- `docs/SPEC.md`, `docs/INTEGRATIONS.md` — behaviour, views, states, integrations (in French).
-- `design/prototype/notch-buddy.html` — original prototype, the visual source of truth. `design/captures/` — target screenshots.
-- `windows/` — the Tauri app for Windows and Linux: Rust in `src-tauri/`, TypeScript in `src/`, the `lazo-hook` relay in `hook/`. `windows/README.md` lists what differs from the Mac.
-- `docs/*.html` — the GitHub Pages site (privacy, terms, support, legal notice).
-- `relay/` — the Lazo relay, a stateless Cloudflare Worker that forwards the iPhone Live Activity pushes (it holds the APNs key, which must never ship in an app). See `relay/README.md`.
+## Reglas
+- No usar ni reintroducir el nombre, personaje, íconos, sonidos o medios del proyecto base: todo lo visible es propio (personaje «Nudo» provisional, sonidos sintetizados, íconos propios). Ver `THIRD_PARTY_NOTICES.md`.
+- No hay telemetría ni servicios por defecto: sin actualizador, relay ni donaciones del autor original. Llamadas de red solo a servicios que el usuario configure.
+- Secretos en Keychain, nunca en disco ni en git. Nunca pisar `~/.claude/settings.json` sin copia con fecha y confirmación.
+- No bloquear al agente: si la app no responde, el hook sale de inmediato.
+- Los IDs de pills son contrato estable (Keychain, UserDefaults, hooks): no renombrarlos.
+- `NotchBuddy.xcodeproj` se genera con XcodeGen y no se versiona.
+- Bundle id: `com.sarca.lazo.isla`.
 
-## Build
-```
-cd NotchBuddy && xcodegen && xcodebuild -scheme NotchBuddy -configuration Debug build
-```
-To run it day to day on the Mac (signed, iPhone link, permissions kept across builds): `./scripts/dev-install.sh` — it installs the only Lazo in /Applications and removes the copies earlier builds left.
-Windows and Linux: `cd windows && npm install && npm run tauri dev`
-
-## Rules
-- Swift 6, SwiftUI + AppKit. No third-party dependencies unless truly unavoidable. The character is drawn in code (`Canvas` + `TimelineView`), no Rive/Lottie/images.
-- Secrets live in the Keychain, never on disk or in git.
-- No telemetry. Network calls only to services the user configured.
-- Never block Claude Code: if the app doesn't answer, the hook exits immediately.
-- Never overwrite `~/.claude/settings.json`: dated backup, merge, show the diff, write only after the user confirms.
-- Never send an email or approve a Claude Code or Codex permission without an explicit click.
-- Performance: 0 % CPU when the island is hidden.
-- Keep the bundle identifier `com.sarca.lazo.isla` (Keychain items, preferences and permissions depend on it).
-- Never restyle what already ships (pills, cards, Settings, chat…): existing views stay exactly as they are in `main`, which is the App Store build. Change the look of an existing view only when explicitly asked.
-- Pill IDs are stable contract values (Keychain, UserDefaults, hook routing): never rename an existing pill ID.
-- New views follow the existing app style. `design/prototype/notch-buddy.html` and `design/captures/` are references for new work, not a reason to change existing views.
-- Every release adds its CHANGELOG.md section, a row in the README Versions table, and commits the regenerated Info.plist with the new version.
-- Every release also adds its What's new, shown once in the notch or the island after Lazo updates itself: an entry for the new version in `NotchBuddy/Resources/whats-new.json` (Mac, the 14 languages) or `windows/src/whats-new/whats-new.json` (Windows and Linux, the 12 languages). 1 to 4 items picked from the CHANGELOG section, each with an icon from `scripts/test-whats-new.py`, a short title and one line, translated in every language. `python3 scripts/test-whats-new.py` checks it; CI and `release.sh` fail without it.
+## Dónde está cada cosa
+- `NotchBuddy/Sources/App/` Swift solo Mac; `NotchBuddy/Sources/LazoKit/` motor del personaje, pills (`PillCatalog.swift`), modelos.
+- `NotchBuddy/Resources/sounds/` sonidos propios (sintetizados).
+- `windows/src/` TypeScript; `windows/src-tauri/src/` Rust.
