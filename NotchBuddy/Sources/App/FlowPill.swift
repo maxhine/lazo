@@ -34,7 +34,7 @@ final class FlowPillModel: ObservableObject {
     enum Phase: Equatable {
         /// Resting: a small pill at the bottom of the screen, there as long as Flow dictation is on.
         case idle
-        /// The key is held: the pill opens, Mochi on the left, the dots follow the voice.
+        /// The key is held: the pill opens, Nudo on the left, the dots follow the voice.
         case listening
         /// Hands-free (double tap, or the pill's microphone): ✕, the dots and ✓, with an orange ring.
         case locked
@@ -110,8 +110,8 @@ private extension Array {
 }
 
 /// The pill at the bottom of the screen, like Wispr Flow's bar. Resting, it is a small see-through
-/// pill; under the pointer it opens into Mochi and three buttons (dictate, record a call, open
-/// Coucou), each with its bubble. When you speak it opens into Mochi and nine dots rising and
+/// pill; under the pointer it opens into Nudo and three buttons (dictate, record a call, open
+/// Lazo), each with its bubble. When you speak it opens into Nudo and nine dots rising and
 /// falling with the graves and the aigus of the voice. Messages (a paste that could not happen, a
 /// call's notes ready) grow above it, with a button to act.
 struct FlowPillView: View {
@@ -271,7 +271,7 @@ struct FlowPillView: View {
         switch look {
         case .toolbar:
             line(spacing: 4) {
-                mochi.padding(vertical ? .bottom : .trailing, 5)
+                nudo.padding(vertical ? .bottom : .trailing, 5)
                 PillButton(symbol: "mic.fill", tip: String(format: String(localized: "flow.tip.dictate %@"), model.keyLabel),
                            model: model) { model.dictate?() }
                 PillButton(symbol: "record.circle", tip: String(localized: "flow.tip.note"), model: model) {
@@ -294,7 +294,7 @@ struct FlowPillView: View {
             .fixedSize()
         case .message where vertical:
             line(spacing: 9) {
-                mochi
+                nudo
                 Image(systemName: model.phase == .failed ? "mic.slash.fill" : "doc.on.clipboard.fill")
                     .font(.system(size: 13, weight: .semibold))
                     .foregroundColor(Color(hex: "#E8E9EC"))
@@ -303,7 +303,7 @@ struct FlowPillView: View {
             .fixedSize()
         default:
             line(spacing: vertical ? 7 : 9) {
-                mochi
+                nudo
                 switch model.phase {
                 case .copied, .failed, .pastedAgain:
                     Text(messageText ?? "")
@@ -321,11 +321,11 @@ struct FlowPillView: View {
         }
     }
 
-    /// Mochi, drawn by the same engine as the compact island's mini Mochis: his eyes wander all
-    /// around while you speak. 22 pt wide like a pill's Mochi (the canvas is larger, as there).
-    private var mochi: some View {
+    /// Nudo, drawn by the same engine as the compact island's mini Nudos: his eyes wander all
+    /// around while you speak. 22 pt wide like a pill's Nudo (the canvas is larger, as there).
+    private var nudo: some View {
         // Still while only a recorded call shows: the pill costs nothing during a long call.
-        FlowMochiView(active: model.phase != .idle || model.hovered)
+        FlowNudoView(active: model.phase != .idle || model.hovered)
             .frame(width: 22 / 0.6, height: 22 / 0.6)
             .frame(width: 22, height: 22, alignment: .center)
     }
@@ -467,9 +467,9 @@ private struct FlowAnnouncementView: View {
     }
 }
 
-/// The pill's Mochi: a mini Mochi (BotEngine, like the pills of the compact island), white, idle,
+/// The pill's Nudo: a mini Nudo (BotEngine, like the pills of the compact island), white, idle,
 /// so his eyes wander around. Drawn only while the pill is open.
-private struct FlowMochiView: View {
+private struct FlowNudoView: View {
     let active: Bool
     @StateObject private var engine: BotEngine
 
@@ -488,7 +488,7 @@ private struct FlowMochiView: View {
             let frame = timeline.date   // redraw on every tick, as in MiniBotCanvasView
             Canvas { context, size in
                 _ = frame
-                MochiFrameClock.advance(engine)
+                NudoFrameClock.advance(engine)
                 engine.draw(context: context, size: size)
             }
         }

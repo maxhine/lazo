@@ -49,7 +49,7 @@ test("English is the key itself, other languages come from either table", () => 
 test("a string nobody translated falls back to its English text", () => {
   inLanguage("ru", () => {
     assert.equal(t("Some brand new sentence."), "Some brand new sentence.");
-    assert.equal(t("Hello {name}", { name: "Mochi" }), "Hello Mochi");
+    assert.equal(t("Hello {name}", { name: "Nudo" }), "Hello Nudo");
   });
 });
 
@@ -101,7 +101,7 @@ test("labels() tables and dates read in the current language", () => {
 
 // ── Choosing the language ─────────────────────────────────────────────────────
 
-test("System follows the system's language when Coucou has it, else English", () => {
+test("System follows the system's language when Lazo has it, else English", () => {
   assert.equal(resolveLanguage("", ["fr-FR", "en-US"]), "fr");
   assert.equal(resolveLanguage("", ["it-IT", "es-MX"]), "es");
   assert.equal(resolveLanguage("", ["pt-PT"]), "pt-BR");
@@ -208,7 +208,7 @@ test("Turkish translates both tables, interpolates and falls back to English", (
     assert.equal(t("Open the chat"), "Sohbeti aç");
     assert.equal(t("Uploading {name}", { name: "öğrenci.pdf" }), "öğrenci.pdf yükleniyor");
     assert.equal(t("Some brand new sentence."), "Some brand new sentence.");
-    assert.equal(t("Hello {name}", { name: "Mochi" }), "Hello Mochi");
+    assert.equal(t("Hello {name}", { name: "Nudo" }), "Hello Nudo");
     assert.equal(dayMonth(9, 9), "9 Eki");
     assert.equal(isRtl(), false);
   });
@@ -389,7 +389,7 @@ test("lookup() answers from the merged tables", () => {
 // upload canvas or the recap that is exactly a translated string, and is not
 // the argument of t() / tl() / tn() / N_(), is English that would stay English.
 
-const CHECKED = ["src/views", "src/settings", "src/island", "src/upload", "src/recap", "src/mochi/wardrobe.ts", "src/main.ts"];
+const CHECKED = ["src/views", "src/settings", "src/island", "src/upload", "src/recap", "src/nudo/wardrobe.ts", "src/main.ts"];
 /** Literals that are a translated word but are values in the code, not text on screen. */
 const NOT_TEXT = new Set([
   "file", // the kind of a chat context: { kind: "file" }

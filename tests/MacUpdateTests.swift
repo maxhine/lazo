@@ -12,11 +12,11 @@ enum MacUpdateTests {
     static func release(_ tag: String, draft: Bool = false, pre: Bool = false, zip: Bool = true, body: String = "") -> [String: Any] {
         var assets: [[String: Any]] = [["name": "notes.txt", "browser_download_url": "https://github.com/x/notes.txt", "size": 3]]
         if zip {
-            assets.append(["name": "Coucou.zip", "size": 34_000_000,
-                           "browser_download_url": "https://github.com/Louis-CFM/coucou/releases/download/\(tag)/Coucou.zip"])
+            assets.append(["name": "Lazo.zip", "size": 34_000_000,
+                           "browser_download_url": "https://github.com/maxhine/lazo-isla/releases/download/\(tag)/Lazo.zip"])
         }
         return ["tag_name": tag, "draft": draft, "prerelease": pre, "assets": assets, "body": body,
-                "html_url": "https://github.com/Louis-CFM/coucou/releases/tag/\(tag)"]
+                "html_url": "https://github.com/maxhine/lazo-isla/releases/tag/\(tag)"]
     }
 
     static func json(_ list: [[String: Any]]) -> Data { try! JSONSerialization.data(withJSONObject: list) }
@@ -43,13 +43,13 @@ enum MacUpdateTests {
             let list = [
                 release("windows-v0.6.0"), release("linux-latest"),
                 release("v0.9.0", draft: true), release("v0.8.0", pre: true), release("v0.7.0", zip: false),
-                release("v0.5.1"), release("v0.10.0", body: "Coucou 0.10.0\n\n## What's new\n\n- **One-click update** from the notch.\n- Other\n\n## Install\n- x"),
+                release("v0.5.1"), release("v0.10.0", body: "Lazo 0.10.0\n\n## What's new\n\n- **One-click update** from the notch.\n- Other\n\n## Install\n- x"),
                 release("v0.6.2"),
             ]
             let r = MacUpdate.latest(json(list))
             check("picks v0.10.0 over 0.6.2 and 0.5.1", r?.version == "0.10.0" && r?.tag == "v0.10.0")
-            check("its Coucou.zip", r?.zipURL.lastPathComponent == "Coucou.zip" && r?.size == 34_000_000)
-            check("its page", r?.pageURL.absoluteString == "https://github.com/Louis-CFM/coucou/releases/tag/v0.10.0")
+            check("its Lazo.zip", r?.zipURL.lastPathComponent == "Lazo.zip" && r?.size == 34_000_000)
+            check("its page", r?.pageURL.absoluteString == "https://github.com/maxhine/lazo-isla/releases/tag/v0.10.0")
             check("headline from the bold part", r?.headline == "One-click update")
             check("nothing for drafts and others only", MacUpdate.latest(json([release("v0.9.0", draft: true), release("windows-v1.0")])) == nil)
             check("garbage", MacUpdate.latest(Data("{\"message\":\"rate limited\"}".utf8)) == nil)
@@ -69,12 +69,12 @@ enum MacUpdateTests {
         check("not github.com.evil.io", !MacUpdate.allowedHost("github.com.evil.io"))
         check("nil", !MacUpdate.allowedHost(nil))
 
-        print("\nWhere Coucou may replace itself")
-        check("/Applications", MacUpdate.canReplace(bundlePath: "/Applications/Coucou.app", home: "/Users/l"))
-        check("~/Applications", MacUpdate.canReplace(bundlePath: "/Users/l/Applications/Coucou.app", home: "/Users/l"))
-        check("not DerivedData", !MacUpdate.canReplace(bundlePath: "/Users/l/Library/Developer/Xcode/DerivedData/x/Build/Products/Debug/Coucou.app", home: "/Users/l"))
-        check("not Downloads", !MacUpdate.canReplace(bundlePath: "/Users/l/Downloads/Coucou.app", home: "/Users/l"))
-        check("not a subfolder of Applications", !MacUpdate.canReplace(bundlePath: "/Applications/Tools/Coucou.app", home: "/Users/l"))
+        print("\nWhere Lazo may replace itself")
+        check("/Applications", MacUpdate.canReplace(bundlePath: "/Applications/Lazo.app", home: "/Users/l"))
+        check("~/Applications", MacUpdate.canReplace(bundlePath: "/Users/l/Applications/Lazo.app", home: "/Users/l"))
+        check("not DerivedData", !MacUpdate.canReplace(bundlePath: "/Users/l/Library/Developer/Xcode/DerivedData/x/Build/Products/Debug/Lazo.app", home: "/Users/l"))
+        check("not Downloads", !MacUpdate.canReplace(bundlePath: "/Users/l/Downloads/Lazo.app", home: "/Users/l"))
+        check("not a subfolder of Applications", !MacUpdate.canReplace(bundlePath: "/Applications/Tools/Lazo.app", home: "/Users/l"))
 
         print("\nWhen to look, when to say it")
         let now = Date(timeIntervalSince1970: 1_800_000_000)
@@ -91,7 +91,7 @@ enum MacUpdateTests {
         check("Later yesterday: again", MacUpdate.shouldAnnounce(r, current: "0.5.1", snoozedVersion: "0.6.0", snoozedAt: now - 25 * 3600, now: now))
         check("Later on an older version: this one shows", MacUpdate.shouldAnnounce(r, current: "0.5.1", snoozedVersion: "0.5.2", snoozedAt: now - 60, now: now))
 
-        print("\nBlue Mochi while it waits")
+        print("\nBlue Nudo while it waits")
         check("waiting: blue", MacUpdate.showsHint(r, current: "0.5.1", consent: true, laterVersion: nil, laterAt: nil, now: now))
         check("not asked yet: no", !MacUpdate.showsHint(r, current: "0.5.1", consent: nil, laterVersion: nil, laterAt: nil, now: now))
         check("said no: no", !MacUpdate.showsHint(r, current: "0.5.1", consent: false, laterVersion: nil, laterAt: nil, now: now))
@@ -102,10 +102,10 @@ enum MacUpdateTests {
         check("Later on an older version: blue", MacUpdate.showsHint(r, current: "0.5.1", consent: true, laterVersion: "0.5.9", laterAt: now - 60, now: now))
 
         print("\nThe app in the zip")
-        check("right id and version", MacUpdate.matches(infoPlist: ["CFBundleIdentifier": "fr.louisraille.NotchBuddy", "CFBundleShortVersionString": "0.6.0"], version: "0.6.0"))
+        check("right id and version", MacUpdate.matches(infoPlist: ["CFBundleIdentifier": "com.sarca.lazo.isla", "CFBundleShortVersionString": "0.6.0"], version: "0.6.0"))
         check("another app", !MacUpdate.matches(infoPlist: ["CFBundleIdentifier": "com.evil.app", "CFBundleShortVersionString": "0.6.0"], version: "0.6.0"))
-        check("another version", !MacUpdate.matches(infoPlist: ["CFBundleIdentifier": "fr.louisraille.NotchBuddy", "CFBundleShortVersionString": "0.5.9"], version: "0.6.0"))
-        check("requirement names the team", MacUpdate.codeRequirement.contains("256AUJ9555") && MacUpdate.codeRequirement.contains("anchor apple generic"))
+        check("another version", !MacUpdate.matches(infoPlist: ["CFBundleIdentifier": "com.sarca.lazo.isla", "CFBundleShortVersionString": "0.5.9"], version: "0.6.0"))
+        check("requirement names the team", MacUpdate.codeRequirement.contains("TEAM_ID_PENDIENTE") && MacUpdate.codeRequirement.contains("anchor apple generic"))
 
         if failures > 0 {
             print("\n\(failures) failure(s)")

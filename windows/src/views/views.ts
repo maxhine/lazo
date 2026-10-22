@@ -7,7 +7,7 @@ import { ICONS } from "./icons";
 import { Ticker } from "./ticker";
 import { State, type AgentTask } from "../core/state";
 import { washRGBA, type IslandViewName, type Wash } from "../core/layout";
-import { createMiniBot, pruneMiniBots } from "../mochi/minibots";
+import { createMiniBot, pruneMiniBots } from "../nudo/minibots";
 import { buildPrompt } from "./chat";
 import { buildChoose, buildUpload, buildUploading } from "./upload";
 import { renderIntegrationCard, type IntegrationCardHooks } from "./integrations";
@@ -25,7 +25,7 @@ import { buildUpdate } from "./update";
 import { buildWhatsNew } from "./whatsnew";
 import { buildSpotifyCard, buildSpotifyPill, type SpotifyPillHost } from "./spotify";
 import { SPOTIFY_ID } from "../core/spotify";
-import type { Outfit, OutfitSelection } from "../mochi/wardrobe";
+import type { Outfit, OutfitSelection } from "../nudo/wardrobe";
 import { language, t, tl, type Msg } from "../i18n/i18n";
 import type { ViewCommand } from "../island/shortcuts";
 
@@ -53,7 +53,7 @@ export interface ViewActions {
   blip(): void;
   /** Wardrobe click: keeps the outfit ("auto" and "none" included). */
   chooseOutfit(selection: OutfitSelection): void;
-  /** Wardrobe hover: shows an outfit on Mochi without keeping it; null ends it. */
+  /** Wardrobe hover: shows an outfit on Nudo without keeping it; null ends it. */
   previewOutfit(outfit: Outfit | null): void;
 }
 

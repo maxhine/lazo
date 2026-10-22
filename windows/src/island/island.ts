@@ -1,4 +1,4 @@
-// The island: DOM shell, sizing animation, Mochi placement, mouse handling.
+// The island: DOM shell, sizing animation, Nudo placement, mouse handling.
 // Mirrors IslandRootView.swift + IslandWindowController.swift.
 
 import { Tracked, Spring, clamp } from "../core/anim";
@@ -13,10 +13,10 @@ import {
 import { Sound } from "../core/sound";
 import { State } from "../core/state";
 import { SPOTIFY_ID, islandDances } from "../core/spotify";
-import { BotEngine, hexToRGB } from "../mochi/engine";
-import { Greeting } from "../mochi/greeting";
-import { createMiniBot, pruneMiniBots, syncMiniBotStates, tickMiniBots } from "../mochi/minibots";
-import { SeasonCache, parseOutfit } from "../mochi/wardrobe";
+import { BotEngine, hexToRGB } from "../nudo/engine";
+import { Greeting } from "../nudo/greeting";
+import { createMiniBot, pruneMiniBots, syncMiniBotStates, tickMiniBots } from "../nudo/minibots";
+import { SeasonCache, parseOutfit } from "../nudo/wardrobe";
 import { UploadCanvas } from "../upload/canvas";
 import { USC, UploadSeq } from "../upload/sequence";
 import { closePlanCard, openPlanColor, planCardOpen } from "../views/usage";
@@ -26,14 +26,14 @@ import { IslandStateMachine } from "./fsm";
 import { refreshHookPills } from "./integrations";
 import { DesktopLink } from "./desktop";
 import type { ViewCommand } from "./shortcuts";
-import { DRAG_THRESHOLD } from "../mochi/desktop-logic";
+import { DRAG_THRESHOLD } from "../nudo/desktop-logic";
 import { Updates } from "./update";
 import { UPDATE_BLUE, showsUpdateHint } from "../whats-new/whats-new";
 
 const BOT_OVERHANG = 40;
 const UPDATE_BLUE_RGB = hexToRGB(UPDATE_BLUE);
 const CLAUDE_DESKTOP_ID = "agent_claude-desktop";
-/** Extra canvas on each side of Mochi, for the witch hat's brim and the Santa hat's tip. */
+/** Extra canvas on each side of Nudo, for the witch hat's brim and the Santa hat's tip. */
 const BOT_SIDE = 24;
 /** Same margin as the Rust hit test (src-tauri/src/island.rs). */
 const HIT_MARGIN = 14;
@@ -48,7 +48,7 @@ const modeOrder = (m: IslandMode) => (m === "hidden" ? 0 : m === "compact" ? 1 :
 
 export class Island {
   readonly fsm = new IslandStateMachine();
-  /** Mochi on the desktop: his life cycle and the drag out of the island. */
+  /** Nudo on the desktop: his life cycle and the drag out of the island. */
   readonly desktop: DesktopLink;
 
   private root: HTMLElement;
@@ -108,7 +108,7 @@ export class Island {
   onGreetingDone: (() => void) | null = null;
   onWake: (() => void) | null = null;
 
-  /** Where a press on Mochi started: moving past DRAG_THRESHOLD drags him out. */
+  /** Where a press on Nudo started: moving past DRAG_THRESHOLD drags him out. */
   private botPress: { x: number; y: number } | null = null;
 
   /** The next reveal from hidden makes no peek (music starting, as on macOS). */
@@ -246,8 +246,8 @@ export class Island {
       openSettingsWindow: () => void Bridge.openSettingsWindow(),
       blip: () => Sound.play("blip"),
       chooseOutfit: (selection) => {
-        if (parseOutfit(State.settings.mochiOutfit) === selection) return;
-        State.settings.mochiOutfit = selection;
+        if (parseOutfit(State.settings.nudoOutfit) === selection) return;
+        State.settings.nudoOutfit = selection;
         void Bridge.saveSettings(State.settings);
         Sound.play("pop");
         this.engine.triggerEmote("proud");
@@ -273,7 +273,7 @@ export class Island {
     for (const v of this.views.values()) this.viewsEl.append(v.el);
     this.contentEl = h("div", { id: "content" }, this.header.el, this.viewsEl);
 
-    // The drop sequence draws the card, the bar and its own Mochi. It sits under
+    // The drop sequence draws the card, the bar and its own Nudo. It sits under
     // the header, which stays visible on top of it exactly as on macOS.
     this.uploadCanvas = new UploadCanvas({
       ask: () => {
@@ -320,16 +320,16 @@ export class Island {
     this.fsm.openOnHover = State.settings.openOnHover;
     this.fsm.onTransition = (from, to) => {
       // The greeting is over, however it ended: back to his desktop spot.
-      if (from === "coucou" && to !== "coucou") this.desktop.launch();
+      if (from === "lazo" && to !== "lazo") this.desktop.launch();
       switch (to) {
         case "hidden":
           this.setMode("hidden");
           break;
         case "petit":
-          if (from === "coucou") this.greeting.interrupt();
+          if (from === "lazo") this.greeting.interrupt();
           else if (from === "hidden" && !this.silentReveal) Sound.play("peek");
           this.setMode("compact");
-          if (from === "coucou") State.view = State.defaultView();
+          if (from === "lazo") State.view = State.defaultView();
           if (!this.wasInIsland) this.fsm.mouseLeft();
           break;
         case "home":
@@ -339,7 +339,7 @@ export class Island {
           // say so on the next open, without polling while the island is shut.
           void refreshHookPills();
           break;
-        case "coucou":
+        case "lazo":
           this.expand("greeting");
           this.greeting.start();
           break;
@@ -437,14 +437,14 @@ export class Island {
     this.expand(view);
   }
 
-  /** A new Coucou waits and Mochi has nothing else to say (he is blue). */
+  /** A new Lazo waits and Nudo has nothing else to say (he is blue). */
   private updateHintOn(): boolean {
     return !State.paused && showsUpdateHint(Updates.waiting(), State.effectiveState, State.pendingApproval != null);
   }
 
   /**
-   * What a click or a hover opens on: while Mochi is blue, the new version
-   * ("Coucou X is out", Update now); otherwise the usual view. A waiting
+   * What a click or a hover opens on: while Nudo is blue, the new version
+   * ("Lazo X is out", Update now); otherwise the usual view. A waiting
    * permission or question always comes first.
    */
   private openingView(): IslandViewName {
@@ -462,17 +462,17 @@ export class Island {
     this.silentReveal = false;
   }
 
-  /** Right-click on Mochi: wardrobe open ↔ back to the usual view. */
+  /** Right-click on Nudo: wardrobe open ↔ back to the usual view. */
   toggleWardrobe() {
     if (State.paused || State.mode === "hidden") return;
-    // The greeting and the drop sequence draw a Mochi of their own.
+    // The greeting and the drop sequence draw a Nudo of their own.
     if (State.mode === "expanded" && (State.view === "greeting" || this.uploadActive)) return;
     if (State.mode === "expanded" && State.view === "wardrobe") this.setView(State.defaultView());
     else this.setView("wardrobe");
   }
 
   /**
-   * Right-click on the desktop Mochi (macOS openWardrobeFromDesktop): opens the
+   * Right-click on the desktop Nudo (macOS openWardrobeFromDesktop): opens the
    * wardrobe from any state, or goes back if it is already open.
    */
   wardrobeFromDesktop() {
@@ -481,7 +481,7 @@ export class Island {
 
   /**
    * The wardrobe from any state — compact or hidden island included — or back
-   * to the usual view if it is already open. The desktop Mochi's right-click
+   * to the usual view if it is already open. The desktop Nudo's right-click
    * and the wardrobe shortcut (`open-wardrobe`) both land here.
    */
   wardrobeAnywhere() {
@@ -526,17 +526,17 @@ export class Island {
     void Bridge.focusWindow(true);
   }
 
-  /** The desktop shortcut needs a desktop Mochi: none on GNOME's Wayland. */
+  /** The desktop shortcut needs a desktop Nudo: none on GNOME's Wayland. */
   canLeaveIsland(): boolean {
     return this.desktop.supported;
   }
 
-  /** The desktop shortcut (macOS DesktopMochiController.flyOutOrHome). */
+  /** The desktop shortcut (macOS DesktopNudoController.flyOutOrHome). */
   flyOutOrHome() {
-    // The greeting and the drop sequence draw a Mochi of their own: he stays
+    // The greeting and the drop sequence draw a Nudo of their own: he stays
     // for them, as he does for a drag (canDragOut).
     const busy = State.mode === "expanded" && (State.view === "greeting" || this.uploadActive);
-    if (busy && !State.mochiOnDesktop) return;
+    if (busy && !State.nudoOnDesktop) return;
     this.desktop.flyOutOrHome();
   }
 
@@ -586,7 +586,7 @@ export class Island {
   }
 
   /**
-   * Mochi eats the file. Nothing here waits on the file system: the copy into
+   * Nudo eats the file. Nothing here waits on the file system: the copy into
    * the inbox runs in the background and swaps the path in when it lands, so a
    * slow disk can never stall the animation — same as FileDropHandler on macOS.
    */
@@ -638,7 +638,7 @@ export class Island {
 
   /**
    * Sounds and view changes hung off the canvas timeline: a `tick` every 10 %,
-   * the ✓ chime when the bar completes, then `choose` once Mochi has grown back.
+   * the ✓ chime when the bar completes, then `choose` once Nudo has grown back.
    */
   private stepSequence() {
     const since = UploadSeq.sinceDrop();
@@ -758,11 +758,11 @@ export class Island {
       State.lastActivity = performance.now();
       // A click makes a hover-opened island an ordinary open one.
       this.fsm.userInteracted();
-      // A press on Mochi may become a drag out to the desktop.
+      // A press on Nudo may become a drag out to the desktop.
       if (e.button === 0 && this.isBotHit(e.clientX, e.clientY)) {
         this.botPress = { x: e.clientX, y: e.clientY };
       }
-      // Right-click on Mochi opens the wardrobe, and closes it again.
+      // Right-click on Nudo opens the wardrobe, and closes it again.
       if (e.button === 2 && this.isBotHit(e.clientX, e.clientY)) {
         this.cancelBotHover();
         this.toggleWardrobe();
@@ -778,13 +778,13 @@ export class Island {
       }
     });
 
-    // No browser menu over Mochi: his right-click is the wardrobe. Everywhere
+    // No browser menu over Nudo: his right-click is the wardrobe. Everywhere
     // else (the chat field) the webview keeps its own menu.
     this.islandEl.addEventListener("contextmenu", (e) => {
       if (this.isBotHit(e.clientX, e.clientY)) e.preventDefault();
     });
 
-    // Dragging Mochi out of the island puts him on the desktop.
+    // Dragging Nudo out of the island puts him on the desktop.
     window.addEventListener("mousemove", (e) => {
       if (this.desktop.carrying) {
         this.desktop.carry(e.clientX, e.clientY);
@@ -876,7 +876,7 @@ export class Island {
     const wasIn = this.wasInIsland;
     this.wasInIsland = inIsland;
     if (inIsland && !wasIn) {
-      if (this.fsm.state === "coucou") this.greeting.hover();
+      if (this.fsm.state === "lazo") this.greeting.hover();
       this.fsm.mouseEntered();
     }
     if (!inIsland && wasIn) {
@@ -899,15 +899,15 @@ export class Island {
     this.ensureRunning();
   }
 
-  /** The greeting and the drop sequence draw a Mochi of their own: not that one. */
+  /** The greeting and the drop sequence draw a Nudo of their own: not that one. */
   private canDragOut(): boolean {
     if (State.mode === "hidden" || !this.desktop.canPickUp()) return false;
     return !(State.mode === "expanded" && (State.view === "greeting" || this.uploadActive));
   }
 
   private isBotHit(x: number, y: number): boolean {
-    // Out on the desktop, the island's Mochi is invisible: nothing to hit.
-    if (State.mochiOnDesktop) return false;
+    // Out on the desktop, the island's Nudo is invisible: nothing to hit.
+    if (State.nudoOnDesktop) return false;
     const rect = this.islandRect();
     const cx = rect.x + this.botCx.value;
     const cy = rect.y + this.botCy.value;
@@ -999,7 +999,7 @@ export class Island {
         this.greeting.draw(gctx);
       }
     } else {
-      // Kept running even while the drop canvas is up, so the island's own Mochi
+      // Kept running even while the drop canvas is up, so the island's own Nudo
       // is already in the right place the moment the canvas fades out.
       this.drawBot(dt);
     }
@@ -1044,9 +1044,9 @@ export class Island {
     this.botSize.target = p.diameter / 0.6;
 
     const greetingActive = State.mode === "expanded" && State.view === "greeting";
-    // The drop canvas draws its own Mochi; two of them would overlap. Out on the
+    // The drop canvas draws its own Nudo; two of them would overlap. Out on the
     // desktop, he isn't here at all.
-    const away = State.mochiOnDesktop;
+    const away = State.nudoOnDesktop;
     const visible = p.opacity > 0 && !greetingActive && !this.uploadActive && !away;
     this.botCanvas.style.opacity = visible ? "1" : "0";
 
@@ -1085,10 +1085,10 @@ export class Island {
     if (!ctx) return;
 
     const focus = State.focusTask;
-    // A new Coucou waits: over an idle or sleeping Mochi, the blue and the arrow
-    // badge (whats-new.ts). Anything Mochi has to say comes first.
+    // A new Lazo waits: over an idle or sleeping Nudo, the blue and the arrow
+    // badge (whats-new.ts). Anything Nudo has to say comes first.
     this.engine.setUpdateHint(this.updateHintOn() ? UPDATE_BLUE_RGB : null);
-    // While a plan card is open Mochi wears the plan's colour, like its pill.
+    // While a plan card is open Nudo wears the plan's colour, like its pill.
     this.engine.bodyColor = planCardOpen()
       ? hexToRGB(openPlanColor())
       : this.engine.showsUpdateHint
@@ -1108,14 +1108,14 @@ export class Island {
         this.engine.slotHVel = 0;
       }
     }
-    // Only the main Mochi is dressed — the one of the main tool's pill (Settings →
+    // Only the main Nudo is dressed — the one of the main tool's pill (Settings →
     // Active pills): a focused integration pill shows its own colours, unless
     // the wardrobe is open (BotCanvasView.showOutfit, macOS).
     // In the wardrobe the hovered outfit swaps in at once, without the drop-in.
     const inWardrobe = State.mode === "expanded" && State.view === "wardrobe";
     const mainFocused = State.focusId == null || State.focusId === State.mainPillId;
     const showOutfit = mainFocused || State.mode !== "expanded" || inWardrobe;
-    const outfit = State.wardrobePreview ?? this.seasons.get(parseOutfit(State.settings.mochiOutfit));
+    const outfit = State.wardrobePreview ?? this.seasons.get(parseOutfit(State.settings.nudoOutfit));
     this.engine.setOutfit(showOutfit ? outfit : "none", !inWardrobe);
     // Dances while music plays: always in the compact island, expanded only on
     // the music pill's card (BotCanvasView, macOS). Asked every frame.

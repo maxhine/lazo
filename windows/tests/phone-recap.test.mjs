@@ -23,7 +23,7 @@ test("the recap is last completed week's numbers", () => {
   assert.equal(r.allowed, 4);
   assert.equal(r.denied, 1);
   assert.equal(r.topAgent, "Claude Code");
-  assert.equal(r.topProject, "coucou");
+  assert.equal(r.topProject, "lazo");
 });
 
 test("the recap is the same all week long and changes on Monday", () => {

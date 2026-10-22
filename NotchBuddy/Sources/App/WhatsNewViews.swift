@@ -2,7 +2,7 @@
 import AppKit
 import SwiftUI
 
-// MARK: - When: once, after Coucou updated itself
+// MARK: - When: once, after Lazo updated itself
 
 @MainActor
 final class WhatsNewCenter: ObservableObject {
@@ -10,7 +10,7 @@ final class WhatsNewCenter: ObservableObject {
 
     /// The version's entry, from Resources/whats-new.json; nil once seen (or none for this version).
     @Published private(set) var release: WhatsNew.Release?
-    /// 0: what the version brings. 1: your Coucou so far.
+    /// 0: what the version brings. 1: your Lazo so far.
     @Published var page = 0
     @Published private(set) var stats = WhatsNew.Stats()
 
@@ -18,7 +18,7 @@ final class WhatsNewCenter: ObservableObject {
     private static let lastSeenKey = "whatsNewLastVersion"
 
     /// First thing at launch, before anything else writes its settings: was this Mac on an older
-    /// Coucou? The version is recorded at once, so the card comes once per version.
+    /// Lazo? The version is recorded at once, so the card comes once per version.
     func noteLaunch() {
         let d = UserDefaults.standard
         let current = MacUpdater.currentVersion
@@ -32,10 +32,10 @@ final class WhatsNewCenter: ObservableObject {
         tryShow(after: 4, attempts: 12)
     }
 
-    /// Coucou 0.5.2 and earlier kept no version: settings only written once you used Coucou.
+    /// Lazo 0.5.2 and earlier kept no version: settings only written once you used Lazo.
     private static func usedBefore() -> Bool {
         let d = UserDefaults.standard
-        let keys = ["coucouHooksInstalled", "updateCheckConsent", "activeIntegrations", "recapLastShownWeek",
+        let keys = ["lazoHooksInstalled", "updateCheckConsent", "activeIntegrations", "recapLastShownWeek",
                     "settingsSection", "soundEnabled", "openOnHover", "hotkeyEnabled"]
         if keys.contains(where: { d.object(forKey: $0) != nil }) { return true }
         let fm = FileManager.default
@@ -80,10 +80,6 @@ final class WhatsNewCenter: ObservableObject {
     func close() {
         release = nil
         NotificationCenter.default.post(name: .islandCollapse, object: nil)
-    }
-
-    func openCoffee() {
-        NSWorkspace.shared.open(WhatsNew.coffeeURL)
     }
 
     func openReleasePage() {
@@ -154,7 +150,7 @@ struct WhatsNewCardView: View {
         }
     }
 
-    // Step 2: your Coucou so far, and the coffee
+    // Step 2: your Lazo so far, and the recap
 
     @ViewBuilder private var soFar: some View {
         let chips = WhatsNew.chips(center.stats)
@@ -167,14 +163,8 @@ struct WhatsNewCardView: View {
                 }
             }
         }
-        Text(String(localized: "whatsnew.thanks"))
-            .font(.system(size: 11))
-            .foregroundColor(Color(hex: "#8E939C"))
-            .lineLimit(2)
-            .fixedSize(horizontal: false, vertical: true)
         Spacer(minLength: 0)
         HStack(spacing: 8) {
-            PrimaryButton(verbatim: "☕ " + String(localized: "whatsnew.coffee")) { center.openCoffee() }
             SecondaryButton("OK") { center.close() }
         }
     }

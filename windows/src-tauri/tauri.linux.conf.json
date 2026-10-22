@@ -7,8 +7,8 @@
       "rpm"
     ],
     "resources": {
-      "../target/release/coucou-hook.exe": null,
-      "../target/release/coucou-hook": "coucou-hook"
+      "../target/release/lazo-hook.exe": null,
+      "../target/release/lazo-hook": "lazo-hook"
     },
     "linux": {
       "appimage": {
@@ -32,7 +32,7 @@
     "windows": [
       {
         "label": "island",
-        "title": "Coucou",
+        "title": "Lazo",
         "url": "index.html",
         "width": 240,
         "height": 6,

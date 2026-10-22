@@ -4,10 +4,10 @@ import Foundation
 import Security
 
 // "New version" in the notch, and one click to get it (GitHub build only: the App Store updates
-// its own build). Coucou looks at its own GitHub releases only once the user said yes, a few
+// its own build). Lazo looks at its own GitHub releases only once the user said yes, a few
 // times a day; nothing about the user goes with the request. The update is downloaded from
-// GitHub only, then checked before anything is replaced: the app in the zip must be Coucou
-// (bundle id and the announced version), signed with Louis's Developer ID, and accepted by
+// GitHub only, then checked before anything is replaced: the app in the zip must be Lazo
+// (bundle id and the announced version), signed with the project's Developer ID, and accepted by
 // Gatekeeper (notarized). Only then does it take the place of the running app, which restarts.
 
 @MainActor
@@ -16,14 +16,14 @@ final class MacUpdater: ObservableObject {
 
     enum Phase: Equatable {
         case idle
-        /// Asking once whether Coucou may look at GitHub.
+        /// Asking once whether Lazo may look at GitHub.
         case asking
         case available(MacUpdate.Release)
         case downloading(MacUpdate.Release, fraction: Double)
         case verifying(MacUpdate.Release)
         case installing(MacUpdate.Release)
         case relaunching(MacUpdate.Release)
-        /// Coucou can't replace itself here (not in Applications, or not writable): GitHub it is.
+        /// Lazo can't replace itself here (not in Applications, or not writable): GitHub it is.
         case manual(MacUpdate.Release)
         case failed(MacUpdate.Release, String)
     }
@@ -39,12 +39,12 @@ final class MacUpdater: ObservableObject {
     @Published private(set) var latest: MacUpdate.Release? = nil {
         didSet { refreshHint() }
     }
-    /// A newer Coucou waits: Mochi is blue and a click opens the update first (BotCanvasView,
+    /// A newer Lazo waits: Nudo is blue and a click opens the update first (BotCanvasView,
     /// IslandWindowController.defaultView). Off for a day after Later.
     @Published private(set) var hintActive = false
 
     // Not secrets: UserDefaults.
-    /// nil: not asked yet. true: Coucou may look at GitHub. false: never.
+    /// nil: not asked yet. true: Lazo may look at GitHub. false: never.
     static var consent: Bool? {
         get { UserDefaults.standard.object(forKey: "updateCheckConsent") as? Bool }
         set { UserDefaults.standard.set(newValue, forKey: "updateCheckConsent") }
@@ -61,7 +61,7 @@ final class MacUpdater: ObservableObject {
         get { UserDefaults.standard.object(forKey: "updateSnoozedAt") as? Date }
         set { UserDefaults.standard.set(newValue, forKey: "updateSnoozedAt") }
     }
-    /// "Later" on the card: no blue Mochi for that version for a day (the announcement has its own snooze).
+    /// "Later" on the card: no blue Nudo for that version for a day (the announcement has its own snooze).
     private var laterVersion: String? {
         get { UserDefaults.standard.string(forKey: "updateLaterVersion") }
         set { UserDefaults.standard.set(newValue, forKey: "updateLaterVersion") }
@@ -87,7 +87,7 @@ final class MacUpdater: ObservableObject {
         if hintActive != on { hintActive = on }
     }
 
-    /// The island opens on the update while Mochi is blue (a click, a hover, the keyboard).
+    /// The island opens on the update while Nudo is blue (a click, a hover, the keyboard).
     func prepareCard() {
         guard let release = latest, !busy else { return }
         if case .available = phase { return }
@@ -122,7 +122,7 @@ final class MacUpdater: ObservableObject {
     }
 
     private func tick(launch: Bool = false) {
-        refreshHint()   // a day after Later, Mochi turns blue again
+        refreshHint()   // a day after Later, Nudo turns blue again
         switch Self.consent {
         case nil:
             askIfFree()
@@ -193,7 +193,7 @@ final class MacUpdater: ObservableObject {
         }
     }
 
-    /// Mochi says it once a day at most for a version, until it is installed; in between, the
+    /// Nudo says it once a day at most for a version, until it is installed; in between, the
     /// menu bar and Settings keep offering it.
     private func announceIfFree() {
         guard let release = latest, !busy, islandFree,
@@ -305,7 +305,7 @@ final class MacUpdater: ObservableObject {
                 }
                 // The temporary file goes away when this returns: keep it.
                 let kept = FileManager.default.temporaryDirectory
-                    .appendingPathComponent("coucou-update-\(UUID().uuidString).zip")
+                    .appendingPathComponent("lazo-update-\(UUID().uuidString).zip")
                 do { try FileManager.default.moveItem(at: tmp, to: kept); cont.resume(returning: kept) }
                 catch { cont.resume(throwing: error) }
             }
@@ -327,11 +327,11 @@ final class MacUpdater: ObservableObject {
         guard let app = (try? fm.contentsOfDirectory(at: staging, includingPropertiesForKeys: nil))?
             .first(where: { $0.pathExtension == "app" }) else { throw fail("update.error.unzip") }
 
-        // The announced Coucou, not another app or another version.
+        // The announced Lazo, not another app or another version.
         guard let info = NSDictionary(contentsOf: app.appendingPathComponent("Contents/Info.plist")) as? [String: Any],
-              MacUpdate.matches(infoPlist: info, version: version) else { throw fail("update.error.not-coucou") }
+              MacUpdate.matches(infoPlist: info, version: version) else { throw fail("update.error.not-lazo") }
 
-        // Signed by Coucou's developer, every architecture and nested binary intact.
+        // Signed by Lazo's developer, every architecture and nested binary intact.
         var code: SecStaticCode?
         var requirement: SecRequirement?
         let flags = SecCSFlags(rawValue: kSecCSCheckAllArchitectures | kSecCSStrictValidate | kSecCSCheckNestedCode)
@@ -358,7 +358,7 @@ final class MacUpdater: ObservableObject {
         return p.terminationStatus == 0
     }
 
-    /// A small shell waits for this Coucou to quit, then opens the new one.
+    /// A small shell waits for this Lazo to quit, then opens the new one.
     private func relaunch(_ bundle: URL, release: MacUpdate.Release) {
         let pid = ProcessInfo.processInfo.processIdentifier
         let p = Process()

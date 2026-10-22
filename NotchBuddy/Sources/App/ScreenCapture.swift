@@ -3,7 +3,7 @@ import AppKit
 import Carbon.HIToolbox
 import SwiftUI
 
-/// ⌘⇧S: capture a part of the screen (a bug in a page, an error, a mock-up), Mochi swallows it,
+/// ⌘⇧S: capture a part of the screen (a bug in a page, an error, a mock-up), Nudo swallows it,
 /// and the island offers what to do with it: paste it into the prompt you were typing in, copy
 /// it, annotate it, or ask Claude about it in the island's chat.
 ///
@@ -27,7 +27,7 @@ final class ScreenCapture: ObservableObject {
     private var annotation: NSWindow? = nil
 
     private static var folder: URL {
-        FileManager.default.temporaryDirectory.appendingPathComponent("CoucouCaptures", isDirectory: true)
+        FileManager.default.temporaryDirectory.appendingPathComponent("LazoCaptures", isDirectory: true)
     }
 
     private init() {}
@@ -42,7 +42,7 @@ final class ScreenCapture: ObservableObject {
         SoundEngine.shared.play("tick")
         guard CGPreflightScreenCaptureAccess() else {
             appendAppLog("nb.log", "[Capture] no Screen Recording permission: asking")
-            // macOS asks once; then Coucou is to be allowed in Privacy → Screen Recording.
+            // macOS asks once; then Lazo is to be allowed in Privacy → Screen Recording.
             _ = CGRequestScreenCaptureAccess()
             AppState.shared.noteMessage = String(localized: "capture.permission")
             NotificationCenter.default.post(name: .hookExpand, object: IslandView.note)
@@ -63,7 +63,7 @@ final class ScreenCapture: ObservableObject {
         let file = Self.folder.appendingPathComponent("Capture \(stamp).png")
         let task = Process()
         task.executableURL = URL(fileURLWithPath: "/usr/sbin/screencapture")
-        // -i: macOS's own selection; -x: no shutter sound (Mochi makes his own); -o: no window shadow.
+        // -i: macOS's own selection; -x: no shutter sound (Nudo makes his own); -o: no window shadow.
         task.arguments = ["-i", "-x", "-o", file.path]
         task.terminationHandler = { _ in
             Task { @MainActor in ScreenCapture.shared.finished(file) }
@@ -87,7 +87,7 @@ final class ScreenCapture: ObservableObject {
         prune()
     }
 
-    /// The capture lands on the island: Mochi swallows it.
+    /// The capture lands on the island: Nudo swallows it.
     private func show(_ file: URL, _ picture: NSImage) {
         url = file
         image = picture

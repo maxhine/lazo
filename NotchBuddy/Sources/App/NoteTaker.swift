@@ -63,7 +63,7 @@ final class NoteTaker: ObservableObject {
     private var liveTask: Task<Void, Never>?
     /// Between the click and the microphone's permission: a second click starts nothing.
     private var starting = false
-    /// The last app in front other than Coucou: the call app when you click Record in Coucou Flow.
+    /// The last app in front other than Lazo: the call app when you click Record in Lazo Flow.
     private var lastApp: String?
     private var appObserver: NSObjectProtocol?
 
@@ -134,8 +134,8 @@ final class NoteTaker: ObservableObject {
             try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
             // One clock for both recordings, so the Mac's sound lines up with the microphone.
             let origin = DispatchTime.now().uptimeNanoseconds
-            let micChannel = try ChannelRecorder(url: dir.appendingPathComponent("mic.wav"), label: "fr.louisraille.NotchBuddy.notetaker.mic", origin: origin)
-            let systemChannel = try ChannelRecorder(url: dir.appendingPathComponent("system.wav"), label: "fr.louisraille.NotchBuddy.notetaker.sys", origin: origin)
+            let micChannel = try ChannelRecorder(url: dir.appendingPathComponent("mic.wav"), label: "com.sarca.lazo.isla.notetaker.mic", origin: origin)
+            let systemChannel = try ChannelRecorder(url: dir.appendingPathComponent("system.wav"), label: "com.sarca.lazo.isla.notetaker.sys", origin: origin)
             let mic = MicCapture()
             guard mic.start(sink: { micChannel.append($0) }) else {
                 startError = String(localized: "notes.error.mic")
@@ -167,7 +167,7 @@ final class NoteTaker: ObservableObject {
         startLiveLoop()
     }
 
-    /// Coucou quits during a call: the recordings are closed properly, and the transcript is
+    /// Lazo quits during a call: the recordings are closed properly, and the transcript is
     /// written at the next launch.
     func shutdown() {
         guard var note = recording else { return }
@@ -661,7 +661,7 @@ final class NoteTaker: ObservableObject {
         for dir in dirs {
             guard let data = try? Data(contentsOf: dir.appendingPathComponent("note.json")),
                   var note = try? decoder.decode(Note.self, from: data) else { continue }
-            // Coucou quit while recording or writing: the transcript is written again from the audio.
+            // Lazo quit while recording or writing: the transcript is written again from the audio.
             if note.status == .recording || note.status == .processing {
                 note.end = note.end ?? (try? dir.appendingPathComponent("mic.wav").resourceValues(forKeys: [.contentModificationDateKey]))?.contentModificationDate
                 note.status = .processing

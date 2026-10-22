@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Builds, notarizes and publishes Coucou for macOS (GitHub build).
+# Builds, notarizes and publishes Lazo for macOS (GitHub build).
 #
 #   ./scripts/release.sh 0.1.2            build, sign, notarize, staple, tag, publish
 #   ./scripts/release.sh 0.1.2 --finish   finish after an interrupted notarization wait
@@ -12,9 +12,9 @@ set -euo pipefail
 VERSION="${1:?Usage: $0 <version> [--finish]}"
 MODE="${2:-}"
 REPO_ROOT="$(cd "$(dirname "$0")/.." && pwd)"
-BUILD_DIR="/tmp/coucou-release-$VERSION"
-APP="$BUILD_DIR/Coucou.app"
-ZIP="$BUILD_DIR/Coucou.zip"
+BUILD_DIR="/tmp/lazo-release-$VERSION"
+APP="$BUILD_DIR/Lazo.app"
+ZIP="$BUILD_DIR/Lazo.zip"
 COMMIT_FILE="$BUILD_DIR/commit"
 TAG="v$VERSION"
 
@@ -43,7 +43,7 @@ CHANGES=$(awk -v head="## $VERSION" '
 [ -n "$CHANGES" ] || die "CHANGELOG.md has no '## $VERSION' section"
 
 grep -q "| \[$VERSION\]" README.md || die "README.md has no row for $VERSION in the Versions table"
-# Mochi shows it once in the notch after the update: an entry in every language.
+# Nudo shows it once in the notch after the update: an entry in every language.
 python3 scripts/test-whats-new.py mac >/dev/null \
   || { python3 scripts/test-whats-new.py mac; die "NotchBuddy/Resources/whats-new.json needs a complete entry for $VERSION (CLAUDE.md, Releases)"; }
 
@@ -68,7 +68,7 @@ if [ "$MODE" != "--finish" ]; then
   echo "Signing with: $IDENTITY"
 
   # ── 1b. Developer ID provisioning profile (iCloud for the iPhone sync) ──────
-  PROFILE_NAME="Coucou Developer ID"
+  PROFILE_NAME="Lazo Developer ID"
   PROFILE_FOUND=""
   TMP_PLIST=$(mktemp)
   for dir in "$HOME/Library/Developer/Xcode/UserData/Provisioning Profiles" "$HOME/Library/MobileDevice/Provisioning Profiles"; do
@@ -81,7 +81,7 @@ if [ "$MODE" != "--finish" ]; then
       break 2
     done
   done
-  [ -n "$PROFILE_FOUND" ] || { rm -f "$TMP_PLIST"; die "no provisioning profile named '$PROFILE_NAME'. developer.apple.com → Profiles → Developer ID (Mac) for fr.louisraille.NotchBuddy, then copy it to ~/Library/Developer/Xcode/UserData/Provisioning Profiles/"; }
+  [ -n "$PROFILE_FOUND" ] || { rm -f "$TMP_PLIST"; die "no provisioning profile named '$PROFILE_NAME'. developer.apple.com → Profiles → Developer ID (Mac) for com.sarca.lazo.isla, then copy it to ~/Library/Developer/Xcode/UserData/Provisioning Profiles/"; }
   EXPIRY=$(/usr/libexec/PlistBuddy -c "Print :ExpirationDate" "$TMP_PLIST")
   rm -f "$TMP_PLIST"
   echo "Profile: $PROFILE_FOUND (expires $EXPIRY)"
@@ -108,18 +108,18 @@ if [ "$MODE" != "--finish" ]; then
     CONFIGURATION_BUILD_DIR="$BUILD_DIR"
 
   [ -f "$APP/Contents/embedded.provisionprofile" ] || die "the provisioning profile was not embedded in the app"
-  codesign -d --entitlements - --xml "$APP" 2>/dev/null | grep -q "iCloud.fr.louisraille.Coucou" \
+  codesign -d --entitlements - --xml "$APP" 2>/dev/null | grep -q "iCloud.com.sarca.lazo.isla" \
     || die "the app is not signed with the iCloud entitlements"
 
   # ── 3. Zip + notarize ───────────────────────────────────────────────────────
   ditto -c -k --keepParent "$APP" "$ZIP"
   echo
   echo "Sending to Apple for notarization. If you stop the wait (Ctrl+C), Apple keeps going:"
-  echo "  check it with  xcrun notarytool history --keychain-profile coucou-notary"
+  echo "  check it with  xcrun notarytool history --keychain-profile lazo-notary"
   echo "  once Accepted  ./scripts/release.sh $VERSION --finish"
   echo
-  xcrun notarytool submit "$ZIP" --keychain-profile coucou-notary --wait \
-    || die "notarization failed: see xcrun notarytool log <id> --keychain-profile coucou-notary (the id is printed above)"
+  xcrun notarytool submit "$ZIP" --keychain-profile lazo-notary --wait \
+    || die "notarization failed: see xcrun notarytool log <id> --keychain-profile lazo-notary (the id is printed above)"
   cd "$REPO_ROOT"
 else
   [ -d "$APP" ] && [ -f "$COMMIT_FILE" ] || die "nothing to finish in $BUILD_DIR, run ./scripts/release.sh $VERSION first"
@@ -128,7 +128,7 @@ fi
 
 # ── 4. Staple + verify ────────────────────────────────────────────────────────
 xcrun stapler staple "$APP" \
-  || die "stapling failed: Apple has not accepted the build yet. Check xcrun notarytool history --keychain-profile coucou-notary, then run ./scripts/release.sh $VERSION --finish"
+  || die "stapling failed: Apple has not accepted the build yet. Check xcrun notarytool history --keychain-profile lazo-notary, then run ./scripts/release.sh $VERSION --finish"
 spctl -a -vv "$APP"
 
 # ── 5. Re-zip (with the stapled app) ──────────────────────────────────────────
@@ -137,7 +137,7 @@ ditto -c -k --keepParent "$APP" "$ZIP"
 echo "Release zip ready: $ZIP"
 
 # ── 6. Tag the built commit + GitHub release ──────────────────────────────────
-NOTES="Coucou $VERSION for macOS 15 or later (Apple silicon and Intel).
+NOTES="Lazo $VERSION for macOS 15 or later (Apple silicon and Intel).
 
 Signed with a Developer ID and notarized by Apple.
 
@@ -147,11 +147,11 @@ $CHANGES
 
 ## Install
 
-1. Download Coucou.zip below and unzip it.
-2. Move Coucou.app to your Applications folder, replacing the old one if you have it.
+1. Download Lazo.zip below and unzip it.
+2. Move Lazo.app to your Applications folder, replacing the old one if you have it.
 3. Launch it, and click Open when macOS asks you to confirm.
 
-Linux and Windows: see the [README](https://github.com/Louis-CFM/coucou#readme)."
+Linux and Windows: see the [README](https://github.com/maxhine/lazo-isla#readme)."
 
 echo
 echo "──────── Release notes ────────"
@@ -168,16 +168,16 @@ git tag "$TAG" "$COMMIT"
 git push origin "$TAG"
 
 gh release create "$TAG" "$ZIP" \
-  --repo Louis-CFM/coucou \
-  --title "Coucou $VERSION" \
+  --repo maxhine/lazo-isla \
+  --title "Lazo $VERSION" \
   --latest \
   --notes "$NOTES"
 
-echo "✓ $TAG released: https://github.com/Louis-CFM/coucou/releases/tag/$TAG"
+echo "✓ $TAG released: https://github.com/maxhine/lazo-isla/releases/tag/$TAG"
 
 # ── 7. Homebrew cask ──────────────────────────────────────────────────────────
-# Casks/coucou.rb points at the zip just published: bump its version and hash.
-CASK="$REPO_ROOT/Casks/coucou.rb"
+# Casks/lazo.rb points at the zip just published: bump its version and hash.
+CASK="$REPO_ROOT/Casks/lazo.rb"
 SHA=$(shasum -a 256 "$ZIP" | cut -d' ' -f1)
 sed -i '' -e "s/^  version \".*\"/  version \"$VERSION\"/" -e "s/^  sha256 \".*\"/  sha256 \"$SHA\"/" "$CASK"
 git add "$CASK"

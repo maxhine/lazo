@@ -1,15 +1,15 @@
-// What's new after an update and the blue Mochi while one waits
+// What's new after an update and the blue Nudo while one waits
 // (src/whats-new/whats-new.ts): which entry, when the card shows, what it
-// counts, and when Mochi is blue.
+// counts, and when Nudo is blue.
 
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { NO_UPDATE } from "../src/core/update.ts";
-import { BotEngine } from "../src/mochi/engine.ts";
+import { BotEngine } from "../src/nudo/engine.ts";
 import { WHATS_NEW_ICONS } from "../src/whats-new/icons.ts";
 import {
-  COFFEE_URL, ICON_NAMES, LATER_MS, compareVersions, decideOnLaunch, iconName, localized, releaseFor,
+  ICON_NAMES, LATER_MS, compareVersions, decideOnLaunch, iconName, localized, releaseFor,
   releasePage, showsUpdateHint, soFar, updateWaiting, usedBefore,
 } from "../src/whats-new/whats-new.ts";
 
@@ -81,7 +81,7 @@ test("signs of an earlier install", () => {
   assert.equal(usedBefore({ consent: null, history: empty, dictations: 0, notes: 1 }), true);
 });
 
-test("your Coucou so far: every kept number, zeros left out", () => {
+test("your Lazo so far: every kept number, zeros left out", () => {
   const turn = (start, end, linesAdded) => ({
     agent: "claude-code", project: "p", start, end, filesChanged: 1, linesAdded, linesRemoved: 3, commandsRun: 0, questions: 0,
   });
@@ -114,10 +114,10 @@ const out = (version = "0.6.0") => ({
   ...NO_UPDATE,
   consent: true,
   current: "0.5.2",
-  latest: { version, headline: null, pageUrl: "https://github.com/Louis-CFM/coucou/releases/tag/windows-v0.6.0" },
+  latest: { version, headline: null, pageUrl: "https://github.com/maxhine/lazo-isla/releases/tag/windows-v0.6.0" },
 });
 
-test("Mochi is blue while a version waits", () => {
+test("Nudo is blue while a version waits", () => {
   const now = 1_800_000_000_000;
   assert.equal(updateWaiting(out(), null, now), true);
   assert.equal(updateWaiting({ ...out(), consent: null }, null, now), false, "never before the user said yes");
@@ -132,7 +132,7 @@ test("Mochi is blue while a version waits", () => {
   assert.equal(updateWaiting(out(), { version: "0.6.0", at: now + 3600_000 }, now), true, "a clock that went back");
 });
 
-test("the engine wears the arrow badge only over an idle or sleeping Mochi", () => {
+test("the engine wears the arrow badge only over an idle or sleeping Nudo", () => {
   const engine = new BotEngine();
   engine.setUpdateHint([0.231, 0.51, 0.965]);
   assert.equal(engine.showsUpdateHint, true);
@@ -144,7 +144,7 @@ test("the engine wears the arrow badge only over an idle or sleeping Mochi", () 
   assert.equal(engine.showsUpdateHint, false);
 });
 
-test("the blue only when Mochi has nothing else to say", () => {
+test("the blue only when Nudo has nothing else to say", () => {
   assert.equal(showsUpdateHint(true, "idle", false), true);
   assert.equal(showsUpdateHint(true, "sleeping", false), true);
   assert.equal(showsUpdateHint(true, "working", false), false);
@@ -153,9 +153,7 @@ test("the blue only when Mochi has nothing else to say", () => {
   assert.equal(showsUpdateHint(false, "idle", false), false);
 });
 
-test("All changes and the coffee", () => {
-  assert.equal(releasePage("windows", "0.5.2"), "https://github.com/Louis-CFM/coucou/releases/tag/windows-v0.5.2");
-  assert.equal(releasePage("linux", "0.5.2"), "https://github.com/Louis-CFM/coucou/releases/tag/linux-v0.5.2");
-  const site = readFileSync(new URL("../../docs/index.html", import.meta.url), "utf8");
-  assert.ok(site.includes(COFFEE_URL), "the same link as the Coucou page");
+test("All changes", () => {
+  assert.equal(releasePage("windows", "0.5.2"), "https://github.com/maxhine/lazo-isla/releases/tag/windows-v0.5.2");
+  assert.equal(releasePage("linux", "0.5.2"), "https://github.com/maxhine/lazo-isla/releases/tag/linux-v0.5.2");
 });

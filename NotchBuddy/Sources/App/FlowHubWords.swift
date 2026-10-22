@@ -2,7 +2,7 @@
 import AppKit
 import SwiftUI
 
-/// Coucou Flow → Dictionary: the words Coucou must always spell right, and the replacements.
+/// Lazo Flow → Dictionary: the words Lazo must always spell right, and the replacements.
 struct HubDictionaryPage: View {
     @ObservedObject private var store = FlowStore.shared
     @State private var newWord = ""
@@ -107,7 +107,7 @@ private struct HubChip: View {
 
 // MARK: - Snippets
 
-/// Coucou Flow → Snippets: say the trigger, Coucou pastes the whole text.
+/// Lazo Flow → Snippets: say the trigger, Lazo pastes the whole text.
 struct HubSnippetsPage: View {
     @ObservedObject private var store = FlowStore.shared
     @State private var trigger = ""
@@ -207,7 +207,7 @@ struct HubSnippetsPage: View {
 
 // MARK: - Styles
 
-/// Coucou Flow → Styles: Claude's clean-up, and how the words are written in each app.
+/// Lazo Flow → Styles: Claude's clean-up, and how the words are written in each app.
 struct HubStylesPage: View {
     @ObservedObject var router: HubRouter
     @ObservedObject private var store = FlowStore.shared

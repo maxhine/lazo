@@ -1,8 +1,8 @@
 import Foundation
 
-// "What's new" after Coucou updated itself (GitHub build): once, in the notch, what the version
+// "What's new" after Lazo updated itself (GitHub build): once, in the notch, what the version
 // brings (Resources/whats-new.json, one entry per release, in every language), then what you did
-// with Coucou so far, from what is already on this Mac (nothing is sent anywhere). Pure Foundation
+// with Lazo so far, from what is already on this Mac (nothing is sent anywhere). Pure Foundation
 // so tests/WhatsNewTests.swift checks the rules: which entry, which language, fresh install or
 // update, which numbers are worth showing.
 
@@ -34,7 +34,7 @@ enum WhatsNew {
 
     // MARK: - When
 
-    /// Show it when the running version is newer than the last one this Mac saw. Coucou 0.5.2 and
+    /// Show it when the running version is newer than the last one this Mac saw. Lazo 0.5.2 and
     /// earlier kept no version: then an install that was used before counts as an update, a new
     /// one (nothing used yet) doesn't.
     static func shouldShow(lastSeen: String?, current: String, usedBefore: Bool) -> Bool {
@@ -83,7 +83,7 @@ enum WhatsNew {
 
     static func symbol(_ icon: String) -> String { symbols[icon] ?? "sparkles" }
 
-    // MARK: - Your Coucou so far
+    // MARK: - Your Lazo so far
 
     struct Stats: Equatable, Sendable {
         var sessions = 0
@@ -114,9 +114,6 @@ enum WhatsNew {
     }
 
     // MARK: - Links
-
-    /// "Buy Mochi a coffee": the same Stripe page as coucou's site and README.
-    static let coffeeURL = URL(string: "https://buy.stripe.com/dRm6oGbfa7Kqcqs0hxes003")!
 
     static func releasePage(_ version: String) -> URL {
         URL(string: "https://github.com/\(MacUpdate.owner)/\(MacUpdate.repo)/releases/tag/v\(version)")!

@@ -6,10 +6,10 @@ import AppKit
 struct BotCanvasView: View {
     @ObservedObject var state: AppState
     var particleOverhang: CGFloat = 0
-    /// When set, overrides island-based eye-tracking (used by desktop Mochi).
+    /// When set, overrides island-based eye-tracking (used by desktop Nudo).
     /// CGPoint in the same coord space as state.mousePosition (DesktopSpace, y-down).
     var lookOriginOverride: CGPoint? = nil
-    /// Not drawn while true (e.g. the notch copy while Mochi is on the desktop).
+    /// Not drawn while true (e.g. the notch copy while Nudo is on the desktop).
     var paused: Bool = false
 
     // One engine per view instance (main bot)
@@ -17,10 +17,10 @@ struct BotCanvasView: View {
 
     var body: some View {
         // Display refresh rate — every frame on a 60 Hz screen, every frame on ProMotion.
-        // MochiFrameClock.advance accumulates the step debt so Mochi's speed never changes.
+        // NudoFrameClock.advance accumulates the step debt so Nudo's speed never changes.
         TimelineView(.animation(paused: state.mode == .hidden || paused)) { timeline in
             // The Canvas must capture the frame's date: a closure that doesn't change from
-            // one tick to the next is not redrawn, and Mochi froze.
+            // one tick to the next is not redrawn, and Nudo froze.
             let frame = timeline.date
             Canvas { context, size in
                 _ = frame
@@ -28,7 +28,7 @@ struct BotCanvasView: View {
                 engine.lookX = look.x
                 engine.lookY = look.y
                 engine.particleOverhang = particleOverhang
-                // How the Mac feels (MochiMood.swift).
+                // How the Mac feels (NudoMood.swift).
                 engine.moodTarget = MachineVitals.shared.mood
                 // Widen slot when file is hovering over the mailbox (morph > 0.5)
                 // Open mouth (hover=0.20R) when file dragged over box; close when not
@@ -51,7 +51,7 @@ struct BotCanvasView: View {
                         ? cgColorFromHex(state.focusTask!.color)
                         : nil
                 }
-                // A new Coucou waits and Mochi has nothing else to say: he turns blue, with an arrow.
+                // A new Lazo waits and Nudo has nothing else to say: he turns blue, with an arrow.
                 let updateHint = MacUpdater.shared.hintActive
                     && (state.effectiveState == .idle || state.effectiveState == .sleeping)
                     && state.pendingApproval == nil && state.pendingQuestion == nil
@@ -105,10 +105,10 @@ struct BotCanvasView: View {
                 else if engine.voiceSubState != .none { engine.voiceSubState = .none }
                 #endif
 
-                MochiFrameClock.advance(engine)
+                NudoFrameClock.advance(engine)
                 var ctx = context
                 engine.applyDance(&ctx, size: size)
-                // Rigid-roll: when Mochi wears an outfit (presence > 0.05) and is rolling,
+                // Rigid-roll: when Nudo wears an outfit (presence > 0.05) and is rolling,
                 // rotate the entire body+accessories context around the body center so the
                 // whole character genuinely turns. Particles/badge (drawHandsAndExtras) are
                 // drawn outside the rotated context and do not spin.
@@ -200,7 +200,7 @@ struct BotCanvasView: View {
         }
     }
 
-    /// Where Mochi looks (the pointer), both axes at once: the island geometry and the
+    /// Where Nudo looks (the pointer), both axes at once: the island geometry and the
     /// screen are looked up once per frame instead of twice each.
     private func lookXY(state: AppState) -> (x: CGFloat, y: CGFloat) {
         if let origin = lookOriginOverride {
@@ -260,7 +260,7 @@ struct MiniBotCanvasView: View {
             Canvas { context, size in
                 _ = frame
                 engine.setDancing(isDancing)
-                MochiFrameClock.advance(engine)
+                NudoFrameClock.advance(engine)
                 var ctx = context
                 engine.applyDance(&ctx, size: size)
                 engine.draw(context: ctx, size: size)
@@ -270,7 +270,7 @@ struct MiniBotCanvasView: View {
             engine.setState(newState)
         }
         // The colour is set once, when the engine is made: a colour picked in
-        // Settings has to reach a mini Mochi that is already on screen.
+        // Settings has to reach a mini Nudo that is already on screen.
         .onChange(of: task.color) { _, newColor in
             engine.bodyColor = cgColorFromHex(newColor)
         }
@@ -291,11 +291,11 @@ struct MiniBotCanvasView: View {
 
 // MARK: - Frame clock
 
-/// Mochi's engine has always moved one `update(dt: 0.05)` per display frame (its look,
+/// Nudo's engine has always moved one `update(dt: 0.05)` per display frame (its look,
 /// colour, springs and particles are tuned to that). Drawing slower than the display must
-/// not slow Mochi down: each drawn frame runs the steps of the display frames it skipped.
+/// not slow Nudo down: each drawn frame runs the steps of the display frames it skipped.
 @MainActor
-enum MochiFrameClock {
+enum NudoFrameClock {
     /// The island screen's refresh rate, looked up at most every 2 s.
     private static var fpsCache: (value: Double, at: CFTimeInterval) = (60, -10)
     static var displayFPS: Double {
@@ -314,9 +314,9 @@ enum MochiFrameClock {
 
     /// One engine step per drawn frame, exactly as before the frame clock (9 October): a
     /// perfectly regular rhythm. The step-debt version measured the time between renders,
-    /// and its jitter made frames with 0 steps (Mochi froze) and frames with 2 or more
-    /// (Mochi jumped), several times a second: the stutter when the island opens and when
-    /// Mochi follows the pointer. Mochi draws at the display rate, so one step per frame
+    /// and its jitter made frames with 0 steps (Nudo froze) and frames with 2 or more
+    /// (Nudo jumped), several times a second: the stutter when the island opens and when
+    /// Nudo follows the pointer. Nudo draws at the display rate, so one step per frame
     /// is one step per display frame, which is what his motion is tuned to.
     static func advance(_ engine: BotEngine) {
         engine.update(dt: 0.05)

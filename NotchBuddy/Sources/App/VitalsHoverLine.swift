@@ -2,7 +2,7 @@ import SwiftUI
 
 // MARK: - How the Mac is doing (under the island)
 
-/// A small line under the island while the pointer is on Mochi, when the Mac makes him react:
+/// A small line under the island while the pointer is on Nudo, when the Mac makes him react:
 /// "CPU 94 % · node, Google Chrome", "Your Mac is hot", "Battery 14 %".
 struct VitalsHoverLine: View {
     let islandW: CGFloat

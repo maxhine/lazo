@@ -99,7 +99,7 @@ struct SessionDetailView: View {
             if let shareImage {
                 ToolbarItem(placement: .topBarTrailing) {
                     ShareLink(item: Image(uiImage: shareImage),
-                              preview: SharePreview(turn?.project ?? "Coucou", image: Image(uiImage: shareImage))) {
+                              preview: SharePreview(turn?.project ?? "Lazo", image: Image(uiImage: shareImage))) {
                         Image(systemName: "square.and.arrow.up")
                     }
                 }
@@ -154,12 +154,12 @@ struct SessionDetailView: View {
 
     private func header(_ session: SessionItem) -> some View {
         HStack(spacing: 16) {
-            MochiLive(state: session.state)
+            NudoLive(state: session.state)
                 .padding(10)
                 .frame(width: 84, height: 84)
-                .background(Color.mochiTile(hex: session.color), in: RoundedRectangle(cornerRadius: 22))
+                .background(Color.nudoTile(hex: session.color), in: RoundedRectangle(cornerRadius: 22))
             VStack(alignment: .leading, spacing: 4) {
-                // "VS Code · coucou", or just "VS Code" when there's no project name.
+                // "VS Code · lazo", or just "VS Code" when there's no project name.
                 Text(session.title == session.pillName ? session.pillName : "\(session.pillName) · \(session.title)")
                     .font(.headline)
                 Text(session.statusText)
@@ -188,7 +188,7 @@ struct SessionDetailView: View {
         }
     }
 
-    /// "/Users/louis/Documents/hi" → "~/Documents/hi".
+    /// "/Users/user/Documents/hi" → "~/Documents/hi".
     static func shortPath(_ path: String) -> String {
         let parts = path.split(separator: "/", omittingEmptySubsequences: true)
         if parts.count >= 2, parts[0] == "Users" {

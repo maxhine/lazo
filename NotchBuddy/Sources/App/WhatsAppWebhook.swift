@@ -7,7 +7,7 @@ import Network
 /// Each request is handed over whole; nothing of it is logged.
 final class WhatsAppWebhook: @unchecked Sendable {
     private var listener: NWListener?
-    private let queue = DispatchQueue(label: "fr.louisraille.NotchBuddy.whatsapp.webhook")
+    private let queue = DispatchQueue(label: "com.sarca.lazo.isla.whatsapp.webhook")
     private(set) var port: UInt16 = 0
 
     private let lock = NSLock()

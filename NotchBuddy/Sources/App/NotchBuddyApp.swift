@@ -11,7 +11,7 @@ struct NotchBuddyApp: App {
         }
         #if !APPSTORE
         .commands {
-            // ⌘, and Coucou → Settings… open the notch's pages of the Coucou window.
+            // ⌘, and Lazo → Settings… open the notch's pages of the Lazo window.
             CommandGroup(replacing: .appSettings) {
                 Button(NSLocalizedString("Settings…", comment: "")) {
                     delegate.openSettings()

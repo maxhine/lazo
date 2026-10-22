@@ -3,7 +3,7 @@ import AppKit
 import Carbon
 import SwiftUI
 
-/// The pages of the Coucou window: Flow (the dictation, the Notetaker) and the notch's settings.
+/// The pages of the Lazo window: Flow (the dictation, the Notetaker) and the notch's settings.
 enum HubPage: String, CaseIterable, Identifiable {
     case dictation, notes, insights, dictionary, snippets, styles, settings
     case general, pills, agents, chat, integrations, voice, shortcuts
@@ -71,7 +71,7 @@ enum HubPage: String, CaseIterable, Identifiable {
     }
 }
 
-/// The colors of the Coucou Flow window: the island's dark, with Coucou's orange.
+/// The colors of the Lazo Flow window: the island's dark, with Lazo's orange.
 enum HubTheme {
     /// OLED black: the window and the sidebar.
     static let window = Color.black
@@ -100,7 +100,7 @@ private struct HubPageKey: EnvironmentKey {
 }
 
 extension EnvironmentValues {
-    /// The page shown, for the colour and the Mochis of its top band.
+    /// The page shown, for the colour and the Nudos of its top band.
     var hubPage: HubPage {
         get { self[HubPageKey.self] }
         set { self[HubPageKey.self] = newValue }
@@ -128,7 +128,7 @@ final class HubRouter: ObservableObject {
     @Published var page: HubPage = .dictation
 }
 
-/// Opens the Coucou Flow window: the history of the dictations, the Notetaker, the numbers, the
+/// Opens the Lazo Flow window: the history of the dictations, the Notetaker, the numbers, the
 /// dictionary, the snippets, the styles and the settings of the dictation.
 @MainActor
 final class FlowHubController {
@@ -137,10 +137,10 @@ final class FlowHubController {
     let windowState = HubWindowState()
     private var window: NSWindow?
 
-    static let showInDockKey = "coucouShowInDock"
-    static let openAtLaunchKey = "coucouOpenAtLaunch"
+    static let showInDockKey = "lazoShowInDock"
+    static let openAtLaunchKey = "lazoOpenAtLaunch"
 
-    /// Coucou in the Dock, like a regular app (on by default in the GitHub build).
+    /// Lazo in the Dock, like a regular app (on by default in the GitHub build).
     static var showInDock: Bool {
         get { UserDefaults.standard.object(forKey: showInDockKey) as? Bool ?? true }
         set {
@@ -150,13 +150,13 @@ final class FlowHubController {
         }
     }
 
-    /// The window opens when Coucou is opened by hand (never at login).
+    /// The window opens when Lazo is opened by hand (never at login).
     static var openAtLaunch: Bool {
         get { UserDefaults.standard.object(forKey: openAtLaunchKey) as? Bool ?? true }
         set { UserDefaults.standard.set(newValue, forKey: openAtLaunchKey) }
     }
 
-    /// Whether macOS opened Coucou at login, rather than you from the Finder, the Dock or Spotlight.
+    /// Whether macOS opened Lazo at login, rather than you from the Finder, the Dock or Spotlight.
     static func launchedAtLogin() -> Bool {
         if let event = NSAppleEventManager.shared().currentAppleEvent,
            event.paramDescriptor(forKeyword: AEKeyword(keyAEPropData))?.enumCodeValue == OSType(keyAELaunchedAsLogInItem) {
@@ -177,7 +177,7 @@ final class FlowHubController {
         let win = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 1100, height: 720),
                            styleMask: [.titled, .closable, .miniaturizable, .resizable, .fullSizeContentView],
                            backing: .buffered, defer: false)
-        win.title = "Coucou"
+        win.title = "Lazo"
         win.titlebarAppearsTransparent = true
         win.titleVisibility = .hidden
         win.appearance = NSAppearance(named: .darkAqua)
@@ -186,8 +186,8 @@ final class FlowHubController {
         windowState.watch(win)
         win.contentMinSize = NSSize(width: 940, height: 600)
         win.isReleasedWhenClosed = false
-        win.setFrameAutosaveName("CoucouFlowWindow")
-        if !win.setFrameUsingName("CoucouFlowWindow") { win.center() }
+        win.setFrameAutosaveName("LazoFlowWindow")
+        if !win.setFrameUsingName("LazoFlowWindow") { win.center() }
         window = win
         win.makeKeyAndOrderFront(nil)
         NSApp.activate(ignoringOtherApps: true)
@@ -254,11 +254,11 @@ private struct HubSidebar: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 3) {
             HStack(spacing: 10) {
-                // The scene draws Mochi a little below its middle (room for his
+                // The scene draws Nudo a little below its middle (room for his
                 // hops and hats): lifted so his body lines up with the name.
-                HubLiveMochi(size: 28)
+                HubLiveNudo(size: 28)
                     .offset(y: -4)
-                Text(verbatim: "Coucou")
+                Text(verbatim: "Lazo")
                     .font(.system(size: 18, weight: .bold))
             }
             .padding(.horizontal, 8)
@@ -357,8 +357,8 @@ private struct HubSidebarItem: View {
 
 // MARK: - Shared pieces
 
-/// Mochi as a small logo: the white body and its two eyes.
-struct HubMochi: View {
+/// Nudo as a small logo: the white body and its two eyes.
+struct HubNudo: View {
     var size: CGFloat = 28
 
     var body: some View {

@@ -3,25 +3,25 @@ import Combine
 import Darwin
 import IOKit.ps
 
-/// How the Mac is doing, as Mochi shows it: a busy processor makes him sweat, a warm Mac
+/// How the Mac is doing, as Nudo shows it: a busy processor makes him sweat, a warm Mac
 /// flushes him, short memory puffs him up, a low battery makes him tired, then asleep.
 ///
-/// It only reads while Mochi is on screen (the island showing, or Mochi on the desktop), every
+/// It only reads while Nudo is on screen (the island showing, or Nudo on the desktop), every
 /// few seconds: a hidden island costs nothing. Everything stays on the Mac.
 @MainActor
 final class MachineVitals: ObservableObject {
     static let shared = MachineVitals()
 
-    static let enabledKey = "mochiFeelsTheMac"
+    static let enabledKey = "nudoFeelsTheMac"
 
-    /// What Mochi shows, read by his canvases every frame.
-    @Published private(set) var mood = MochiMood.calm
-    /// The line shown under the island while the pointer is on Mochi ("CPU 94 % · node, Chrome").
+    /// What Nudo shows, read by his canvases every frame.
+    @Published private(set) var mood = NudoMood.calm
+    /// The line shown under the island while the pointer is on Nudo ("CPU 94 % · node, Chrome").
     @Published private(set) var summary: String? = nil
-    /// The pointer is on Mochi (set by the island's poll).
+    /// The pointer is on Nudo (set by the island's poll).
     @Published var hovered = false
 
-    /// Off in Settings → General: Mochi no longer reacts to the Mac.
+    /// Off in Settings → General: Nudo no longer reacts to the Mac.
     var enabled: Bool {
         get { UserDefaults.standard.object(forKey: Self.enabledKey) as? Bool ?? true }
         set {
@@ -44,15 +44,15 @@ final class MachineVitals: ObservableObject {
 
     private init() {}
 
-    /// Starts following whether Mochi is on screen. Called once at launch.
+    /// Starts following whether Nudo is on screen. Called once at launch.
     func start() {
         let state = AppState.shared
         // Everything is received on the main thread: macOS posts some of these (the thermal
-        // state) from a background queue, and Mochi's code only runs on the main one.
+        // state) from a background queue, and Nudo's code only runs on the main one.
         state.$mode.removeDuplicates().receive(on: DispatchQueue.main).sink { [weak self] _ in
             Task { @MainActor in self?.refreshRunning() }
         }.store(in: &subscriptions)
-        state.$mochiOnDesktop.removeDuplicates().receive(on: DispatchQueue.main).sink { [weak self] _ in
+        state.$nudoOnDesktop.removeDuplicates().receive(on: DispatchQueue.main).sink { [weak self] _ in
             Task { @MainActor in self?.refreshRunning() }
         }.store(in: &subscriptions)
         NotificationCenter.default.publisher(for: ProcessInfo.thermalStateDidChangeNotification)
@@ -63,7 +63,7 @@ final class MachineVitals: ObservableObject {
     }
 
     private var onScreen: Bool {
-        AppState.shared.mode != .hidden || AppState.shared.mochiOnDesktop
+        AppState.shared.mode != .hidden || AppState.shared.nudoOnDesktop
     }
 
     private func refreshRunning() {
@@ -110,7 +110,7 @@ final class MachineVitals: ObservableObject {
         }
         if busySamples >= 2 { topProcesses = topProcessNames() } else { lastProcessTimes = [:]; topProcesses = [] }
 
-        var next = MochiMood()
+        var next = NudoMood()
         next.busy = busySamples >= 2 ? CGFloat(min(1, (cpu - 0.6) / 0.3)) : 0
         switch ProcessInfo.processInfo.thermalState {
         case .fair:     next.hot = 0.4
@@ -143,7 +143,7 @@ final class MachineVitals: ObservableObject {
     }
 
     /// The words under the island, the most telling first.
-    static func describe(_ mood: MochiMood, cpu: Double, battery: (percent: Int, onPower: Bool)?, top: [String]) -> String? {
+    static func describe(_ mood: NudoMood, cpu: Double, battery: (percent: Int, onPower: Bool)?, top: [String]) -> String? {
         var parts: [String] = []
         if mood.busy > 0 {
             let pct = Int((cpu * 100).rounded())

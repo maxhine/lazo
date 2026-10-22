@@ -4247,7 +4247,7 @@ struct MusicPill: View {
                 .stroke(Color(hex: task.color).opacity(isHovered ? 0.55 : 0.14), lineWidth: 1)
                 .allowsHitTesting(false)
 
-            // Mini Mochi at leading edge
+            // Mini Nudo at leading edge
             HStack(spacing: 0) {
                 MiniBotCanvasView(task: task, isDancing: isPlaying)
                     .frame(width: 22 / 0.6, height: 22 / 0.6)
@@ -4351,7 +4351,7 @@ struct MusicCardView: View {
                 .padding(.leading, 108)
                 .padding(.trailing, 36)
 
-                Text("Allow Coucou to control Music")
+                Text("Allow Lazo to control Music")
                     .font(.system(size: 11))
                     .foregroundColor(Color(hex: "#8E939C"))
                     .padding(.leading, 108)
@@ -4498,7 +4498,7 @@ struct WardrobeView: View {
             return h.displayName
         }
         // Fall back to current selection
-        let sel = state.mochiOutfitSelection
+        let sel = state.nudoOutfitSelection
         if sel == .auto {
             let seasonal = Outfit.seasonal(for: Date(), calendar: .current)
             let name = seasonal == .none ? "None" : seasonal.displayName
@@ -4531,12 +4531,12 @@ struct WardrobeView: View {
                     ForEach(withAuto, id: \.rawValue) { outfit in
                         OutfitPillView(
                             outfit: outfit,
-                            isSelected: state.mochiOutfitSelection == outfit,
+                            isSelected: state.nudoOutfitSelection == outfit,
                             isHovered: hoveredOutfit == outfit,
                             onHover: { h in
                                 hoveredOutfit = h ? outfit : nil
                                 if h {
-                                    // Preview on main Mochi
+                                    // Preview on main Nudo
                                     let preview: Outfit = outfit == .auto
                                         ? Outfit.seasonal(for: Date(), calendar: .current)
                                         : outfit
@@ -4546,8 +4546,8 @@ struct WardrobeView: View {
                                 }
                             },
                             onTap: {
-                                guard state.mochiOutfitSelection != outfit else { return }
-                                state.mochiOutfitSelection = outfit
+                                guard state.nudoOutfitSelection != outfit else { return }
+                                state.nudoOutfitSelection = outfit
                                 SoundEngine.shared.play("pop")
                                 NotificationCenter.default.post(name: .triggerEmote, object: BotEmote.proud)
                             },
@@ -4620,8 +4620,8 @@ private func drawOutfitIcon(context: GraphicsContext, size: CGSize, outfit: Outf
     case .auto:
         let iconR: CGFloat = 10.0
         let rx = iconR * 1.14, ry = iconR * 0.88
-        let mH = MochiH(R: iconR, yaw: 0, pitch: 0)
-        let bodyPath = mochiOutfitPath(rx, ry)
+        let mH = NudoH(R: iconR, yaw: 0, pitch: 0)
+        let bodyPath = nudoOutfitPath(rx, ry)
         let iconCY = cy + iconR * 0.62
 
         // Draw the seasonal outfit behind body
@@ -4687,11 +4687,11 @@ private func drawOutfitIcon(context: GraphicsContext, size: CGSize, outfit: Outf
         ctx.stroke(slash, with: .color(Color(hex: "#454850")), style: StrokeStyle(lineWidth: 1.4, lineCap: .round))
 
     default:
-        // Small Mochi wearing the outfit
+        // Small Nudo wearing the outfit
         let iconR: CGFloat = 10.0
         let rx = iconR * 1.14, ry = iconR * 0.88
-        let mH = MochiH(R: iconR, yaw: 0, pitch: 0)
-        let bodyPath = mochiOutfitPath(rx, ry)
+        let mH = NudoH(R: iconR, yaw: 0, pitch: 0)
+        let bodyPath = nudoOutfitPath(rx, ry)
         let iconCY = cy + iconR * 0.62
 
         // Draw outfit behind

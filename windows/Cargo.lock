@@ -718,7 +718,7 @@ dependencies = [
 ]
 
 [[package]]
-name = "coucou"
+name = "lazo"
 version = "0.5.2"
 dependencies = [
  "arboard",
@@ -753,7 +753,7 @@ dependencies = [
 ]
 
 [[package]]
-name = "coucou-hook"
+name = "lazo-hook"
 version = "0.5.2"
 dependencies = [
  "libc",

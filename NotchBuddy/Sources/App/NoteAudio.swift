@@ -97,7 +97,7 @@ final class ChannelRecorder: @unchecked Sendable {
         }
     }
 
-    /// Closes the file at once, waiting for what is queued (when Coucou quits).
+    /// Closes the file at once, waiting for what is queued (when Lazo quits).
     func closeNow() {
         queue.sync { file = nil }
     }
@@ -167,12 +167,12 @@ final class SystemAudioTap: @unchecked Sendable {
     private var procID: AudioDeviceIOProcID?
     /// The tap's own buffers, when the aggregate also brings the output device's inputs (a headset's mic).
     private var tapList: UnsafeMutableAudioBufferListPointer?
-    private let queue = DispatchQueue(label: "fr.louisraille.NotchBuddy.notetaker.system", qos: .userInitiated)
+    private let queue = DispatchQueue(label: "com.sarca.lazo.isla.notetaker.system", qos: .userInitiated)
 
     func start(sink: @escaping @Sendable ([Float]) -> Void) throws {
         let description = CATapDescription(stereoGlobalTapButExcludeProcesses: [])
         description.uuid = UUID()
-        description.name = "Coucou Notetaker"
+        description.name = "Lazo Notetaker"
         description.isPrivate = true
         description.muteBehavior = .unmuted
 
@@ -195,7 +195,7 @@ final class SystemAudioTap: @unchecked Sendable {
 
         let outputUID = try Self.defaultOutputUID()
         let aggregate: [String: Any] = [
-            kAudioAggregateDeviceNameKey: "Coucou Notetaker",
+            kAudioAggregateDeviceNameKey: "Lazo Notetaker",
             kAudioAggregateDeviceUIDKey: UUID().uuidString,
             kAudioAggregateDeviceMainSubDeviceKey: outputUID,
             kAudioAggregateDeviceIsPrivateKey: true,

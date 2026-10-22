@@ -4,7 +4,7 @@ import Security
 // MARK: - Keychain helpers
 
 enum Keychain {
-    static let service = "fr.louisraille.NotchBuddy"
+    static let service = "com.sarca.lazo.isla"
 
     static func save(key: String, value: String) {
         guard let data = value.data(using: .utf8) else { return }
@@ -225,9 +225,9 @@ final class ClaudeService {
     /// neutral otherwise — same wording as the Windows build.
     private nonisolated static func makeSystemPrompt() -> String {
         let opening = if let firstName = resolveUserFirstName() {
-            "You are Mochi, \(firstName)'s personal AI assistant embedded in the notch of their Mac."
+            "You are Nudo, \(firstName)'s personal AI assistant embedded in the notch of their Mac."
         } else {
-            "You are Mochi, a personal AI assistant embedded in the notch of the user's Mac."
+            "You are Nudo, a personal AI assistant embedded in the notch of the user's Mac."
         }
         return """
         \(opening) \
@@ -539,7 +539,7 @@ final class ClaudeService {
     }
 
     #if !APPSTORE
-    // MARK: - Voice brain turn (Claude with Coucou's tools)
+    // MARK: - Voice brain turn (Claude with Lazo's tools)
 
     /// One Messages API call for the voice brain: returns the assistant content blocks and
     /// the stop reason. The fast model first, the Settings model if the key can't use it.
@@ -564,12 +564,12 @@ final class ClaudeService {
         return (content, json["stop_reason"] as? String ?? "end_turn")
     }
 
-    // MARK: - Voice answer (Coucou's voice, web search)
+    // MARK: - Voice answer (Lazo's voice, web search)
 
     /// Fast model for spoken answers; the chat model from Settings when it is unavailable.
     private static let voiceModel = "claude-haiku-4-5"
 
-    /// A short answer Coucou can say aloud, with web search, in the answer language.
+    /// A short answer Lazo can say aloud, with web search, in the answer language.
     /// `history` holds the previous exchanges of this voice conversation (memory only).
     /// nil on any failure: no key, network, quota.
     func voiceAnswer(_ question: String, history: [VoiceWebTurn], french: Bool) async -> String? {
@@ -578,14 +578,14 @@ final class ClaudeService {
             .locale(Locale(identifier: french ? "fr_FR" : "en_US")))
         let system = french
             ? """
-              Tu es Coucou, un assistant vocal dans le notch du Mac. Nous sommes le \(today). \
+              Tu es Lazo, un assistant vocal dans le notch du Mac. Nous sommes le \(today). \
               Ta réponse est lue à voix haute : 2 à 4 phrases courtes, en français, sans markdown, sans liste, \
               sans lien, sans citer tes sources. Cherche sur le web dès que la réponse peut avoir changé \
               (actualité, résultats, prix, horaires, météo, personnes). Donne directement les faits utiles. \
               S'il y a clairement plus à raconter, termine par une seule courte question pour proposer la suite.
               """
             : """
-              You are Coucou, a voice assistant in the Mac's notch. Today is \(today). \
+              You are Lazo, a voice assistant in the Mac's notch. Today is \(today). \
               Your answer is read aloud: 2 to 4 short sentences in English, no markdown, no lists, no links, \
               never cite sources. Search the web whenever the answer may have changed (news, scores, prices, \
               opening hours, weather, people). Give the useful facts straight away. \

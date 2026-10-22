@@ -17,7 +17,7 @@ import { Updates } from "./island/update";
 import { WhatsNew } from "./whats-new/controller";
 import { onLanguageChange, resolveLanguage, setLanguage, systemLanguages } from "./i18n/i18n";
 
-/** Shows the language Settings asks for ("" = the system's, when Coucou has it). */
+/** Shows the language Settings asks for ("" = the system's, when Lazo has it). */
 function applyLanguage() {
   setLanguage(resolveLanguage(State.settings.language, systemLanguages()));
 }
@@ -86,7 +86,7 @@ async function main() {
         setPaused(false);
         island.alert("wardrobe");
         break;
-      // "Update Coucou to X…", only in the menu while a new version is out.
+      // "Update Lazo to X…", only in the menu while a new version is out.
       case "update":
         setPaused(false);
         Updates.show();

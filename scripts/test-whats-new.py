@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """What's new after an update: every release must bring its entry.
 
-Coucou shows, once after it updated itself, what the new version brings (an icon, a title and a
+Lazo shows, once after it updated itself, what the new version brings (an icon, a title and a
 line per item, in every language the app speaks). The entries live in
   NotchBuddy/Resources/whats-new.json   (Mac, the 14 languages of Localizable.xcstrings)
   windows/src/whats-new/whats-new.json  (Windows and Linux, the 12 languages of strings.json)

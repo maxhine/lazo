@@ -94,7 +94,7 @@ struct IslandContainer: View {
 
             // Single BotPlacement — always alive in the view tree so spring animations
             // fire from the current position (e.g. choose at 60,101) when canvas deactivates.
-            // Hidden during upload canvas or greeting (both draw their own Mochi).
+            // Hidden during upload canvas or greeting (both draw their own Nudo).
             BotPlacement(state: state, islandW: islandWidth, islandH: islandHeight)
                 // Keep idle animations inside the resting strip. Expanded views
                 // retain the panel's full height for particles and hands.
@@ -107,7 +107,7 @@ struct IslandContainer: View {
 
             CountdownBar(state: state, islandW: islandWidth)
 
-            // Under the island while the pointer is on Mochi: how the Mac is doing.
+            // Under the island while the pointer is on Nudo: how the Mac is doing.
             VitalsHoverLine(islandW: islandWidth, islandH: islandHeight)
 
             if demoEngine.isActive {
@@ -323,17 +323,17 @@ struct BotPlacement: View {
                     let t = min(1.0, max(0, elapsed / state.uploadDuration))
                     // cx = 36 + 526*t: bot center at fill right edge (bar left=36, width=526)
                     let uploadCx = 36 + CGFloat(t * (2 - t)) * 526
-                    BotCanvasView(state: state, particleOverhang: 0, paused: state.mochiOnDesktop)
+                    BotCanvasView(state: state, particleOverhang: 0, paused: state.nudoOnDesktop)
                         .frame(width: canvasSize, height: canvasSize)
-                        .opacity(state.isDraggingBot || state.mochiOnDesktop ? 0 : opacity)
+                        .opacity(state.isDraggingBot || state.nudoOnDesktop ? 0 : opacity)
                         .position(x: uploadCx, y: cy)
                 }
                 .transition(.scale(scale: 0.01, anchor: .center).combined(with: .opacity))
             } else {
-                // Invisible while Mochi lives on the desktop: no drawing either.
-                BotCanvasView(state: state, particleOverhang: overhang, paused: state.mochiOnDesktop)
+                // Invisible while Nudo lives on the desktop: no drawing either.
+                BotCanvasView(state: state, particleOverhang: overhang, paused: state.nudoOnDesktop)
                     .frame(width: canvasSize, height: canvasSize + overhang)
-                    .opacity(state.isDraggingBot || state.mochiOnDesktop ? 0 : opacity)
+                    .opacity(state.isDraggingBot || state.nudoOnDesktop ? 0 : opacity)
                     .position(x: cx, y: cy - overhang / 2)
                     .animation(.spring(response: 0.5, dampingFraction: 0.72), value: cx)
                     .animation(.spring(response: 0.5, dampingFraction: 0.72), value: cy)
@@ -381,7 +381,7 @@ func botPosition(mode: IslandMode, view: IslandView, islandW: CGFloat, islandH: 
     case .expanded:
         let layout = IslandConst.viewLayouts[view]!
         let diameter = layout.botDiameter
-        // Uploading: Mochi dot rides the leading edge of the progress fill.
+        // Uploading: Nudo dot rides the leading edge of the progress fill.
         // Bar in island coords: left=36, width=526. cx = 36 + progress*526 (dot center at fill right edge).
         // cy comes from ViewLayout.botY (bar center in island coords).
         if view == .uploading {
@@ -704,7 +704,7 @@ struct ClaudePlanHeaderPill: View {
 }
 #endif
 
-// MARK: - Compact mini mochi grid (2×2 to the right of the notch)
+// MARK: - Compact mini nudo grid (2×2 to the right of the notch)
 
 struct CompactMiniGrid: View {
     @ObservedObject var state: AppState
