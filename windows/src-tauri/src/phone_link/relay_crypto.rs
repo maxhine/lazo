@@ -453,7 +453,7 @@ mod tests {
     use super::*;
     use serde_json::Value;
 
-    const VECTORS: &str = include_str!("../../../../android/relay/test-vectors.json");
+    const VECTORS: &str = include_str!("relay-test-vectors.json");
 
     fn vectors() -> Value {
         serde_json::from_str(VECTORS).unwrap()
