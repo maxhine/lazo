@@ -193,6 +193,8 @@ pub enum InstallKind {
     Setup,
     /// The per-machine .msi (WiX): Program Files\Lazo.
     Msi,
+    /// Lazo Isla's own setup (windows/installer, the classic Lazo's look): Program Files\Lazo Isla.
+    Installer,
     /// Anything else — the portable exe, a build, Linux: the release page only.
     Manual,
 }
@@ -216,6 +218,9 @@ pub fn install_kind(exe: &str, has_uninstaller: bool, local_app_data: Option<&st
             return if has_uninstaller { InstallKind::Setup } else { InstallKind::Manual };
         }
     }
+    if has_uninstaller && program_files.iter().filter(|p| !p.trim().is_empty()).any(|p| dir == format!("{}\\lazo isla", win_path(p))) {
+        return InstallKind::Installer;
+    }
     if program_files.iter().filter(|p| !p.trim().is_empty()).any(|p| dir == format!("{}\\lazo", win_path(p))) {
         return InstallKind::Msi;
     }
@@ -226,7 +231,7 @@ pub fn install_kind(exe: &str, has_uninstaller: bool, local_app_data: Option<&st
 /// workflow publishes, nothing else.
 pub fn asset_name(kind: InstallKind, version: &str) -> Option<String> {
     match kind {
-        InstallKind::Setup => Some(format!("Lazo-Windows-{version}-setup.exe")),
+        InstallKind::Setup | InstallKind::Installer => Some(format!("Lazo-Windows-{version}-setup.exe")),
         InstallKind::Msi => Some(format!("Lazo-Windows-{version}.msi")),
         InstallKind::Manual => None,
     }
@@ -247,6 +252,15 @@ pub fn installer_command(kind: InstallKind, file: &Path, system_root: Option<&st
     let file_arg = file.to_string_lossy().to_string();
     match kind {
         InstallKind::Setup => Some((file.to_path_buf(), vec!["/P".into(), "/UPDATE".into(), "/R".into()])),
+        // Lazo Isla's setup asks for admin rights (it installs for the machine, like the classic Lazo's): started through
+        // `cmd /c start`, which asks Windows to elevate it instead of failing. `/update` is silent and opens Lazo Isla again.
+        InstallKind::Installer => {
+            let cmd = match system_root.filter(|r| !r.trim().is_empty()) {
+                Some(root) => PathBuf::from(format!("{}\\System32\\cmd.exe", root.trim_end_matches(['\\', '/']))),
+                None => PathBuf::from("cmd.exe"),
+            };
+            Some((cmd, vec!["/c".into(), "start".into(), String::new(), file_arg, "/update".into()]))
+        }
         InstallKind::Msi => {
             let msiexec = match system_root.filter(|r| !r.trim().is_empty()) {
                 Some(root) => PathBuf::from(format!("{}\\System32\\msiexec.exe", root.trim_end_matches(['\\', '/']))),
@@ -931,6 +945,9 @@ mod tests {
         // A portable exe copied there: no NSIS uninstaller next to it.
         assert_eq!(kind(r"C:\Users\Ana\AppData\Local\Lazo\lazo.exe", false), InstallKind::Manual);
         assert_eq!(kind(r"C:\Program Files\Lazo\lazo.exe", false), InstallKind::Msi);
+        assert_eq!(kind(r"C:\Program Files\Lazo Isla\lazo.exe", true), InstallKind::Installer);
+        assert_eq!(kind(r"C:\Program Files\Lazo Isla\lazo.exe", false), InstallKind::Manual, "without its uninstaller it is a copy");
+        assert_eq!(kind(r"C:\Program Files\Lazo Isla\classic\Lazo.exe", true), InstallKind::Manual);
         assert_eq!(kind(r"C:\Program Files (x86)\Lazo\lazo.exe", false), InstallKind::Msi);
         // The portable exe, a build, a folder that only looks alike.
         assert_eq!(kind(r"C:\Users\Ana\Downloads\lazo.exe", true), InstallKind::Manual);
@@ -947,6 +964,7 @@ mod tests {
         let w = latest(&fixture(), "windows-v").unwrap();
         assert_eq!(pick_asset(&w, InstallKind::Setup).unwrap().name, "Lazo-Windows-0.5.0-setup.exe");
         assert_eq!(pick_asset(&w, InstallKind::Msi).unwrap().name, "Lazo-Windows-0.5.0.msi");
+        assert_eq!(pick_asset(&w, InstallKind::Installer).unwrap().name, "Lazo-Windows-0.5.0-setup.exe");
         assert_eq!(pick_asset(&w, InstallKind::Manual), None);
         // A look-alike name, or one served from elsewhere, is never picked.
         let mut odd = w.clone();
@@ -981,6 +999,10 @@ mod tests {
         assert_eq!(program, PathBuf::from(r"C:\Windows\System32\msiexec.exe"));
         assert_eq!(args, ["/i", r"C:\Temp\lazo-update-1\Lazo-Windows-0.6.0.msi", "/passive", "AUTOLAUNCHAPP=True"]);
         assert_eq!(installer_command(InstallKind::Msi, msi, None).unwrap().0, PathBuf::from("msiexec.exe"));
+        let island = Path::new(r"C:\Temp\lazo-update-1\Lazo-Windows-0.8.0-setup.exe");
+        let (program, args) = installer_command(InstallKind::Installer, island, Some(r"C:\Windows")).unwrap();
+        assert_eq!(program, PathBuf::from(r"C:\Windows\System32\cmd.exe"));
+        assert_eq!(args, ["/c", "start", "", r"C:\Temp\lazo-update-1\Lazo-Windows-0.8.0-setup.exe", "/update"]);
         assert_eq!(installer_command(InstallKind::Manual, file, None), None);
     }
 
