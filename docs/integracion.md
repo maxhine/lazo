@@ -12,12 +12,12 @@ La isla (Mac `NotchBuddy/`, Windows `windows/`) es la interfaz; Lazo es la herra
 
 - La app Tauri ejecuta el motor Rust en su mismo proceso (sin programa aparte, sin .NET): descubrimiento, canal cifrado, archivos y chat. La página lo usa por un evento y un comando de Tauri.
 - Pill **Lazo** (`core/lazo.ts`, `island/lazo.ts`, `views/lazo.ts`), activa por defecto: personas en la red, ofertas de archivo con aceptar/rechazar y progreso, y envío (suelta un archivo en la isla con la pill de Lazo al frente y elige a quién). Un archivo ofrecido abre la isla.
-- Falta, en este orden: verificación con código, pantalla compartida y control remoto (necesitan la red), chat guardado en disco, ajustes (nombre, foto, carpeta de recepción) y volver del clásico a la isla. Xpace, el conversor de nubes de puntos y Descanso Visual ya están dentro de la isla.
+- Falta, en este orden: verificación con código, pantalla compartida y control remoto (necesitan la red), chat guardado en disco y ajustes (nombre, foto, carpeta de recepción). Xpace, el conversor de nubes de puntos y Descanso Visual ya están dentro de la isla.
 - El Lazo clásico y la isla no pueden estar abiertos a la vez (mismo cerrojo y mismos puertos): la tarjeta lo dice.
 
 ## Dos núcleos, y las herramientas dentro de la isla
 
-Quien use el núcleo nuevo lo usa todo dentro de la isla, que crece al tamaño de cada herramienta (`VIEW_LAYOUTS[view].width/height`; la ventana, transparente, mide 1000×640). Quien prefiera el viejo lo elige en los ajustes de la isla («Use classic Lazo»): se anota en `%APPDATA%Lazocore.txt`, la isla se cierra y se abre el Lazo clásico. Falta el camino de vuelta desde el clásico.
+Quien use el núcleo nuevo lo usa todo dentro de la isla, que crece al tamaño de cada herramienta (`VIEW_LAYOUTS[view].width/height`; la ventana, transparente, mide 1000×640). Quien prefiera el viejo lo elige en los ajustes de la isla («Use classic Lazo»): se anota en `%APPDATA%Lazocore.txt`, la isla se cierra y se abre el Lazo clásico. El camino de vuelta está en el clásico (ajustes y menú de la bandeja: «Usar la isla (nuevo núcleo)», `lazo/src/IslandCore.cs`): busca la isla instalada (la que trae `engine\Lazo.Engine.exe` al lado), anota `core.txt`, se cierra y la abre 3 s después. Solo aparece si la isla está instalada. Prueba: `lazo/scripts/test-islandcore.ps1`; el botón en pantalla no se ha visto con la isla instalada.
 
 La lógica de las herramientas es la del Lazo clásico, sin reescribirla: `engine/Lazo.Engine.exe --tools-only` (sin red) compila `XpaceScanner`, `XpaceActions`… tal cual y las sirve con órdenes `herramienta.orden` por el mismo JSON de `engine-protocol.md`. La isla lo arranca al primer uso (`windows/src-tauri/src/lazo_tools.rs`, que retransmite los mensajes como el evento `lazo-tools`) y dibuja la interfaz con TypeScript.
 

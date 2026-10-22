@@ -1333,6 +1333,16 @@ namespace Lazo
                 FontSize = 12,
                 Margin = new Thickness(0, 16, 0, 2)
             };
+            string island = IslandCore.Find();
+            if (island != null)
+            {
+                Button useIsland = Theme.Button("Usar la isla (nuevo núcleo)", false);
+                useIsland.HorizontalAlignment = HorizontalAlignment.Left;
+                useIsland.Margin = new Thickness(0, 12, 0, 0);
+                useIsland.ToolTip = "Cierra este Lazo y abre la isla. Puedes volver aquí desde los ajustes de la isla.";
+                useIsland.Click += (s, e) => SwitchToIsland();
+                panel.Children.Add(useIsland);
+            }
             startup.Checked += (s, e) => Startup.Set(true);
             startup.Unchecked += (s, e) => { Startup.Set(false); startup.IsChecked = Startup.IsEnabled(); };
             panel.Children.Add(startup);
@@ -3308,6 +3318,16 @@ namespace Lazo
             });
         }
 
+        /// <summary>Cierra este Lazo y abre la isla (el núcleo nuevo); no pueden estar abiertos a la vez.</summary>
+        private void SwitchToIsland()
+        {
+            string problem = IslandCore.Switch(IslandCore.Find());
+            if (problem != null) { ShowToast(problem); return; }
+            _exiting = true;
+            Close();
+            Application.Current.Shutdown();
+        }
+
         private void SetupTray()
         {
             _tray = new System.Windows.Forms.NotifyIcon();
@@ -3323,6 +3343,7 @@ namespace Lazo
             menu.Items.Add("Micro-descanso ahora (20s)", null, (s, e) => Dispatcher.BeginInvoke((Action)(() => EyeCareService.Instance.TriggerMicroBreak())));
             menu.Items.Add("Pausa activa ahora (5m)", null, (s, e) => Dispatcher.BeginInvoke((Action)(() => EyeCareService.Instance.TriggerActivePause())));
             menu.Items.Add(new System.Windows.Forms.ToolStripSeparator());
+            if (IslandCore.Find() != null) menu.Items.Add("Usar la isla (nuevo núcleo)", null, (s, e) => Dispatcher.BeginInvoke((Action)SwitchToIsland));
             menu.Items.Add("Salir", null, (s, e) => Dispatcher.BeginInvoke((Action)(() => { _exiting = true; Close(); Application.Current.Shutdown(); })));
             _tray.ContextMenuStrip = menu;
         }
