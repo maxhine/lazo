@@ -108,7 +108,7 @@ export const VIEW_LAYOUTS: Record<IslandViewName, ViewLayout> = {
   recap: { height: 184, botX: 62, botY: null, botDiameter: 58, agentMode: "column" },
   wardrobe: { height: 160, botX: 68, botY: null, botDiameter: 58, agentMode: "none" },
   // Lazo's tools: point clouds, Xpace, eye care, screen sharing.
-  tools: { height: 160, botX: 62, botY: null, botDiameter: 54, agentMode: "none" },
+  tools: { height: 184, botX: 62, botY: null, botDiameter: 54, agentMode: "none" },
   // Xpace opens inside the island, which grows to its size.
   xpace: { height: 520, width: 900, botX: 40, botY: 40, botDiameter: 0, agentMode: "none" },
   // Point clouds open inside the island too, wider than Xpace for its two columns.

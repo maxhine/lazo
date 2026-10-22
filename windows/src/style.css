@@ -4988,3 +4988,14 @@ html[data-dir="rtl"] #views :is(.bubble, .reply .md-p, .reply .md-h, .reply .md-
 .tp-track {
   margin-right: 14px;
 }
+
+/* Tools: the grid sits in the middle of the card; the message line takes room only when it has something to say. */
+.tools-note:empty {
+  display: none;
+}
+
+.tools-card {
+  gap: 6px;
+  padding-top: 6px;
+  padding-bottom: 6px;
+}
