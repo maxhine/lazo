@@ -8,8 +8,7 @@
     ],
     "resources": {
       "../target/release/lazo-hook.exe": null,
-      "../target/release/lazo-hook": "lazo-hook",
-      "../../engine/bin/Lazo.Engine.exe": null
+      "../target/release/lazo-hook": "lazo-hook"
     },
     "linux": {
       "appimage": {

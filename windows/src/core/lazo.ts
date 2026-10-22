@@ -1,10 +1,11 @@
 // The Lazo pill on the page: the people on the network, files waiting to be accepted, and the
 // file that was dropped on the island and waits for someone to send it to. Everything comes from
-// the engine (engine/Lazo.Engine.exe, started by src-tauri/src/lazo_engine.rs) through the client
-// in ../lazo/engine.ts.
+// the engine (src-tauri/src/lazo_net, running inside the island) through the client in ../lazo/engine.ts:
+// its JSON messages travel as a Tauri event out and a command in.
 
-import { LazoEngine, engineUrl, type EngineEvent, type EngineOffer, type EnginePeer } from "../lazo/engine";
-import { Bridge } from "./bridge";
+import { invoke } from "@tauri-apps/api/core";
+import { listen, type UnlistenFn } from "@tauri-apps/api/event";
+import { LazoEngine, type EngineEvent, type EngineOffer, type EnginePeer, type SocketLike } from "../lazo/engine";
 
 export const LAZO_ID = "integration_lazo";
 export const LAZO_COLOR = "#E5E7EB";
@@ -44,22 +45,53 @@ export interface LazoHost {
   offered(offer: EngineOffer): void;
 }
 
-/** Connects to the engine and keeps the connection (it asks Rust for the address on each try). */
-export function startLazo(host: LazoHost): LazoEngine {
-  const engine = new LazoEngine(async () => {
+/**
+ * The engine's messages over Tauri: the engine emits each as an event, commands go in through
+ * lazo_engine_send. Asking for the state is also how the page learns the engine is not there
+ * (Rust answers with the reason), which closes the "socket" so the client tries again later.
+ */
+export function tauriSocket(onError: (reason: string) => void): SocketLike {
+  let unlisten: UnlistenFn | null = null;
+  let closed = false;
+  const socket: SocketLike = {
+    onopen: null, onmessage: null, onclose: null, onerror: null,
+    send(data: string) {
+      void invoke("lazo_engine_send", { message: data }).catch(() => {});
+    },
+    close() {
+      closed = true;
+      unlisten?.();
+    },
+  };
+  void (async () => {
     try {
-      const info = await Bridge.lazoEngineInfo();
-      Lazo.error = "";
-      return engineUrl(info.port, info.token);
+      const stop = await listen<string>("lazo-engine", (e) => socket.onmessage?.({ data: e.payload }));
+      if (closed) return stop();
+      unlisten = stop;
+      await invoke("lazo_engine_send", { message: JSON.stringify({ cmd: "state" }) });
+      socket.onopen?.({});
     } catch (err) {
-      Lazo.error = String(err).replace(/^Error:\s*/, "");
-      host.changed();
-      throw err;
+      onError(String(err).replace(/^Error:s*/, ""));
+      unlisten?.();
+      socket.onclose?.({});
     }
-  }, (url) => new WebSocket(url));
+  })();
+  return socket;
+}
+
+/** Connects to the engine and keeps trying while it is not there. */
+export function startLazo(host: LazoHost): LazoEngine {
+  const engine = new LazoEngine(
+    async () => "tauri",
+    () => tauriSocket((reason) => {
+      Lazo.error = reason;
+      host.changed();
+    }),
+  );
   Lazo.engine = engine;
   let offers = 0;
   engine.on((e: EngineEvent) => {
+    if (engine.state.connected) Lazo.error = "";
     if (e.type === "sendDone") {
       Lazo.notice = e.ok ? "sent" : e.message;
     }

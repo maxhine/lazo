@@ -12,8 +12,8 @@
   "app": {
     "withGlobalTauri": false,
     "security": {
-      "csp": "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; media-src 'self' blob:; connect-src 'self' ipc: http://ipc.localhost ws://127.0.0.1:*",
-      "devCsp": "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; media-src 'self' blob:; connect-src 'self' ipc: http://ipc.localhost ws://localhost:1420 http://localhost:1420 ws://127.0.0.1:*"
+      "csp": "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; media-src 'self' blob:; connect-src 'self' ipc: http://ipc.localhost",
+      "devCsp": "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; media-src 'self' blob:; connect-src 'self' ipc: http://ipc.localhost ws://localhost:1420 http://localhost:1420"
     },
     "windows": [
       {
@@ -49,8 +49,7 @@
       "icons/icon.ico"
     ],
     "resources": {
-      "../target/release/lazo-hook.exe": "lazo-hook.exe",
-      "../../engine/bin/Lazo.Engine.exe": "engine/Lazo.Engine.exe"
+      "../target/release/lazo-hook.exe": "lazo-hook.exe"
     },
     "copyright": "© SARCA",
     "category": "DeveloperTool",

@@ -443,9 +443,6 @@ export const Bridge = {
   /** Whether there is a Spotify to launch (Settings). */
   spotifyInstalled: () => call<boolean>("spotify_installed"),
 
-  // ── Lazo engine (src-tauri/src/lazo_engine.rs) ─────────────────────────────
-  /** Port and token of the engine, once it listens; rejects with the reason when it will not. */
-  lazoEngineInfo: () => callOrThrow<{ port: number; token: string }>("lazo_engine_info"),
 
   // ── New versions (src-tauri/src/update.rs) ────────────────────────────────
   updateStatus: () => call<UpdateStatus>("update_status"),

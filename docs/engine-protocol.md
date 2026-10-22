@@ -1,16 +1,12 @@
 # Motor de Lazo para la isla (protocolo 1)
 
-`engine/Lazo.Engine.exe` es el motor del Lazo clásico sin ventanas: compila tal cual los archivos de `lazo/src` que no dependen de WPF (red, cifrado LAZO3, chat, nubes de puntos, Xpace). La isla lo lanza y habla con él por un WebSocket local con mensajes JSON, una línea de texto por mensaje.
+El motor de Lazo en Windows es Rust y vive dentro de la isla (`windows/src-tauri/src/lazo_net`): descubrimiento, canal cifrado LAZO3, archivos y chat, con el mismo protocolo de red que el Lazo clásico y el Mac (`lazo/docs/protocolo-seguro.md`). Comparte con el clásico los archivos de `%APPDATA%Lazo` (`device.id`, `identity.key`, `paired.txt`, `name.txt`, `receive-folder.txt`), así que un equipo que tenía Lazo clásico no tiene que emparejarse otra vez.
 
-## Seguridad
+La página y el motor hablan con mensajes JSON, un texto por mensaje. En la isla viajan por el canal de Tauri: el motor los emite como el evento `lazo-engine` y la página manda órdenes con el comando `lazo_engine_send`. Mientras el motor no está (por ejemplo, con el Lazo clásico abierto, que usa los mismos puertos), el comando responde con el motivo y el cliente (`windows/src/lazo/engine.ts`) lo vuelve a intentar.
 
-- Solo escucha en `127.0.0.1`. Puerto: el primero libre desde 48360.
-- Exige el token de la sesión en `?t=` (24 bytes aleatorios en hex), que el motor escribe en `engine.json` (`%APPDATA%\Lazo\engine.json`: `version`, `port`, `token`, `pid`). Lo borra al salir.
-- Si la petición trae `Origin`, debe ser el de la isla (`tauri://localhost`, `http(s)://tauri.localhost` o el servidor de desarrollo en el puerto 1420); otro origen recibe 403. Un sitio web abierto en el navegador no puede hablar con el motor aunque conozca el puerto.
-- Mismo cerrojo que el Lazo clásico: los dos usan los puertos 48351/48352, así que solo uno puede estar abierto.
-- Sin una isla conectada, las ofertas de archivo se rechazan; con una, esperan 60 s su decisión.
+`engine/Lazo.Engine.exe` es el motor del clásico sin ventanas, con los mismos mensajes sobre un WebSocket local con token. Ya no se lanza desde la isla: queda como referencia para comprobar que el motor Rust y el C# se entienden (ver Pruebas).
 
-## Argumentos
+## Argumentos del motor C# (referencia)
 
 `--info <archivo>` · `--port <n>` · `--profile <carpeta>` · `--receive <carpeta>` · `--ports <udp>,<tcp>` y `--allow-parallel` (pruebas) · `--exit-on-stdin-close` (termina cuando quien lo lanzó cierra su entrada).
 
@@ -43,4 +39,7 @@
 
 ## Pruebas
 
-`node engine/test-engine.mjs` compila el motor y comprueba: rechazo sin token y con un origen ajeno, saludo y lista de personas, errores, y dos motores en este equipo que se encuentran, chatean y transfieren 3 MB cifrados (aceptar guarda el archivo idéntico, rechazar no guarda nada), más el cliente TypeScript (`windows/src/lazo/engine.ts`) contra el motor real. La difusión UDP entre dos copias de un mismo equipo no se puede probar (el anuncio exige el mismo puerto de transferencia), así que un motor descubre al otro por un anuncio unicast y el otro lo registra con `addPeer`.
+- `cargo test -p lazo lazo_net` (en `windows/`): las piezas del protocolo (HKDF contra el vector de la RFC 5869, firmas, registros cifrados alterados o repetidos, identidad guardada con DPAPI, `paired.txt`), reglas de nombres y archivos, anuncios de descubrimiento, dos motores Rust que chatean y se pasan archivos (aceptar, rechazar, mismo nombre, marca de descarga de Windows) y **el motor Rust contra el C# real** (apretón de manos, chat y archivos en los dos sentidos, con la misma clave guardada en `paired.txt`). La prueba contra C# necesita `engine/bin/Lazo.Engine.exe` (`engine/build.ps1`); sin él se omite.
+- `node engine/test-engine.mjs`: lo mismo para el motor C#, por su WebSocket.
+
+La difusión UDP entre dos copias de un mismo equipo no se puede probar (el anuncio exige el mismo puerto de transferencia), así que un motor registra al otro con `addPeer`, que solo existe en modo de pruebas.
