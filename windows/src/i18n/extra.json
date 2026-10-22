@@ -5428,6 +5428,19 @@
       "id": "Belum ada orang di dekat. Buka Lazo di komputer lain di jaringan ini.",
       "de": "Noch niemand in der Nähe. Öffne Lazo auf einem anderen Computer in diesem Netzwerk.",
       "tr": "Yakında henüz kimse yok. Bu ağdaki başka bir bilgisayarda Lazo’yu açın."
+    },
+    "Drop a file on the island to send it.": {
+      "zh-Hans": "把文件拖到灵动岛上即可发送。",
+      "hi": "फ़ाइल भेजने के लिए उसे आइलैंड पर छोड़ें।",
+      "es": "Suelta un archivo en la isla para enviarlo.",
+      "ar": "أفلت ملفًا على الجزيرة لإرساله.",
+      "fr": "Déposez un fichier sur l’île pour l’envoyer.",
+      "bn": "পাঠাতে ফাইলটি আইল্যান্ডে ছেড়ে দিন।",
+      "pt-BR": "Solte um arquivo na ilha para enviá-lo.",
+      "ru": "Перетащите файл на остров, чтобы отправить его.",
+      "id": "Jatuhkan file ke pulau untuk mengirimnya.",
+      "de": "Zieh eine Datei auf die Insel, um sie zu senden.",
+      "tr": "Göndermek için bir dosyayı adaya bırakın."
     }
   }
 }

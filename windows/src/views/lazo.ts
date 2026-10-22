@@ -115,6 +115,7 @@ export function buildLazoCard(): LazoCardHost {
         const list = h("div", { class: "lazo-list" });
         for (const p of peers) list.append(personRow(p, Lazo.pendingFile ? send : null));
         body.append(list);
+        if (!Lazo.pendingFile) body.append(h("div", { class: "lazo-sub lazo-foot", text: t("Drop a file on the island to send it.") }));
       }
       if (sending > 0) body.append(h("div", { class: "lazo-sub lazo-foot", text: t("Sending…") }));
       else if (Lazo.notice) body.append(h("div", { class: "lazo-sub lazo-foot", text: Lazo.notice }));
