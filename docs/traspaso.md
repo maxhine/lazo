@@ -1,4 +1,4 @@
-# Traspaso: Lazo Isla (estado al 2026-10-22)
+# Traspaso: Lazo Isla (estado al 2026-10-23)
 
 Para quien continúe (otro agente u otra persona). Léelo junto con `CLAUDE.md`, `docs/integracion.md` y `docs/engine-protocol.md`.
 
@@ -18,11 +18,11 @@ Dueño: Jhon Andrew (`jhxnandrxw@gmail.com`). Habla español, quiere respuestas 
 - `lazo/` Lazo clásico (no tocar salvo cambios aditivos: modo `--tool=`, botón «Usar la isla», `EyeCare.cs` con el estilo «Notch» y `Preview`).
 - `NotchBuddy/` (Mac, Swift) **no se ha compilado nunca** en esta rama; la sesión del Mac (`/Users/jhonandrew/Developer/lazo-isla`) tiene trabajo propio.
 
-## Hecho (todo en la rama; publicado solo hasta 7e59d78)
+## Hecho (todo publicado en la versión 0.7.1)
 
 Red y personas (pill de Lazo, personas en cuadritos con foto y punto, chat con personas, zumbido, envío por arrastre con animación y «Enviando X a Ana»); herramientas dentro de la isla (Xpace, nubes de puntos, Descanso Visual, TPS a RINEX con línea de tiempo); progreso en el notch; saludo por hora y nombre; ícono y tray de Nudo blanco; pestañas arrastrables; pills apagados por defecto (solo Lazo); español por defecto; avisos de descanso y pausa activa **en el notch** con cuenta regresiva y «probar el estilo»; nube de puntos arrastrada pregunta convertir/compartir; arrastre estable y que despierta la isla oculta; instalador propio con el aspecto del clásico; actualizaciones desde `maxhine/lazo` (etiqueta `windows-vX.Y.Z`); novedades al actualizar (0.7.0).
 
-Publicado: rama `lazo-isla` en `maxhine/lazo` hasta `7e59d78`, y la release **`windows-v0.7.0`** (no «Latest», `--latest=false`; la «Latest» sigue siendo la v0.6.1 del clásico, cuyo actualizador lee `/releases/latest`). **Los commits posteriores a 7e59d78 están solo en local** (sin push).
+Publicado: rama `lazo-isla` en `maxhine/lazo` hasta `801e49d` y las releases **`windows-v0.7.0`** y **`windows-v0.7.1`** (asset `Lazo-Windows-0.7.1-setup.exe`, SHA-256 `cdcd8005…3d7e`; ninguna es «Latest», `--latest=false`: la «Latest» sigue siendo la v0.6.1 del clásico, cuyo actualizador lee `/releases/latest`). Después de `801e49d` solo hay commits de documentación.
 
 ## Cómo trabajar
 
@@ -42,7 +42,7 @@ Publicado: rama `lazo-isla` en `maxhine/lazo` hasta `7e59d78`, y la release **`w
 
 ## Pendiente (en el orden que pidió Jhon)
 
-1. **Publicar 0.7.1** con todo lo posterior a 0.7.0 y probar el instalador en ATLAS (su PC de casa): Jhon lo necesita ahí.
+1. **Probar el instalador 0.7.1 en ATLAS** (el PC de casa de Jhon) y en otro equipo limpio: nunca se ha ejecutado una instalación real. Si falla algo, arreglarlo y sacar 0.7.2 con la receta de abajo.
 2. **Probar a mano, con equipos reales** (nada de esto se ha visto fuera de simulaciones/navegador): arrastrar un archivo del Explorador a una persona y a una isla oculta (el arrastre se arregló por lectura del registro y simulación); zumbido entre dos equipos; envío real entre PCs; aviso de descanso/pausa real en el notch; instalar/desinstalar/actualizar con el instalador; el botón «Usar la isla» del clásico con la isla instalada.
 3. **Pantalla compartida y control remoto** en la isla (dependen de la red; hoy la ficha dice «Coming soon»).
 4. Verificación con código al emparejar; chat guardado en disco (compatible con `ChatStore` del clásico); ajustes de nombre, foto y carpeta de recepción dentro de la isla; sus textos que vienen del programa C# (progreso/errores) están en español sin `t()`.
