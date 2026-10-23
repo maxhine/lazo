@@ -2,6 +2,104 @@
   "about": "What's new, shown once in the island after Lazo updates itself (src/whats-new/). Every Windows and Linux release adds its entry here, in the 12 languages: 1 to 4 items, a short title and one line each, an icon from scripts/test-whats-new.py. python3 scripts/test-whats-new.py checks it.",
   "releases": [
     {
+      "version": "0.7.1",
+      "items": [
+        {
+          "icon": "eye",
+          "title": {
+            "en": "Breaks right in the notch",
+            "zh-Hans": "休息直接在刘海中",
+            "hi": "ब्रेक सीधे नॉच में",
+            "es": "Descansos en el notch",
+            "ar": "الاستراحات في النوتش مباشرة",
+            "fr": "Les pauses dans le notch",
+            "bn": "বিরতি সরাসরি নচে",
+            "pt-BR": "Descansos direto no notch",
+            "ru": "Перерывы прямо в вырезе",
+            "id": "Istirahat langsung di notch",
+            "de": "Pausen direkt im Notch",
+            "tr": "Molalar doğrudan çentikte"
+          },
+          "detail": {
+            "en": "The eye break and the hourly pause open the island a little with a countdown. You can try the style first.",
+            "zh-Hans": "护眼休息和每小时的活动休息会在刘海中带着倒计时展开，也可以先试用样式。",
+            "hi": "आँखों का ब्रेक और हर घंटे का विराम काउंटडाउन के साथ आइलैंड को थोड़ा खोलते हैं। पहले शैली आज़मा सकते हैं।",
+            "es": "El descanso visual y la pausa de cada hora abren un poco la isla con cuenta regresiva. Puedes probar el estilo antes.",
+            "ar": "استراحة العين واستراحة كل ساعة تفتحان الجزيرة قليلًا مع عدّ تنازلي. يمكنك تجربة النمط أولًا.",
+            "fr": "La pause pour les yeux et la pause de chaque heure ouvrent un peu l’île avec un compte à rebours. Vous pouvez d’abord essayer le style.",
+            "bn": "চোখের বিরতি ও প্রতি ঘণ্টার বিরতি কাউন্টডাউনসহ আইল্যান্ড একটু খোলে। আগে ধরনটি পরীক্ষা করা যায়।",
+            "pt-BR": "O descanso visual e a pausa de cada hora abrem um pouco a ilha com contagem regressiva. Dá para testar o estilo antes.",
+            "ru": "Отдых для глаз и ежечасная пауза слегка раскрывают остров с обратным отсчётом. Вид можно сначала проверить.",
+            "id": "Istirahat mata dan jeda tiap jam membuka pulau sedikit dengan hitung mundur. Gayanya bisa dicoba dulu.",
+            "de": "Augenpause und stündliche Pause öffnen die Insel ein wenig mit Countdown. Den Stil kannst du vorher ausprobieren.",
+            "tr": "Göz molası ve saatlik mola, geri sayımla adayı biraz açar. Biçimi önce deneyebilirsiniz."
+          }
+        },
+        {
+          "icon": "download",
+          "title": {
+            "en": "Convert or share",
+            "zh-Hans": "转换或分享",
+            "hi": "बदलें या साझा करें",
+            "es": "Convertir o compartir",
+            "ar": "تحويل أو مشاركة",
+            "fr": "Convertir ou partager",
+            "bn": "রূপান্তর বা শেয়ার",
+            "pt-BR": "Converter ou compartilhar",
+            "ru": "Конвертировать или поделиться",
+            "id": "Konversi atau bagikan",
+            "de": "Umwandeln oder teilen",
+            "tr": "Dönüştür ya da paylaş"
+          },
+          "detail": {
+            "en": "Drop a point cloud on the notch and it asks: convert it, or send it to somebody.",
+            "zh-Hans": "把点云拖到刘海上，它会问：转换，还是发给某人。",
+            "hi": "पॉइंट क्लाउड को नॉच पर छोड़ें; यह पूछेगा: बदलना है या किसी को भेजना है।",
+            "es": "Suelta una nube de puntos en el notch y pregunta: convertirla o enviársela a alguien.",
+            "ar": "أفلت سحابة نقاط على النوتش وسيسأل: تحويلها أم إرسالها لأحد.",
+            "fr": "Déposez un nuage de points sur le notch : il demande s’il faut le convertir ou l’envoyer à quelqu’un.",
+            "bn": "পয়েন্ট ক্লাউড নচে ছাড়লে জিজ্ঞেস করবে: রূপান্তর, নাকি কাউকে পাঠানো।",
+            "pt-BR": "Solte uma nuvem de pontos no notch e ele pergunta: converter ou enviar para alguém.",
+            "ru": "Перетащите облако точек на вырез — он спросит: конвертировать или отправить кому-то.",
+            "id": "Jatuhkan awan titik di notch dan ia bertanya: konversi atau kirim ke seseorang.",
+            "de": "Zieh eine Punktwolke auf den Notch, er fragt: umwandeln oder an jemanden senden.",
+            "tr": "Bir nokta bulutunu çentiğe bırakın; dönüştürmek mi, birine göndermek mi diye sorar."
+          }
+        },
+        {
+          "icon": "bolt",
+          "title": {
+            "en": "Buzz, and a steadier drop",
+            "zh-Hans": "震动，以及更稳的拖放",
+            "hi": "बज़ और ज़्यादा स्थिर ड्रॉप",
+            "es": "Zumbido y un arrastre más firme",
+            "ar": "رنّة وإفلات أثبت",
+            "fr": "Buzz et un glisser-déposer plus stable",
+            "bn": "বাজ এবং আরও স্থির ড্রপ",
+            "pt-BR": "Zumbido e um arrastar mais firme",
+            "ru": "Зуммер и более надёжный перенос",
+            "id": "Dengungan dan seret-lepas yang lebih mantap",
+            "de": "Summer und stabileres Ablegen",
+            "tr": "Zil ve daha sağlam bırakma"
+          },
+          "detail": {
+            "en": "Send somebody a buzz. Files fly into the person's tile, and dragging to the top wakes a hidden island.",
+            "zh-Hans": "给别人发一个震动。文件会飞进对方的卡片；拖到顶部能唤醒隐藏的灵动岛。",
+            "hi": "किसी को बज़ भेजें। फ़ाइलें उस व्यक्ति के टाइल में उड़कर जाती हैं, और ऊपर खींचने पर छिपा आइलैंड जाग जाता है।",
+            "es": "Envía un zumbido a alguien. Los archivos vuelan hacia la ficha de la persona, y arrastrar arriba despierta la isla oculta.",
+            "ar": "أرسل رنّة لشخص ما. تطير الملفات إلى بطاقته، والسحب إلى الأعلى يوقظ الجزيرة المخفية.",
+            "fr": "Envoyez un buzz à quelqu’un. Les fichiers volent vers sa tuile, et glisser vers le haut réveille l’île cachée.",
+            "bn": "কাউকে বাজ পাঠান। ফাইল ব্যক্তির টাইলে উড়ে যায়, আর ওপরে টানলে লুকানো আইল্যান্ড জেগে ওঠে।",
+            "pt-BR": "Envie um zumbido a alguém. Os arquivos voam para a ficha da pessoa, e arrastar para cima acorda a ilha escondida.",
+            "ru": "Отправьте кому-нибудь зуммер. Файлы летят в плитку человека, а перетаскивание вверх будит скрытый остров.",
+            "id": "Kirim dengungan ke seseorang. File terbang ke kartu orangnya, dan menyeret ke atas membangunkan pulau yang tersembunyi.",
+            "de": "Schick jemandem einen Summer. Dateien fliegen in die Kachel der Person, und Ziehen nach oben weckt die versteckte Insel.",
+            "tr": "Birine zil gönderin. Dosyalar kişinin kutucuğuna uçar, yukarı sürüklemek gizli adayı uyandırır."
+          }
+        }
+      ]
+    },
+    {
       "version": "0.7.0",
       "items": [
         {

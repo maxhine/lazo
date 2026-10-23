@@ -18,14 +18,14 @@ using Microsoft.Win32;
 
 [assembly: AssemblyTitle("Lazo Isla Installer")]
 [assembly: AssemblyCompany("Jhon Andrew")]
-[assembly: AssemblyVersion("0.7.0.0")]
-[assembly: AssemblyFileVersion("0.7.0.0")]
+[assembly: AssemblyVersion("0.7.1.0")]
+[assembly: AssemblyFileVersion("0.7.1.0")]
 
 namespace LazoIslaInstaller
 {
     internal static class Program
     {
-        public const string Version = "0.7.0";
+        public const string Version = "0.7.1";
 
         [STAThread]
         private static void Main(string[] args)
