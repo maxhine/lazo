@@ -118,6 +118,14 @@ async fn two_rust_engines_chat_and_move_files() {
     assert_eq!(chat["name"], "Equipo b");
     assert_eq!(b.next("the delivery report", kind("chatSent")).await["ok"], true);
 
+    // A buzz: a hears who sent it; b is told it arrived.
+    b.command(json!({ "cmd": "buzz", "peerId": id_a })).await;
+    let buzz = a.next("a buzz", kind("signal")).await;
+    assert_eq!(buzz["kind"], 4);
+    assert_eq!(buzz["peerId"], id_b);
+    assert_eq!(buzz["name"], "Equipo b");
+    assert_eq!(b.next("the buzz report", kind("buzzSent")).await["ok"], true);
+
     // A file from b to a, accepted: identical bytes arrive, with a progress report on the way.
     let data = payload(3 * 1024 * 1024 + 123);
     let source = b.dir.join("muestra.bin");

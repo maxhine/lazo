@@ -164,17 +164,23 @@ export async function startHub(root: HTMLElement, opts: HubOptions) {
   const logo = h("canvas", {});
   side.append(h("div", { class: "hub-brand" }, logo, h("span", { text: "Lazo" })));
   liveNudo(logo as HTMLCanvasElement);
-  const group = (title: string, pages: PageDef[]) => {
-    side.append(h("div", { class: "hub-group", text: title }));
+  /** The sidebar's words, kept so a change of language relabels them (the pages redraw themselves). */
+  const retitles: (() => void)[] = [];
+  const group = (title: () => string, pages: PageDef[]) => {
+    const heading = h("div", { class: "hub-group", text: title() });
+    retitles.push(() => { heading.textContent = title(); });
+    side.append(heading);
     for (const p of pages) {
       const b = h("button", { class: "hub-item", onclick: () => void show(p.id) });
-      b.append(icon(p.icon), h("span", { text: p.title() }));
+      const label = h("span", { text: p.title() });
+      retitles.push(() => { label.textContent = p.title(); });
+      b.append(icon(p.icon), label);
       items.set(p.id, b);
       side.append(b);
     }
   };
-  group("Flow", FLOW_PAGES);
-  group(t("Notch"), NOTCH_PAGES);
+  group(() => "Flow", FLOW_PAGES);
+  group(() => t("Notch"), NOTCH_PAGES);
   side.append(h("div", { class: "spacer" }), statusLine, h("div", { class: "hub-version", text: `Lazo ${opts.version}` }));
 
   clear(root);
@@ -195,7 +201,11 @@ export async function startHub(root: HTMLElement, opts: HubOptions) {
     drawStatus();
   });
   return {
-    redraw: () => void show(current),
+    redraw: () => {
+      for (const retitle of retitles) retitle();
+      drawStatus();
+      void show(current);
+    },
     current: () => current,
   };
 }

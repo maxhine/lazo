@@ -16,6 +16,8 @@ export interface LazoIslandHost {
   expand(view: "prompt"): void;
   /** A dropped file goes to the AI chat. */
   askAboutFile(path: string): void;
+  /** Somebody sent a buzz: the island opens, Nudo shakes and says who. */
+  buzzed(name: string): void;
 }
 
 export function registerLazoHandlers(island: LazoIslandHost) {
@@ -35,6 +37,7 @@ export function registerLazoHandlers(island: LazoIslandHost) {
       Sound.play("blip");
       if (State.mode === "hidden") island.reveal();
     },
+    buzzed: (_peerId, name) => island.buzzed(name),
     offered: () => {
       State.setFocus(LAZO_ID);
       Sound.play("question");

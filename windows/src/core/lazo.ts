@@ -64,6 +64,8 @@ export interface LazoHost {
   offered(offer: EngineOffer): void;
   /** Somebody wrote to us. */
   messaged(peerId: string, name: string, text: string): void;
+  /** Somebody sent us a buzz. */
+  buzzed(peerId: string, name: string): void;
 }
 
 /**
@@ -100,6 +102,16 @@ export function tauriSocket(onError: (reason: string) => void): SocketLike {
   return socket;
 }
 
+const lastBuzz = new Map<string, number>();
+
+/** A person's buzzes come one every few seconds at most: more is somebody having fun with the island. */
+export function acceptBuzz(peerId: string, now: number, every = 5000): boolean {
+  const last = lastBuzz.get(peerId);
+  if (last != null && now - last < every) return false;
+  lastBuzz.set(peerId, now);
+  return true;
+}
+
 /** Connects to the engine and keeps trying while it is not there. */
 export function startLazo(host: LazoHost): LazoEngine {
   const engine = new LazoEngine(
@@ -133,6 +145,8 @@ export function startLazo(host: LazoHost): LazoEngine {
     Lazo.selfPhoto = own ? `data:image/jpeg;base64,${own}` : "";
     if (e.type === "photo" && e.data) Lazo.photos[e.peerId] = `data:image/jpeg;base64,${e.data}`;
     if (e.type === "chat") host.messaged(e.chat.peerId, e.chat.name, e.chat.text);
+    if (e.type === "buzz" && acceptBuzz(e.peerId, Date.now())) host.buzzed(e.peerId, e.name);
+    if (e.type === "buzzSent" && !e.ok) Lazo.notice = e.message;
     if (e.type === "sendDone") {
       Lazo.notice = e.ok ? "sent" : e.message;
     }

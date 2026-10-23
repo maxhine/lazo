@@ -32,6 +32,8 @@ const IDLE: Duration = Duration::from_secs(120);
 const OFFER_WAIT: Duration = Duration::from_secs(60);
 
 pub const CHAT_KIND_TEXT: u8 = 1;
+/// A buzz ("zumbido"): the classic chat's signal kind 4.
+pub const CHAT_KIND_NUDGE: u8 = 4;
 
 /// A person on the network, as the engine knows them.
 #[derive(Clone, Debug)]

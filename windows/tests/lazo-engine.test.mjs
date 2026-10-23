@@ -174,3 +174,18 @@ test("our own photo comes with hello, and its absence is an empty string", async
   push(hello);
   assert.equal(engine.state.self.photo, "");
 });
+
+test("a buzz arrives as an event with who sent it; other signals stay out of the page; a buzz goes out as a command", async () => {
+  const { engine, push, socket } = await connected();
+  const heard = [];
+  engine.on((e) => e.type === "buzz" && heard.push([e.peerId, e.name]));
+  push({ type: "signal", peerId: "p1", name: "durre", kind: 4 });
+  push({ type: "signal", peerId: "p1", name: "durre", kind: 2 });
+  assert.deepEqual(heard, [["p1", "durre"]]);
+  engine.buzz("p1");
+  assert.deepEqual(socket.sent.at(-1), { cmd: "buzz", peerId: "p1" });
+  const sent = [];
+  engine.on((e) => e.type === "buzzSent" && sent.push(e.ok));
+  push({ type: "buzzSent", peerId: "p1", ok: false, message: "No se entregó." });
+  assert.deepEqual(sent, [false]);
+});

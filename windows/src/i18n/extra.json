@@ -7248,6 +7248,45 @@
       "id": "Menerima file",
       "de": "Dateien werden empfangen",
       "tr": "Dosyalar alınıyor"
+    },
+    "{name} sent you a buzz.": {
+      "zh-Hans": "{name} 给你发了一个震动。",
+      "hi": "{name} ने आपको बज़ भेजा।",
+      "es": "{name} te envió un zumbido.",
+      "ar": "أرسل لك {name} رنّة.",
+      "fr": "{name} vous a envoyé un buzz.",
+      "bn": "{name} আপনাকে একটি বাজ পাঠিয়েছে।",
+      "pt-BR": "{name} te enviou um zumbido.",
+      "ru": "{name} отправил(а) вам зуммер.",
+      "id": "{name} mengirimi Anda dengungan.",
+      "de": "{name} hat dir einen Summer geschickt.",
+      "tr": "{name} sana bir zil gönderdi."
+    },
+    "Shake it off — back to work in three seconds.": {
+      "zh-Hans": "抖一抖——三秒后回去工作。",
+      "hi": "झटक दो — तीन सेकंड में फिर काम पर।",
+      "es": "Sacúdetelo — de vuelta al trabajo en tres segundos.",
+      "ar": "انفض الأمر — نعود للعمل بعد ثلاث ثوانٍ.",
+      "fr": "Secouez-vous — retour au travail dans trois secondes.",
+      "bn": "ঝেড়ে ফেলুন — তিন সেকেন্ডে কাজে ফিরছি।",
+      "pt-BR": "Sacuda isso — de volta ao trabalho em três segundos.",
+      "ru": "Встряхнись — через три секунды снова за работу.",
+      "id": "Kibaskan — kembali bekerja dalam tiga detik.",
+      "de": "Schüttel es ab — in drei Sekunden wieder an die Arbeit.",
+      "tr": "Silkele — üç saniye sonra işe dönüyoruz."
+    },
+    "Send a buzz": {
+      "zh-Hans": "发送震动",
+      "hi": "बज़ भेजें",
+      "es": "Enviar un zumbido",
+      "ar": "إرسال رنّة",
+      "fr": "Envoyer un buzz",
+      "bn": "বাজ পাঠান",
+      "pt-BR": "Enviar um zumbido",
+      "ru": "Отправить зуммер",
+      "id": "Kirim dengungan",
+      "de": "Summer senden",
+      "tr": "Zil gönder"
     }
   }
 }

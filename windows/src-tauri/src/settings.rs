@@ -105,6 +105,8 @@ pub struct Settings {
     pub show_people: bool,
     /// The compact island shows the profile photo and the people on the network (with their photos) instead of Nudo and the pills.
     pub compact_people: bool,
+    /// The island's header tabs in the order the person dragged them to (ids from src/core/tabs.ts); empty: the usual order.
+    pub tab_order: Vec<String>,
 }
 
 #[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
@@ -136,12 +138,8 @@ impl Default for Settings {
             auto_close_interval: 15.0,
             open_on_hover: false,
             absence_interval: 180.0,
-            active_integrations: vec![
-                "integration_lazo".into(),
-                "integration_n8n".into(),
-                "integration_vercel".into(),
-                "integration_github".into(),
-            ],
+            // Only Lazo itself; the service pills are turned on from Settings → Active pills.
+            active_integrations: vec!["integration_lazo".into()],
             main_pill: "integration_claude".into(),
             screen: "primary".into(),
             autostart: false,
@@ -158,7 +156,8 @@ impl Default for Settings {
             shortcuts: Default::default(),
             nudo_outfit: "auto".into(),
             pill_colors: BTreeMap::new(),
-            language: String::new(),
+            // Spanish by default; "" (follow the system) stays one of the choices in Settings.
+            language: "es".into(),
             desktop_nudo: DesktopNudoPref::default(),
             phone_link: false,
             phone_chat: false,
@@ -174,6 +173,7 @@ impl Default for Settings {
             show_clock: false,
             show_people: true,
             compact_people: false,
+            tab_order: Vec::new(),
         }
     }
 }
@@ -464,7 +464,8 @@ mod tests {
   "phoneRelayUrl": "wss://relay.example.workers.dev",
   "showClock": true,
   "showPeople": false,
-  "compactPeople": true
+  "compactPeople": true,
+  "tabOrder": ["home", "chat", "tools", "drop"]
 }"##;
 
     fn custom() -> Value {
@@ -713,8 +714,9 @@ mod tests {
         // the choice must survive a save made by this one.
         let loaded = parse(&custom_with("nudoOutfit", Some(json!("topHat")))).unwrap();
         assert_eq!(loaded.nudo_outfit, "topHat");
-        // The language too: "" (follow the system) when absent, as it comes otherwise.
-        assert_eq!(parse(&custom_with("language", None)).unwrap().language, "");
+        // The language too: Spanish when absent (the default), "" (follow the system) when chosen, as it comes otherwise.
+        assert_eq!(parse(&custom_with("language", None)).unwrap().language, "es");
+        assert_eq!(parse(&custom_with("language", Some(json!("")))).unwrap().language, "");
         assert_eq!(parse(&custom_with("language", Some(json!("xx")))).unwrap().language, "xx");
     }
 
@@ -985,6 +987,7 @@ mod tests {
                 "showClock",
                 "showPeople",
                 "compactPeople",
+                "tabOrder",
             ]
         );
         let _ = std::fs::remove_dir_all(&dir);

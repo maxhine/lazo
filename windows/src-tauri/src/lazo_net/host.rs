@@ -83,6 +83,10 @@ impl Host {
                 self.send(json!({ "type": "receiveFinished", "id": id, "message": message, "path": path.unwrap_or_default() }));
             }
             Event::Chat { peer_id, name, text } => self.send(json!({ "type": "chat", "peerId": peer_id, "name": name, "text": text })),
+            // Only the buzz reaches the page (typing and presence are the classic chat's business).
+            Event::Signal { peer_id, name, kind, .. } if kind == super::engine::CHAT_KIND_NUDGE => {
+                self.send(json!({ "type": "signal", "peerId": peer_id, "name": name, "kind": kind }))
+            }
             Event::Signal { .. } => {}
         }
     }
@@ -119,6 +123,14 @@ impl Host {
                 let result = self.engine.send_chat(&peer_id, &text(&command, "text")).await;
                 self.send(json!({
                     "type": "chatSent", "peerId": peer_id, "ok": result.is_ok(),
+                    "message": result.err().map(|e| e.to_string()).unwrap_or_default(),
+                }));
+            }
+            "buzz" => {
+                let peer_id = text(&command, "peerId");
+                let result = self.engine.send_signal(&peer_id, super::engine::CHAT_KIND_NUDGE, "", true).await;
+                self.send(json!({
+                    "type": "buzzSent", "peerId": peer_id, "ok": result.is_ok(),
                     "message": result.err().map(|e| e.to_string()).unwrap_or_default(),
                 }));
             }

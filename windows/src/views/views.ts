@@ -25,6 +25,7 @@ import { buildUpdate } from "./update";
 import { buildWhatsNew } from "./whatsnew";
 import { buildSpotifyCard, buildSpotifyPill, type SpotifyPillHost } from "./spotify";
 import { SPOTIFY_ID } from "../core/spotify";
+import { dropIndex, tabOrder, type TabId } from "../core/tabs";
 import { buildLazoCard, buildPeoplePanel, buildTools } from "./lazo";
 import { buildXpace } from "./xpace";
 import { buildCloud } from "./cloud";
@@ -120,6 +121,61 @@ export function buildHeader(actions: ViewActions): ViewHost {
   const tabDrop = h("button", { class: "tab", title: tl("Drop"), onclick: () => go("upload") }, svg(ICONS.plus, 13));
   const tabTools = h("button", { class: "tab", title: tl("Tools"), onclick: () => go("tools") }, svg(ICONS.grid, 13));
 
+  // The tabs can be dragged into the order wanted (kept in the settings): a press that moves is a drag, not a click.
+  const tabButtons: Record<TabId, HTMLElement> = { home: tabHome, chat: tabChat, drop: tabDrop, tools: tabTools };
+  const tabsEl = h("div", { class: "tabs" });
+  let shownOrder = "";
+  let dragged = false;
+  function placeTabs() {
+    const order = tabOrder(State.settings.tabOrder);
+    const key = order.join(",");
+    if (key === shownOrder) return;
+    shownOrder = key;
+    for (const id of order) tabsEl.append(tabButtons[id]);
+  }
+  for (const id of Object.keys(tabButtons) as TabId[]) {
+    const tab = tabButtons[id];
+    tab.addEventListener("click", (e) => {
+      if (!dragged) return;
+      dragged = false;
+      e.stopImmediatePropagation(); // the press that dragged is not a click
+    }, true);
+    tab.addEventListener("pointerdown", (down) => {
+      if (down.button !== 0) return;
+      const startX = down.clientX;
+      let moving = false;
+      const move = (e: PointerEvent) => {
+        if (!moving && Math.abs(e.clientX - startX) < 6) return;
+        if (!moving) {
+          moving = true;
+          tab.classList.add("dragging");
+          tab.setPointerCapture(down.pointerId);
+        }
+        const others = [...tabsEl.children].filter((c) => c !== tab) as HTMLElement[];
+        const at = dropIndex(e.clientX, others.map((c) => { const r = c.getBoundingClientRect(); return r.left + r.width / 2; }));
+        const before = others[at] ?? null;
+        if (tab.nextElementSibling !== before) tabsEl.insertBefore(tab, before);
+      };
+      const up = () => {
+        tab.removeEventListener("pointermove", move);
+        tab.removeEventListener("pointerup", up);
+        tab.removeEventListener("pointercancel", up);
+        if (!moving) return;
+        tab.classList.remove("dragging");
+        dragged = true;
+        window.setTimeout(() => { dragged = false; }, 0);
+        const order = [...tabsEl.children].map((c) => (Object.keys(tabButtons) as TabId[]).find((k) => tabButtons[k] === c)!);
+        shownOrder = order.join(",");
+        State.settings = { ...State.settings, tabOrder: order };
+        void Bridge.saveSettings(State.settings);
+      };
+      tab.addEventListener("pointermove", move);
+      tab.addEventListener("pointerup", up);
+      tab.addEventListener("pointercancel", up);
+    });
+  }
+  placeTabs();
+
   const gearBtn = h("button", { title: tl("Settings"), onclick: () => go("settings") }, svg(ICONS.gear, 14));
   const soundBtn = h("button", { title: tl("Mute"), onclick: () => actions.toggleSound() }, svg(ICONS.speakerOn, 14));
   // Plan usage pills (off by default): before the gear, Claude first, as on the Mac.
@@ -136,7 +192,7 @@ export function buildHeader(actions: ViewActions): ViewHost {
   const el = h(
     "div",
     { id: "header" },
-    h("div", { class: "tabs" }, tabHome, tabChat, tabDrop, tabTools),
+    tabsEl,
     h("div", { class: "header-actions" }, planPills, gearBtn, soundBtn),
   );
   const headerActions = el.lastElementChild as HTMLElement;
@@ -144,6 +200,7 @@ export function buildHeader(actions: ViewActions): ViewHost {
   return {
     el,
     sync() {
+      placeTabs();
       const v = State.view;
       tabHome.classList.toggle("on", v === "overview" || v === "empty");
       tabChat.classList.toggle("on", v === "prompt");
@@ -747,13 +804,18 @@ function buildFinished(actions: ViewActions): ViewHost {
 // ── Confused ──────────────────────────────────────────────────────────────────
 
 function buildConfused(): ViewHost {
-  const body = h(
-    "div",
-    { class: "stack", style: "padding:0 18px 0 128px" },
-    h("div", { class: "title", text: tl("Too many hits at once.") }),
-    h("div", { class: "sub", text: tl("Give me a sec — back to work in three seconds.") }),
-  );
-  return { el: h("div", { class: "view" }, card("pink", body)), sync() {} };
+  const title = h("div", { class: "title" });
+  const sub = h("div", { class: "sub" });
+  const body = h("div", { class: "stack", style: "padding:0 18px 0 128px" }, title, sub);
+  return {
+    el: h("div", { class: "view" }, card("pink", body)),
+    sync() {
+      // Either the slaps on Nudo, or a buzz from somebody on the network.
+      const from = State.buzzFrom;
+      title.textContent = from ? t("{name} sent you a buzz.", { name: from }) : String(tl("Too many hits at once."));
+      sub.textContent = from ? t("Shake it off — back to work in three seconds.") : String(tl("Give me a sec — back to work in three seconds."));
+    },
+  };
 }
 
 // ── Note ──────────────────────────────────────────────────────────────────────

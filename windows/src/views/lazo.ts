@@ -222,7 +222,8 @@ export function buildPeopleChat(): PeopleChatHost {
   const log = h("div", { class: "chat-log pchat-log" });
   const input = h("input", { type: "text", class: "chat-input", spellcheck: "false" }) as HTMLInputElement;
   const send = h("button", { class: "send-btn", title: t("Send") }, svg(ICONS.arrowUp, 11));
-  const bar = h("div", { class: "chat-bar pchat-bar" }, input, send);
+  const buzz = h("button", { class: "buzz-btn", title: t("Send a buzz") }, svg("M13 2 3 14h9l-1 8 10-12h-9l1-8z", 12, { stroke: 1.8 }));
+  const bar = h("div", { class: "chat-bar pchat-bar" }, input, buzz, send);
   const el = h("div", { class: "pchat" }, strip, log, bar);
   let key = "";
 
@@ -240,6 +241,14 @@ export function buildPeopleChat(): PeopleChatHost {
     Lazo.engine.sendChat(peer.id, text);
   }
   send.addEventListener("click", submit);
+  buzz.addEventListener("click", () => {
+    const peer = selected();
+    if (!peer || !Lazo.engine || peer.identityChanged) return;
+    Lazo.engine.buzz(peer.id);
+    buzz.classList.remove("sent");
+    void (buzz as HTMLElement).offsetWidth; // so the animation starts over
+    buzz.classList.add("sent");
+  });
   input.addEventListener("keydown", (e) => {
     if ((e as KeyboardEvent).key === "Enter") {
       e.preventDefault();

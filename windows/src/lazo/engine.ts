@@ -74,6 +74,8 @@ export type EngineEvent =
   | { type: "sendDone"; token: string; peerId: string; ok: boolean; message: string }
   | { type: "chatSent"; peerId: string; ok: boolean; message: string }
   | { type: "photo"; peerId: string; data: string }
+  | { type: "buzz"; peerId: string; name: string }
+  | { type: "buzzSent"; peerId: string; ok: boolean; message: string }
   | { type: "error"; message: string };
 
 /** The part of the WebSocket API the client uses. */
@@ -226,6 +228,11 @@ export class LazoEngine {
     this.post({ cmd: "offerDecision", id, accept });
   }
 
+  /** A buzz ("zumbido") to somebody: their island opens and Nudo shakes. */
+  buzz(peerId: string) {
+    this.post({ cmd: "buzz", peerId });
+  }
+
   requestPhoto(peerId: string) {
     this.post({ cmd: "photo", peerId });
   }
@@ -300,6 +307,13 @@ export class LazoEngine {
         this.emit({ type: "state" });
         break;
       }
+      case "signal":
+        // Kind 4 is the buzz; typing and presence are the classic chat's.
+        if (m.kind === 4) this.emit({ type: "buzz", peerId: m.peerId, name: m.name });
+        break;
+      case "buzzSent":
+        this.emit({ type: "buzzSent", peerId: m.peerId, ok: !!m.ok, message: m.message ?? "" });
+        break;
       case "chatSent": {
         // Answers come in the order the messages went out.
         const waiting = (this.chats[m.peerId] ?? []).find((c) => c.own && c.pending);

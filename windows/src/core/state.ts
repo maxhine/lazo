@@ -109,6 +109,8 @@ export interface Settings {
   showPeople: boolean;
   /** The compact island shows the profile photo and the people (with photos) instead of Nudo and the pills. */
   compactPeople: boolean;
+  /** The header tabs in the order they were dragged to (src/core/tabs.ts); empty: the usual order. */
+  tabOrder: string[];
   absenceInterval: number;
   /** Declared pills next to the main one (at most 4), in the order they were added. */
   activeIntegrations: string[];
@@ -178,7 +180,9 @@ export const DEFAULT_SETTINGS: Settings = {
   showClock: false,
   showPeople: true,
   compactPeople: false,
+  tabOrder: [],
   absenceInterval: 180,
+  // The app starts with only Lazo on (src-tauri settings.rs); this is what the views assume before Rust answers.
   activeIntegrations: [
     "integration_lazo", "integration_n8n", "integration_vercel", "integration_github",
   ],
@@ -232,6 +236,8 @@ class AppState {
   promptContext: PromptContext | null = null;
   droppedFile: { name: string; path: string } | null = null;
   noteMessage: string | null = null;
+  /** Who sent the buzz the card is showing (null: it is the "too many hits" one). */
+  buzzFrom: string | null = null;
   searchResult: SearchResult | null = null;
   chatHistory: ChatMessage[] = [];
   pendingApproval: ApprovalInfo | null = null;

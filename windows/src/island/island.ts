@@ -1068,12 +1068,15 @@ export class Island {
   }
 
   /** Three slaps → dizzy + confused view for 3.3 s, then back. */
-  handleDizzy() {
-    this.prevViewBeforeConfused = State.view;
+  handleDizzy(buzzFrom: string | null = null) {
+    State.buzzFrom = buzzFrom;
+    // A second buzz while the card is up starts the three seconds over without forgetting where to go back to.
+    if (State.view !== "confused") this.prevViewBeforeConfused = State.view;
     State.stateOverride = "dizzy";
     this.engine.setState("dizzy");
     Sound.play("dizzy");
     this.alert("confused");
+    State.notify();
     if (this.confusedRecovery != null) window.clearTimeout(this.confusedRecovery);
     this.confusedRecovery = window.setTimeout(() => {
       this.confusedRecovery = null;
@@ -1085,6 +1088,11 @@ export class Island {
       }
       this.engine.triggerEmote("happy");
     }, 3300);
+  }
+
+  /** A buzz from somebody: the island opens, Nudo goes dizzy and the card says who (island/lazo.ts). */
+  buzzed(name: string) {
+    this.handleDizzy(name);
   }
 
   // ── Frame loop ──────────────────────────────────────────────────────────────
