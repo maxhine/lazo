@@ -5214,3 +5214,79 @@ html[data-dir="rtl"] #views :is(.bubble, .reply .md-p, .reply .md-h, .reply .md-
 .cd-cancel:hover {
   color: var(--ink);
 }
+
+/* A file about to be dropped on a person: rings close in on their tile, as if it were pulling the file. When it lands, a card
+   flies in and shrinks into the tile (views/absorb.ts) and the tile pulses. */
+.drop-person {
+  position: relative;
+}
+
+.drop-person.hot::before,
+.drop-person.hot::after {
+  content: "";
+  position: absolute;
+  inset: -4px;
+  border-radius: 999px;
+  border: 2px solid var(--acc);
+  pointer-events: none;
+  animation: pull-in 1s ease-in infinite;
+}
+
+.drop-person.hot::after {
+  animation-delay: 0.5s;
+}
+
+@keyframes pull-in {
+  0% {
+    transform: scale(1.9, 2.6);
+    opacity: 0;
+  }
+  35% {
+    opacity: 0.75;
+  }
+  100% {
+    transform: scale(1, 1);
+    opacity: 0;
+  }
+}
+
+.drop-person.absorbed {
+  animation: absorbed 0.6s cubic-bezier(0.3, 1.2, 0.4, 1);
+}
+
+@keyframes absorbed {
+  0% {
+    transform: scale(1.1);
+    box-shadow: 0 0 0 0 color-mix(in srgb, var(--acc) 80%, transparent);
+  }
+  35% {
+    transform: scale(1.28);
+    box-shadow: 0 0 0 12px color-mix(in srgb, var(--acc) 0%, transparent), 0 0 24px color-mix(in srgb, var(--acc) 70%, transparent);
+  }
+  100% {
+    transform: scale(1);
+    box-shadow: 0 0 0 0 transparent;
+  }
+}
+
+.absorb-ghost {
+  position: fixed;
+  z-index: 99999;
+  display: grid;
+  place-items: center;
+  border-radius: 14px;
+  background: rgba(255, 255, 255, 0.95);
+  color: color-mix(in srgb, var(--acc) 70%, #111);
+  font: 700 13px var(--font);
+  letter-spacing: 0.04em;
+  box-shadow: 0 6px 22px rgba(0, 0, 0, 0.45), 0 0 0 2px var(--acc);
+  pointer-events: none;
+  will-change: transform, opacity;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .drop-person.hot::before,
+  .drop-person.hot::after {
+    animation: none;
+  }
+}

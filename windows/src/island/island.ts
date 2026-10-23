@@ -24,6 +24,7 @@ import { t } from "../i18n/i18n";
 import { BotEngine, hexToRGB } from "../nudo/engine";
 import { Greeting } from "../nudo/greeting";
 import { greetingLine } from "../core/greeting-text";
+import { absorb } from "../views/absorb";
 import { FlowBridge } from "../core/flow";
 import { createMiniBot, pruneMiniBots, syncMiniBotStates, tickMiniBots } from "../nudo/minibots";
 import { SeasonCache, parseOutfit } from "../nudo/wardrobe";
@@ -636,7 +637,13 @@ export class Island {
           // On somebody: it goes to them, with the animation. Anywhere else: the card asks who (or the AI).
           const peer = lazoPeers().find((p) => p.id === target);
           if (peer && !peer.identityChanged) {
-            this.sendToPerson(paths, peer);
+            // The file is absorbed by their tile (it flies in, shrinking), and then it goes.
+            const tile = document.querySelector<HTMLElement>(`[data-drop-peer="${peer.id}"]`);
+            if (tile && e.x != null && e.x >= 0) {
+              void absorb({ x: e.x, y: e.y ?? 0 }, tile, paths[0], accentFor(peer.id)).then(() => this.sendToPerson(paths, peer));
+            } else {
+              this.sendToPerson(paths, peer);
+            }
             break;
           }
           // Not on anybody: a point cloud may be for the converter, so the notch asks which.
