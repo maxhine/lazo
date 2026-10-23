@@ -95,6 +95,9 @@ export function buildEyeCare(): ViewHost {
         chip(t("Notice"), s.rest === "notice", () => EyeCare.setRest("notice")),
         chip(t("Animated eyes"), s.rest === "eyes", () => EyeCare.setRest("eyes")),
         chip(t("In the notch"), s.rest === "notch", () => EyeCare.setRest("notch"))),
+      h("div", { class: "ec-group" }, h("span", { class: "ec-dim", text: t("Active pause style") }),
+        chip(t("Notice"), s.activeRest === "notice", () => EyeCare.setActiveRest("notice")),
+        chip(t("In the notch"), s.activeRest !== "notice", () => EyeCare.setActiveRest("notch"))),
       h("div", { class: "ec-group" }, h("span", { class: "ec-dim", text: t("Try the style") }),
         chip(t("Eye break"), false, () => EyeCare.test("micro")),
         chip(t("Active pause"), false, () => EyeCare.test("active"))));
@@ -135,7 +138,7 @@ export function buildEyeCare(): ViewHost {
       const stat = (label: string, value: string) => h("div", { class: "ec-stat" }, h("b", { text: value }), h("span", { text: label }));
       stats.append(stat(t("Worked today"), worked(s.workToday)), stat(t("Eye breaks"), String(s.micro)), stat(t("Active pauses"), String(s.active)));
 
-      const key = JSON.stringify([s.paused, s.sound, s.clock, s.rest]);
+      const key = JSON.stringify([s.paused, s.sound, s.clock, s.rest, s.activeRest]);
       if (key !== controlsKey) {
         controlsKey = key;
         drawControls(s);

@@ -5149,3 +5149,18 @@ html[data-dir="rtl"] #views :is(.bubble, .reply .md-p, .reply .md-h, .reply .md-
   letter-spacing: 0.04em;
   text-transform: uppercase;
 }
+
+/* The rest card keeps every row at its size (the bar was squeezed to nothing and the rows spilled out of the card). */
+.rest-body > * {
+  flex: 0 0 auto;
+}
+
+.rest-body {
+  padding: 10px 18px 10px 96px;
+  gap: 8px;
+}
+
+.rest-bar {
+  flex: 0 0 4px;
+  min-height: 4px;
+}

@@ -234,7 +234,7 @@ test("descanso visual: el estado llega y los ajustes cambian y se devuelven", as
   assert.equal(first.microFor, 20);
   assert.equal(first.activeFor, 300);
   assert.ok(first.microLeft >= 0 && first.microLeft <= 1200);
-  assert.ok(["digital", "analog"].includes(first.clock) && ["notice", "eyes"].includes(first.rest));
+  assert.ok(["digital", "analog"].includes(first.clock) && ["notice", "eyes", "notch"].includes(first.rest));
 
   const flip = async (cmd, value, read) => {
     log.length = 0;
@@ -353,6 +353,9 @@ test("descanso visual en el notch: el aviso va a la isla en vez de abrir una ven
   send({ cmd: "eyecare.rest", value: "notch" });
   await next((m) => m.type === "eyecare.state" && m.rest === "notch");
   log.length = 0;
+  send({ cmd: "eyecare.activerest", value: "notch" });
+  await next((m) => m.type === "eyecare.state" && m.activeRest === "notch");
+  log.length = 0;
   send({ cmd: "eyecare.trigger", value: "micro" });
   const micro = await next((m) => m.type === "eyecare.alert");
   assert.equal(micro.kind, "micro");
@@ -370,6 +373,8 @@ test("descanso visual en el notch: el aviso va a la isla en vez de abrir una ven
   // Se deja el estilo como estaba y los avisos con su cuenta normal.
   send({ cmd: "eyecare.rest", value: before.rest });
   await next((m) => m.type === "eyecare.state" && m.rest === before.rest);
+  send({ cmd: "eyecare.activerest", value: before.activeRest });
+  await next((m) => m.type === "eyecare.state" && m.activeRest === before.activeRest);
 });
 
 test("descanso visual: probar el estilo no cuenta ni mueve los temporizadores", async () => {
@@ -379,6 +384,9 @@ test("descanso visual: probar el estilo no cuenta ni mueve los temporizadores", 
   log.length = 0;
   send({ cmd: "eyecare.rest", value: "notch" });
   await next((m) => m.type === "eyecare.state" && m.rest === "notch");
+  log.length = 0;
+  send({ cmd: "eyecare.activerest", value: "notch" });
+  await next((m) => m.type === "eyecare.state" && m.activeRest === "notch");
   log.length = 0;
   send({ cmd: "eyecare.test", value: "micro" });
   const test = await next((m) => m.type === "eyecare.alert");
@@ -398,4 +406,27 @@ test("descanso visual: probar el estilo no cuenta ni mueve los temporizadores", 
   assert.ok(after.microLeft <= before.microLeft && after.microLeft > before.microLeft - 30, `${before.microLeft} → ${after.microLeft}`);
   send({ cmd: "eyecare.rest", value: before.rest });
   await next((m) => m.type === "eyecare.state" && m.rest === before.rest);
+  send({ cmd: "eyecare.activerest", value: before.activeRest });
+  await next((m) => m.type === "eyecare.state" && m.activeRest === before.activeRest);
+});
+
+test("pausa activa: tiene su propia opcion; con el aviso clasico no se entrega a la isla", async () => {
+  send({ cmd: "eyecare.state" });
+  await next((m) => m.type === "eyecare.state");
+  const before = [...log].reverse().find((m) => m.type === "eyecare.state");
+  assert.ok(["notch", "notice"].includes(before.activeRest));
+  log.length = 0;
+  send({ cmd: "eyecare.rest", value: "eyes" });
+  await next((m) => m.type === "eyecare.state" && m.rest === "eyes");
+  send({ cmd: "eyecare.activerest", value: "notch" });
+  await next((m) => m.type === "eyecare.state" && m.activeRest === "notch");
+  log.length = 0;
+  send({ cmd: "eyecare.test", value: "active" });
+  const alert = await next((m) => m.type === "eyecare.alert");
+  assert.equal(alert.kind, "active", "la pausa activa va al notch aunque el descanso visual use otro estilo");
+  assert.equal(alert.test, true);
+  send({ cmd: "eyecare.rest", value: before.rest });
+  await next((m) => m.type === "eyecare.state" && m.rest === before.rest);
+  send({ cmd: "eyecare.activerest", value: before.activeRest });
+  await next((m) => m.type === "eyecare.state" && m.activeRest === before.activeRest);
 });

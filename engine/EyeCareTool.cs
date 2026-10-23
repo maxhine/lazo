@@ -62,6 +62,7 @@ namespace Lazo
                 { "paused", s.IsPaused }, { "sound", s.SoundEnabled },
                 { "clock", s.ClockMode == EyeCareClockMode.Analog ? "analog" : "digital" },
                 { "rest", s.RestStyle == EyeCareRestStyle.Eyes ? "eyes" : s.RestStyle == EyeCareRestStyle.Notch ? "notch" : "notice" },
+                { "activeRest", s.ActiveRestNotch ? "notch" : "notice" },
                 { "microEvery", EyeCareService.MicroBreakInterval }, { "activeEvery", EyeCareService.ActivePauseInterval },
                 { "microFor", EyeCareService.MicroBreakDuration }, { "activeFor", EyeCareService.ActivePauseDuration }
             };
@@ -84,6 +85,7 @@ namespace Lazo
                     case "eyecare.pause": s.SetPaused(Flag(m, "value")); break;
                     case "eyecare.sound": s.SetSoundEnabled(Flag(m, "value")); break;
                     case "eyecare.clock": s.SetClockMode(value == "analog" ? EyeCareClockMode.Analog : EyeCareClockMode.Digital); break;
+                    case "eyecare.activerest": s.SetActiveRestNotch(value != "notice"); break;
                     case "eyecare.rest": s.SetRestStyle(value == "eyes" ? EyeCareRestStyle.Eyes : value == "notch" ? EyeCareRestStyle.Notch : EyeCareRestStyle.Notice); break;
                     // La isla termina el aviso: se cumplió (cuenta en el día) o se pospone 5 minutos.
                     case "eyecare.complete": s.CompleteBreak(m.ContainsKey("kind") && Str(m, "kind") == "active" ? EyeCareBreakType.ActivePause : EyeCareBreakType.MicroBreak); break;
@@ -96,7 +98,7 @@ namespace Lazo
                     case "eyecare.test":
                     {
                         EyeCareBreakType kind = value == "active" ? EyeCareBreakType.ActivePause : EyeCareBreakType.MicroBreak;
-                        if (s.RestStyle == EyeCareRestStyle.Notch)
+                        if (kind == EyeCareBreakType.MicroBreak ? s.RestStyle == EyeCareRestStyle.Notch : s.ActiveRestNotch)
                             Broadcast(new Dictionary<string, object>
                             {
                                 { "type", "eyecare.alert" }, { "kind", value == "active" ? "active" : "micro" },

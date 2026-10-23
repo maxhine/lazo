@@ -15,6 +15,8 @@ export interface EyeCareState {
   sound: boolean;
   clock: "digital" | "analog";
   rest: "notice" | "eyes" | "notch";
+  /** Where the hourly pause shows: the island or the classic notice. */
+  activeRest: "notice" | "notch";
   microEvery: number;
   activeEvery: number;
   microFor: number;
@@ -76,6 +78,10 @@ export class EyeCareModel {
 
   setRest(value: "notice" | "eyes" | "notch") {
     this.send({ cmd: "eyecare.rest", value });
+  }
+
+  setActiveRest(value: "notice" | "notch") {
+    this.send({ cmd: "eyecare.activerest", value });
   }
 
   /** Takes the break now: the classic window appears and the timer starts over. */

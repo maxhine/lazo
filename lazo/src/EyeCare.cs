@@ -40,6 +40,8 @@ namespace Lazo
         public bool SoundEnabled { get; private set; }
         public EyeCareClockMode ClockMode { get; private set; }
         public EyeCareRestStyle RestStyle { get; private set; }
+        /// <summary>La pausa activa (cada hora) va al notch cuando alguien lo atiende (la isla); sin nadie, es la ventana de siempre.</summary>
+        public bool ActiveRestNotch { get; private set; }
 
         /// <summary>
         /// Si el estilo es Notch y alguien lo atiende (la isla), el aviso se le entrega en vez de abrir una ventana:
@@ -55,6 +57,7 @@ namespace Lazo
             SoundEnabled = true;
             ClockMode = EyeCareClockMode.Digital;
             RestStyle = EyeCareRestStyle.Notice;
+            ActiveRestNotch = true;
             _statsDate = DateTime.Now.ToString("yyyy-MM-dd");
             Arm(EyeCareBreakType.MicroBreak, MicroBreakInterval);
             Arm(EyeCareBreakType.ActivePause, ActivePauseInterval);
@@ -95,6 +98,14 @@ namespace Lazo
         {
             if (SoundEnabled == enabled) return;
             SoundEnabled = enabled;
+            SaveSettings();
+            if (StateChanged != null) StateChanged();
+        }
+
+        public void SetActiveRestNotch(bool notch)
+        {
+            if (ActiveRestNotch == notch) return;
+            ActiveRestNotch = notch;
             SaveSettings();
             if (StateChanged != null) StateChanged();
         }
@@ -259,7 +270,7 @@ namespace Lazo
         {
             CloseCurrentAlert();
 
-            if (RestStyle == EyeCareRestStyle.Notch && NotchAlert != null)
+            if (NotchAlert != null && (type == EyeCareBreakType.MicroBreak ? RestStyle == EyeCareRestStyle.Notch : ActiveRestNotch))
             {
                 NotchAlert(type, durationSeconds, SoundEnabled);
                 return;
@@ -359,6 +370,9 @@ namespace Lazo
                                 hasActiveLeft = true;
                             }
                             break;
+                        case "activerest":
+                            ActiveRestNotch = val != "notice";
+                            break;
                         case "rest":
                             RestStyle = val == "eyes" ? EyeCareRestStyle.Eyes : val == "notch" ? EyeCareRestStyle.Notch : EyeCareRestStyle.Notice;
                             break;
@@ -401,7 +415,7 @@ namespace Lazo
                 Directory.CreateDirectory(Path.GetDirectoryName(path));
                 string content = string.Format(
                     CultureInfo.InvariantCulture,
-                    "clock={0}\nsound={1}\npaused={2}\ndate={3}\nmicro={4}\nactive={5}\nwork={6}\nmicroleft={7}\nactiveleft={8}\nsavedutc={9}\nrest={10}\n",
+                    "clock={0}\nsound={1}\npaused={2}\ndate={3}\nmicro={4}\nactive={5}\nwork={6}\nmicroleft={7}\nactiveleft={8}\nsavedutc={9}\nrest={10}\nactiverest={11}\n",
                     ClockMode == EyeCareClockMode.Analog ? "analog" : "digital",
                     SoundEnabled,
                     IsPaused,
@@ -412,7 +426,8 @@ namespace Lazo
                     SecondsToMicroBreak,
                     SecondsToActivePause,
                     DateTime.UtcNow.ToString("o", CultureInfo.InvariantCulture),
-                    RestStyle == EyeCareRestStyle.Eyes ? "eyes" : RestStyle == EyeCareRestStyle.Notch ? "notch" : "notice");
+                    RestStyle == EyeCareRestStyle.Eyes ? "eyes" : RestStyle == EyeCareRestStyle.Notch ? "notch" : "notice",
+                    ActiveRestNotch ? "notch" : "notice");
                 File.WriteAllText(path, content);
             }
             catch { }

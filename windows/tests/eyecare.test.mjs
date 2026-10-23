@@ -106,3 +106,11 @@ test("the style 'in the notch' is one of the choices", () => {
   m.setRest("notch");
   assert.deepEqual(sent.at(-1), { cmd: "eyecare.rest", value: "notch" });
 });
+
+test("the hourly pause has its own style, sent to the program", () => {
+  const { m, sent } = model(() => true);
+  m.setActiveRest("notch");
+  assert.deepEqual(sent.at(-1), { cmd: "eyecare.activerest", value: "notch" });
+  m.setActiveRest("notice");
+  assert.deepEqual(sent.at(-1), { cmd: "eyecare.activerest", value: "notice" });
+});

@@ -7495,6 +7495,19 @@
       "id": "Coba gayanya",
       "de": "Stil ausprobieren",
       "tr": "Biçimi dene"
+    },
+    "Active pause style": {
+      "zh-Hans": "活动休息样式",
+      "hi": "सक्रिय विराम की शैली",
+      "es": "Estilo de la pausa activa",
+      "ar": "نمط الاستراحة النشطة",
+      "fr": "Style de la pause active",
+      "bn": "সক্রিয় বিরতির ধরন",
+      "pt-BR": "Estilo da pausa ativa",
+      "ru": "Вид активной паузы",
+      "id": "Gaya jeda aktif",
+      "de": "Stil der aktiven Pause",
+      "tr": "Aktif mola biçimi"
     }
   }
 }
