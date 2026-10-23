@@ -15,7 +15,8 @@ export const Lazo = {
   /** Why the engine is not there (from Rust); "" while it is, or before the first answer. */
   error: "",
   /** A file dropped on the island with this pill in front: it waits for a person to be chosen. */
-  pendingFile: null as { name: string; path: string } | null,
+  /** Files dropped and waiting for somebody to be chosen: the first one (its name is what the card shows) and the rest. */
+  pendingFile: null as { name: string; path: string; more: string[] } | null,
   /** The last thing that happened to a transfer, for the card's footer. */
   notice: "",
   /** What the message icon opens: the AI, or the people on the network. */

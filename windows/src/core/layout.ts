@@ -30,6 +30,7 @@ export type IslandViewName =
   | "eyecare"
   | "tps"
   | "rest"
+  | "cloudDrop"
   | "update"
   | "whatsNew";
 
@@ -120,6 +121,8 @@ export const VIEW_LAYOUTS: Record<IslandViewName, ViewLayout> = {
   tps: { height: 560, width: 780, botX: 40, botY: 40, botDiameter: 0, agentMode: "none" },
   // The eye break and the hourly pause, handed to the island: a small card with a countdown.
   rest: { height: 146, width: 470, botX: 56, botY: null, botDiameter: 46, agentMode: "none" },
+  // A point cloud dropped on the notch: convert it or share it?
+  cloudDrop: { height: 150, width: 520, botX: 56, botY: null, botDiameter: 46, agentMode: "none" },
   // New version: Nudo on the left, the version and Update now (Mac: .update).
   update: { height: 160, botX: 62, botY: null, botDiameter: 58, agentMode: "none" },
   // After an update: what the new version brings, then "Your Lazo so far".

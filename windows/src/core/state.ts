@@ -236,6 +236,8 @@ class AppState {
   promptContext: PromptContext | null = null;
   droppedFile: { name: string; path: string } | null = null;
   noteMessage: string | null = null;
+  /** The files dropped on the notch while the card asks whether to convert or share them (all of them, clouds or not). */
+  cloudDrop: string[] | null = null;
   /** Who sent the buzz the card is showing (null: it is the "too many hits" one). */
   buzzFrom: string | null = null;
   searchResult: SearchResult | null = null;

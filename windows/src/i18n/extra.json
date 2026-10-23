@@ -7508,6 +7508,45 @@
       "id": "Gaya jeda aktif",
       "de": "Stil der aktiven Pause",
       "tr": "Aktif mola biçimi"
+    },
+    "Share": {
+      "zh-Hans": "分享",
+      "hi": "साझा करें",
+      "es": "Compartir",
+      "ar": "مشاركة",
+      "fr": "Partager",
+      "bn": "শেয়ার",
+      "pt-BR": "Compartilhar",
+      "ru": "Поделиться",
+      "id": "Bagikan",
+      "de": "Teilen",
+      "tr": "Paylaş"
+    },
+    "{count} point clouds": {
+      "zh-Hans": "{count} 个点云",
+      "hi": "{count} पॉइंट क्लाउड",
+      "es": "{count} nubes de puntos",
+      "ar": "{count} سحب نقاط",
+      "fr": "{count} nuages de points",
+      "bn": "{count}টি পয়েন্ট ক্লাউড",
+      "pt-BR": "{count} nuvens de pontos",
+      "ru": "Облаков точек: {count}",
+      "id": "{count} awan titik",
+      "de": "{count} Punktwolken",
+      "tr": "{count} nokta bulutu"
+    },
+    "Lazo converts LAS, LAZ and E57. This one can be shared.": {
+      "zh-Hans": "Lazo 可转换 LAS、LAZ 和 E57。此文件可以分享。",
+      "hi": "Lazo LAS, LAZ और E57 बदलता है। इसे साझा किया जा सकता है।",
+      "es": "Lazo convierte LAS, LAZ y E57. Esta se puede compartir.",
+      "ar": "يحوّل Lazo ملفات LAS وLAZ وE57. يمكن مشاركة هذا الملف.",
+      "fr": "Lazo convertit LAS, LAZ et E57. Celui-ci peut être partagé.",
+      "bn": "Lazo LAS, LAZ ও E57 রূপান্তর করে। এটি শেয়ার করা যায়।",
+      "pt-BR": "O Lazo converte LAS, LAZ e E57. Esta pode ser compartilhada.",
+      "ru": "Lazo конвертирует LAS, LAZ и E57. Этим можно поделиться.",
+      "id": "Lazo mengonversi LAS, LAZ dan E57. Yang ini bisa dibagikan.",
+      "de": "Lazo wandelt LAS, LAZ und E57 um. Diese kann geteilt werden.",
+      "tr": "Lazo LAS, LAZ ve E57 dönüştürür. Bu paylaşılabilir."
     }
   }
 }

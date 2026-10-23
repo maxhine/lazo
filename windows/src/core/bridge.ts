@@ -3,6 +3,7 @@
 // `npm run dev` alone.
 
 import { invoke } from "@tauri-apps/api/core";
+import { DragFlow } from "./drag-flow";
 import { emitTo, listen } from "@tauri-apps/api/event";
 import { getCurrentWebview } from "@tauri-apps/api/webview";
 import type { Settings } from "./state";
@@ -622,34 +623,35 @@ export async function onDragDrop(handler: (e: DragDropPayload) => void) {
     });
   }
   const hasFiles = (e: DragEvent) => e.dataTransfer?.types.includes("Files") ?? false;
-  // dragenter/dragleave fire for every element crossed; only the outermost pair counts.
-  let depth = 0;
-  // The drop reaches us from Rust without a position: the last one the page saw stands for it.
+  // The page's dragenter/dragleave flap when the island rebuilds what is under the pointer: DragFlow steadies them.
   let point: { x: number; y: number } = { x: -1, y: -1 };
   const at = (e: DragEvent) => {
     point = { x: e.clientX, y: e.clientY };
     return point;
   };
+  const flow = new DragFlow((type, x, y) => handler(type === "leave" ? { type } : { type, x, y }));
 
   const onEnter = (e: DragEvent) => {
     if (!hasFiles(e)) return;
     e.preventDefault();
-    if (depth++ === 0) handler({ type: "enter", ...at(e) });
+    const p = at(e);
+    flow.enter(p.x, p.y);
   };
   const onOver = (e: DragEvent) => {
     if (!hasFiles(e)) return;
     // Without this WebView2 refuses the drop — or navigates to the file.
     e.preventDefault();
     if (e.dataTransfer) e.dataTransfer.dropEffect = "copy";
-    handler({ type: "over", ...at(e) });
+    const p = at(e);
+    flow.over(p.x, p.y);
   };
   const onLeave = (e: DragEvent) => {
-    if (!hasFiles(e) || depth === 0) return;
-    if (--depth === 0) handler({ type: "leave" });
+    if (!hasFiles(e)) return;
+    flow.leave();
   };
   const onDrop = (e: DragEvent) => {
     e.preventDefault();
-    depth = 0;
+    flow.drop();
     at(e);
     const files = e.dataTransfer?.files;
     if (!files || files.length === 0) {

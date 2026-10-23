@@ -16,6 +16,7 @@ import { SPOTIFY_ID, islandDances } from "../core/spotify";
 import { LAZO_ID, Lazo, lazoConnected, lazoPeers } from "../core/lazo";
 import { Cloud, Tps, Xpace } from "../core/lazo-tools";
 import { activeProgress, progressText } from "../core/progress";
+import { isPointCloud, convertible } from "../core/cloud-formats";
 import { accentFor } from "../core/accent";
 import { isOnline } from "../views/lazo";
 import type { EnginePeer } from "../lazo/engine";
@@ -186,6 +187,8 @@ export class Island {
 
   private build() {
     const actions: ViewActions = {
+      convertDropped: () => this.convertDropped(),
+      shareDropped: () => this.shareDropped(),
       setView: (v) => this.setView(v),
       cancelDrop: () => this.discardDrop(),
       collapse: () => this.collapse(),
@@ -622,7 +625,8 @@ export class Island {
         this.lazoDrag = false;
         Lazo.dragging = false;
         Lazo.dropTarget = null;
-        const path = e.paths?.[0];
+        const paths = e.paths ?? [];
+        const path = paths[0];
         if (!path) {
           this.engine.animateMorph(0);
           this.setView(State.defaultView());
@@ -632,17 +636,27 @@ export class Island {
           // On somebody: it goes to them, with the animation. Anywhere else: the card asks who (or the AI).
           const peer = lazoPeers().find((p) => p.id === target);
           if (peer && !peer.identityChanged) {
-            this.sendToPerson(path, peer);
+            this.sendToPerson(paths, peer);
+            break;
+          }
+          // Not on anybody: a point cloud may be for the converter, so the notch asks which.
+          if (paths.some(isPointCloud)) {
+            this.askAboutCloud(paths);
             break;
           }
           UploadSeq.exitZone();
           State.setFocus(LAZO_ID);
-          Lazo.pendingFile = { name: path.split(/[\\/]/).pop() || "file", path };
+          Lazo.pendingFile = { name: path.split(/[\\/]/).pop() || "file", path, more: paths.slice(1) };
           Lazo.notice = "";
           this.engine.animateMorph(0);
           Sound.play("approve");
           this.setView("overview");
           State.notify();
+          break;
+        }
+        // Without Lazo's people a cloud can still be converted.
+        if (paths.some((p) => convertible(p))) {
+          this.askAboutCloud(paths);
           break;
         }
         this.swallow(path);
@@ -664,8 +678,39 @@ export class Island {
   }
 
   /** The file goes to somebody: Nudo eats it as ever, and the engine really sends it. */
-  private sendToPerson(path: string, peer: EnginePeer) {
-    const name = path.split(/[\\/]/).pop() || "file";
+  /** A point cloud was dropped on the notch: asks whether to convert it or share it (views/cloud-drop.ts). */
+  private askAboutCloud(paths: string[]) {
+    UploadSeq.exitZone();
+    this.engine.animateMorph(0);
+    State.cloudDrop = paths;
+    Sound.play("question");
+    this.setView("cloudDrop");
+    State.notify();
+  }
+
+  /** "Convert": the point cloud tool opens with the files. */
+  convertDropped() {
+    const paths = State.cloudDrop ?? [];
+    State.cloudDrop = null;
+    Cloud.addFiles(paths.filter(convertible));
+    this.setView("cloud");
+  }
+
+  /** "Share": the people are the places to send them (the same card as a drop that landed on nobody). */
+  shareDropped() {
+    const paths = State.cloudDrop ?? [];
+    State.cloudDrop = null;
+    if (paths.length === 0) return;
+    State.setFocus(LAZO_ID);
+    Lazo.pendingFile = { name: paths[0].split(/[\\/]/).pop() || "file", path: paths[0], more: paths.slice(1) };
+    Lazo.notice = "";
+    this.setView("overview");
+    State.notify();
+  }
+
+  private sendToPerson(paths: string[], peer: EnginePeer) {
+    const path = paths[0];
+    const name = paths.length > 1 ? `${path.split(/[\\/]/).pop() || "file"} +${paths.length - 1}` : path.split(/[\\/]/).pop() || "file";
     State.droppedFile = { name, path };
     State.promptContext = null;
     this.lazoSend = { name: peer.name };
@@ -680,7 +725,13 @@ export class Island {
     Lazo.notice = "";
     this.setView("uploading");
     this.ensureRunning();
-    void Lazo.engine?.sendFile(peer.id, path).then((r) => {
+    // One after another; the first failure stops the rest and is what the card says.
+    const engine = Lazo.engine;
+    if (!engine) return;
+    void paths.reduce(
+      (chain, p) => chain.then(async (last) => (last.ok ? engine.sendFile(peer.id, p) : last)),
+      Promise.resolve<{ ok: boolean; message: string }>({ ok: true, message: "" }),
+    ).then((r) => {
       Lazo.notice = r.ok ? t("Sent to {name}", { name: peer.name }) : r.message;
       Sound.play(r.ok ? "finish" : "error");
       State.notify();

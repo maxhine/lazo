@@ -55,7 +55,9 @@ export function buildUpload(): ViewHost {
     sync() {
       card.classList.toggle("over", State.fileDragOver);
       const peers = State.os === "windows" && lazoConnected() ? lazoPeers().slice(0, 6) : [];
-      const key = JSON.stringify([peers.map((p) => [p.id, p.name, Lazo.photos[p.id] ? 1 : 0, p.identityChanged]), Lazo.dropTarget]);
+      const key = JSON.stringify(peers.map((p) => [p.id, p.name, Lazo.photos[p.id] ? 1 : 0, p.identityChanged]));
+      // Who is under the pointer is a class on a tile that stays: rebuilding tiles under a drag makes the browser lose it.
+      for (const tile of people.children) tile.classList.toggle("hot", (tile as HTMLElement).dataset.dropPeer === Lazo.dropTarget);
       tags.style.display = peers.length ? "none" : "";
       people.style.display = peers.length ? "" : "none";
       title.textContent = peers.length ? t("Drop on someone to send it") : t("Drop your files here");
@@ -63,7 +65,7 @@ export function buildUpload(): ViewHost {
       shown = key;
       clear(people);
       for (const p of peers) {
-        people.append(h("div", { class: p.id === Lazo.dropTarget ? "drop-person hot" : "drop-person", "data-drop-peer": p.id, style: `--acc:${accentFor(p.id)}` },
+        people.append(h("div", { class: "drop-person", "data-drop-peer": p.id, style: `--acc:${accentFor(p.id)}` },
           avatar(p), h("span", { class: "lazo-name", text: p.name })));
       }
     },

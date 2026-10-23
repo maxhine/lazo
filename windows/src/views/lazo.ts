@@ -58,7 +58,11 @@ function sendPending(peer: EnginePeer) {
   Lazo.pendingFile = null;
   Lazo.notice = "";
   State.notify();
-  void engine.sendFile(peer.id, file.path).then((r) => {
+  // One after another: the engine carries one transfer at a time per person.
+  void [file.path, ...file.more].reduce(
+    (chain, path) => chain.then(async (last) => (last.ok ? engine.sendFile(peer.id, path) : last)),
+    Promise.resolve<{ ok: boolean; message: string }>({ ok: true, message: "" }),
+  ).then((r) => {
     Lazo.notice = r.ok ? t("Sent to {name}", { name: peer.name }) : r.message;
     State.notify();
   });
@@ -176,7 +180,7 @@ export function buildLazoCard(): LazoCardHost {
           h("button", { class: "lazo-link", onclick: () => { Lazo.pendingFile = null; State.notify(); } }, t("Cancel")),
         );
       }
-      if (file) body.append(h("div", { class: "lazo-sub lazo-ask", text: t("Send {name} to…", { name: file.name }) }));
+      if (file) body.append(h("div", { class: "lazo-sub lazo-ask", text: t("Send {name} to…", { name: file.more.length ? `${file.name} +${file.more.length}` : file.name }) }));
       if (peers.length === 0) {
         body.append(h("div", { class: "lazo-empty", text: t("Nobody nearby yet. Open Lazo on another computer in this network.") }));
       } else {
