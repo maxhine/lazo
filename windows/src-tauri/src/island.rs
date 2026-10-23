@@ -23,6 +23,10 @@ pub const WINDOW_H: f64 = 640.0;
 /// Logical size of the invisible strip that wakes the island when it is hidden.
 pub const STRIP_W: f64 = 240.0;
 pub const STRIP_H: f64 = 6.0;
+/// While a button is held near the top centre (a file may be on its way) the hidden island's strip grows to this, so a
+/// drag does not have to find 6 pixels.
+pub const DRAG_ZONE_W: f64 = 600.0;
+pub const DRAG_ZONE_H: f64 = 64.0;
 
 pub const WINDOW_LABEL: &str = "island";
 
@@ -355,6 +359,70 @@ pub fn screen_info(app: &AppHandle, pref: &str) -> ScreenInfo {
 
 /// Places and sizes the window. `collapsed` picks the wake strip instead of the panel.
 pub fn apply_geometry(app: &AppHandle, pref: &str, collapsed: bool) {
+    let (lw, lh) = if collapsed { (STRIP_W, STRIP_H) } else { (WINDOW_W, WINDOW_H) };
+    place(app, pref, lw, lh);
+}
+
+/// The hidden island's wake strip grown into the drag zone (or back), and taking the mouse so a drag finds it.
+pub fn apply_drag_zone(app: &AppHandle, pref: &str, grown: bool) {
+    let (lw, lh) = if grown { (DRAG_ZONE_W, DRAG_ZONE_H) } else { (STRIP_W, STRIP_H) };
+    place(app, pref, lw, lh);
+    if grown {
+        set_ignore_cursor(app, false);
+    }
+}
+
+/// Whether a physical cursor position is in the drag zone of the display the island lives on.
+fn in_drag_zone(app: &AppHandle, pref: &str, cx: f64, cy: f64) -> bool {
+    let Some(m) = target_monitor(app, pref) else { return false };
+    let scale = m.scale_factor();
+    let p = m.position();
+    let size = m.size();
+    let mid = p.x as f64 + size.width as f64 / 2.0;
+    let half = DRAG_ZONE_W * scale / 2.0;
+    cx >= mid - half && cx <= mid + half && cy >= p.y as f64 && cy <= p.y as f64 + DRAG_ZONE_H * scale
+}
+
+/// Watches for a button held near the top centre while the island is hidden (Windows). A file dragged there finds a bigger
+/// target than the 6 px strip; if no file comes, the strip comes back the moment the button is let go.
+pub fn spawn_drag_watch(app: AppHandle, gate: Arc<PollGate>) {
+    if !platform::CURSOR_POLL {
+        return;
+    }
+    std::thread::spawn(move || {
+        let mut grown = false;
+        loop {
+            std::thread::sleep(Duration::from_millis(40));
+            let collapsed = gate.collapsed.load(Ordering::Relaxed);
+            if !collapsed {
+                // Awake: the full panel takes drags already (spawn_cursor_poll).
+                grown = false;
+                continue;
+            }
+            let down = left_button_down();
+            let pref = app
+                .try_state::<crate::Shared>()
+                .map(|s| s.settings.lock().unwrap().screen.clone())
+                .unwrap_or_else(|| "primary".into());
+            let near = down && cursor_physical().map(|(cx, cy)| in_drag_zone(&app, &pref, cx, cy)).unwrap_or(false);
+            if near && !grown {
+                grown = true;
+                apply_drag_zone(&app, &pref, true);
+                // The webview has to take drops before the file arrives (the awake poll does the same on a press).
+                let handle = app.clone();
+                let _ = app.run_on_main_thread(move || platform::unblock_webview_drops(&handle));
+            } else if !near && grown {
+                grown = false;
+                // Only if the island is still hidden: a drag that woke it has already made the window the full panel.
+                if gate.collapsed.load(Ordering::Relaxed) {
+                    apply_drag_zone(&app, &pref, false);
+                }
+            }
+        }
+    });
+}
+
+fn place(app: &AppHandle, pref: &str, lw: f64, lh: f64) {
     let Some(win) = window(app) else { return };
     let Some(m) = target_monitor(app, pref) else { return };
 
@@ -362,7 +430,6 @@ pub fn apply_geometry(app: &AppHandle, pref: &str, collapsed: bool) {
     let mp = *m.position();
     let ms = *m.size();
 
-    let (lw, lh) = if collapsed { (STRIP_W, STRIP_H) } else { (WINDOW_W, WINDOW_H) };
     let pw = (lw * scale).round().max(1.0) as u32;
     let ph = (lh * scale).round().max(1.0) as u32;
     let x = mp.x + (ms.width as i32 - pw as i32) / 2;
