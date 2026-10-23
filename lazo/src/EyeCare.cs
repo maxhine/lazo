@@ -13,7 +13,7 @@ namespace Lazo
 {
     internal enum EyeCareClockMode { Digital, Analog }
     internal enum EyeCareBreakType { MicroBreak, ActivePause }
-    internal enum EyeCareRestStyle { Notice, Eyes }
+    internal enum EyeCareRestStyle { Notice, Eyes, Notch }
 
     internal sealed class EyeCareService
     {
@@ -39,6 +39,12 @@ namespace Lazo
         public bool SoundEnabled { get; private set; }
         public EyeCareClockMode ClockMode { get; private set; }
         public EyeCareRestStyle RestStyle { get; private set; }
+
+        /// <summary>
+        /// Si el estilo es Notch y alguien lo atiende (la isla), el aviso se le entrega en vez de abrir una ventana:
+        /// tipo, segundos y si suena. Quien lo atiende termina con CompleteBreak o Snooze. Sin nadie, es la ventana de siempre.
+        /// </summary>
+        public Action<EyeCareBreakType, int, bool> NotchAlert;
 
         public event Action Ticked;
         public event Action StateChanged;
@@ -239,6 +245,12 @@ namespace Lazo
         {
             CloseCurrentAlert();
 
+            if (RestStyle == EyeCareRestStyle.Notch && NotchAlert != null)
+            {
+                NotchAlert(type, durationSeconds, SoundEnabled);
+                return;
+            }
+
             if (SoundEnabled)
             {
                 try { System.Media.SystemSounds.Asterisk.Play(); }
@@ -334,7 +346,7 @@ namespace Lazo
                             }
                             break;
                         case "rest":
-                            RestStyle = val == "eyes" ? EyeCareRestStyle.Eyes : EyeCareRestStyle.Notice;
+                            RestStyle = val == "eyes" ? EyeCareRestStyle.Eyes : val == "notch" ? EyeCareRestStyle.Notch : EyeCareRestStyle.Notice;
                             break;
                         case "savedutc":
                             DateTime parsed;
@@ -386,7 +398,7 @@ namespace Lazo
                     SecondsToMicroBreak,
                     SecondsToActivePause,
                     DateTime.UtcNow.ToString("o", CultureInfo.InvariantCulture),
-                    RestStyle == EyeCareRestStyle.Eyes ? "eyes" : "notice");
+                    RestStyle == EyeCareRestStyle.Eyes ? "eyes" : RestStyle == EyeCareRestStyle.Notch ? "notch" : "notice");
                 File.WriteAllText(path, content);
             }
             catch { }

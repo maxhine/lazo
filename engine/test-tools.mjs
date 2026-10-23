@@ -344,3 +344,30 @@ test("tps: se convierte con el nombre elegido, sin pisar lo que ya hay", async (
   const plain = await next((m) => m.type === "tps.done");
   assert.ok(plain.written[0].endsWith("log1021v.26G") || plain.written.some((p) => p.endsWith("log1021v.26O")), "sin nombre: el del .tps");
 });
+
+test("descanso visual en el notch: el aviso va a la isla en vez de abrir una ventana", async () => {
+  send({ cmd: "eyecare.state" });
+  await next((m) => m.type === "eyecare.state");
+  const before = [...log].reverse().find((m) => m.type === "eyecare.state");
+  log.length = 0;
+  send({ cmd: "eyecare.rest", value: "notch" });
+  await next((m) => m.type === "eyecare.state" && m.rest === "notch");
+  log.length = 0;
+  send({ cmd: "eyecare.trigger", value: "micro" });
+  const micro = await next((m) => m.type === "eyecare.alert");
+  assert.equal(micro.kind, "micro");
+  assert.equal(micro.seconds, 20);
+  assert.equal(typeof micro.sound, "boolean");
+  log.length = 0;
+  send({ cmd: "eyecare.trigger", value: "active" });
+  const active = await next((m) => m.type === "eyecare.alert");
+  assert.equal(active.kind, "active");
+  assert.equal(active.seconds, 300);
+  // Posponer: ese aviso se vuelve a armar a 5 minutos.
+  log.length = 0;
+  send({ cmd: "eyecare.snooze", kind: "micro" });
+  await next((m) => m.type === "eyecare.state" && m.microLeft > 200 && m.microLeft <= 300);
+  // Se deja el estilo como estaba y los avisos con su cuenta normal.
+  send({ cmd: "eyecare.rest", value: before.rest });
+  await next((m) => m.type === "eyecare.state" && m.rest === before.rest);
+});

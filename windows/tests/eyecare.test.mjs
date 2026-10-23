@@ -65,3 +65,32 @@ test("countdowns and worked time read as people read them", () => {
   assert.equal(worked(3000), "50 min");
   assert.equal(worked(7500), "2 h 05 min");
 });
+
+test("a break handed to the island opens its card, counts from when it came and ends with an order to the program", () => {
+  const { m, sent } = model(() => true);
+  const opened = [];
+  let done = 0;
+  m.onAlert = (a) => opened.push(a);
+  m.onDone = () => done++;
+  m.handle({ type: "eyecare.alert", kind: "micro", seconds: 20, sound: true });
+  assert.equal(opened.length, 1);
+  assert.equal(m.alert.kind, "micro");
+  assert.equal(m.alert.seconds, 20);
+  assert.ok(Math.abs(m.alert.startedAt - Date.now()) < 1000);
+  m.finish("complete");
+  assert.deepEqual(sent.at(-1), { cmd: "eyecare.complete", kind: "micro" });
+  assert.equal(m.alert, null);
+  assert.equal(done, 1);
+  m.finish("complete");
+  assert.equal(sent.filter((c) => c.cmd === "eyecare.complete").length, 1, "nothing to finish twice");
+
+  m.handle({ type: "eyecare.alert", kind: "active", seconds: 300, sound: false });
+  m.finish("snooze");
+  assert.deepEqual(sent.at(-1), { cmd: "eyecare.snooze", kind: "active" });
+});
+
+test("the style 'in the notch' is one of the choices", () => {
+  const { m, sent } = model(() => true);
+  m.setRest("notch");
+  assert.deepEqual(sent.at(-1), { cmd: "eyecare.rest", value: "notch" });
+});

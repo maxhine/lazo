@@ -18,6 +18,10 @@ export interface LazoIslandHost {
   askAboutFile(path: string): void;
   /** Somebody sent a buzz: the island opens, Nudo shakes and says who. */
   buzzed(name: string): void;
+  /** A break is due and the style is "In the notch". */
+  restAlert(kind: "micro" | "active", sound: boolean): void;
+  /** The break is over (done, snoozed or counted out). */
+  restDone(): void;
 }
 
 export function registerLazoHandlers(island: LazoIslandHost) {
@@ -31,6 +35,9 @@ export function registerLazoHandlers(island: LazoIslandHost) {
   };
   // Eye care keeps its reminders in the tools program: it must be running with the island closed too.
   EyeCare.start();
+  // With the style "In the notch" the eye break and the hourly pause come here: the island opens a little and counts down.
+  EyeCare.onAlert = (a) => island.restAlert(a.kind, a.sound);
+  EyeCare.onDone = () => island.restDone();
   startLazo({
     changed: () => State.notify(),
     messaged: () => {

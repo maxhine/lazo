@@ -22,6 +22,8 @@ import type { EnginePeer } from "../lazo/engine";
 import { t } from "../i18n/i18n";
 import { BotEngine, hexToRGB } from "../nudo/engine";
 import { Greeting } from "../nudo/greeting";
+import { greetingLine } from "../core/greeting-text";
+import { FlowBridge } from "../core/flow";
 import { createMiniBot, pruneMiniBots, syncMiniBotStates, tickMiniBots } from "../nudo/minibots";
 import { SeasonCache, parseOutfit } from "../nudo/wardrobe";
 import { UploadCanvas } from "../upload/canvas";
@@ -90,6 +92,9 @@ export class Island {
 
   private engine = new BotEngine();
   private greeting = new Greeting();
+  /** The Windows first name, the fallback when the person has not given Lazo a name. */
+  private userName: string | null = null;
+  private greetingPick = Math.floor(Math.random() * 3);
   private greetingShown = false;
   private seasons = new SeasonCache();
 
@@ -145,6 +150,9 @@ export class Island {
     this.wireFsm();
     this.wireInput();
     this.engine.onDizzy = () => this.handleDizzy();
+    // The hello for the hour, then the name Lazo has for the person (their own, or Windows').
+    this.greeting.line = () => greetingLine(new Date(), Lazo.engine?.state.self?.name || this.userName, this.greetingPick);
+    void FlowBridge.status().then((s) => { this.userName = s?.userName ?? null; });
     this.greeting.onComplete = () => {
       this.fsm.greetComplete();
       this.onGreetingDone?.();
@@ -1093,6 +1101,21 @@ export class Island {
   /** A buzz from somebody: the island opens, Nudo goes dizzy and the card says who (island/lazo.ts). */
   buzzed(name: string) {
     this.handleDizzy(name);
+  }
+
+  /** An eye break or the hourly pause, handed to the island: it opens a little with the countdown (views/rest.ts). */
+  restAlert(_kind: "micro" | "active", sound: boolean) {
+    if (sound) Sound.play("blip");
+    this.alert("rest");
+    State.notify();
+  }
+
+  /** The break is over: back to what was on, and the island folds if it was only opened for this. */
+  restDone() {
+    if (State.view === "rest") {
+      this.setView(State.defaultView());
+      this.collapse();
+    }
   }
 
   // ── Frame loop ──────────────────────────────────────────────────────────────

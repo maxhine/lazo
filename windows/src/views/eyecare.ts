@@ -93,7 +93,8 @@ export function buildEyeCare(): ViewHost {
         chip(t("Analog"), s.clock === "analog", () => EyeCare.setClock("analog"))),
       h("div", { class: "ec-group" }, h("span", { class: "ec-dim", text: t("Eye break style") }),
         chip(t("Notice"), s.rest === "notice", () => EyeCare.setRest("notice")),
-        chip(t("Animated eyes"), s.rest === "eyes", () => EyeCare.setRest("eyes"))));
+        chip(t("Animated eyes"), s.rest === "eyes", () => EyeCare.setRest("eyes")),
+        chip(t("In the notch"), s.rest === "notch", () => EyeCare.setRest("notch"))));
   }
 
   return {

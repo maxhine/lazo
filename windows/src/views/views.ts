@@ -31,6 +31,7 @@ import { buildXpace } from "./xpace";
 import { buildCloud } from "./cloud";
 import { buildEyeCare } from "./eyecare";
 import { buildTps } from "./tps";
+import { buildRest } from "./rest";
 import { LAZO_ID, Lazo } from "../core/lazo";
 import type { Outfit, OutfitSelection } from "../nudo/wardrobe";
 import { language, t, tl, type Msg } from "../i18n/i18n";
@@ -957,6 +958,7 @@ export function buildViews(
   map.set("cloud", buildCloud());
   map.set("eyecare", buildEyeCare());
   map.set("tps", buildTps());
+  map.set("rest", buildRest());
   // Not in the Windows v1: sending a file by email, window attach + web result.
   map.set("mail", buildPlaceholder(tl("Sending by email isn't in this version."), ""));
   map.set("searching", buildPlaceholder(tl("Claude is searching…"), ""));

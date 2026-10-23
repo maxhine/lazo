@@ -29,6 +29,12 @@ namespace Lazo
                     // Los avisos usan los colores del tema del clásico (acento, paleta): hay que cargarlo antes de crear una ventana.
                     Theme.Load();
                     EyeCareService service = EyeCareService.Instance;
+                    // "En el notch": el aviso no abre ventana, se le entrega a la isla (que cuenta y avisa cuando termina).
+                    service.NotchAlert = (type, seconds, sound) => Broadcast(new Dictionary<string, object>
+                    {
+                        { "type", "eyecare.alert" }, { "kind", type == EyeCareBreakType.MicroBreak ? "micro" : "active" },
+                        { "seconds", seconds }, { "sound", sound }
+                    });
                     service.Ticked += () => { PushEyeCare(); };
                     service.StateChanged += () => { PushEyeCare(); };
                     service.Start();
@@ -55,7 +61,7 @@ namespace Lazo
                 { "workToday", s.TotalWorkSecondsToday }, { "micro", s.MicroBreaksCompleted }, { "active", s.ActivePausesCompleted },
                 { "paused", s.IsPaused }, { "sound", s.SoundEnabled },
                 { "clock", s.ClockMode == EyeCareClockMode.Analog ? "analog" : "digital" },
-                { "rest", s.RestStyle == EyeCareRestStyle.Eyes ? "eyes" : "notice" },
+                { "rest", s.RestStyle == EyeCareRestStyle.Eyes ? "eyes" : s.RestStyle == EyeCareRestStyle.Notch ? "notch" : "notice" },
                 { "microEvery", EyeCareService.MicroBreakInterval }, { "activeEvery", EyeCareService.ActivePauseInterval },
                 { "microFor", EyeCareService.MicroBreakDuration }, { "activeFor", EyeCareService.ActivePauseDuration }
             };
@@ -78,7 +84,10 @@ namespace Lazo
                     case "eyecare.pause": s.SetPaused(Flag(m, "value")); break;
                     case "eyecare.sound": s.SetSoundEnabled(Flag(m, "value")); break;
                     case "eyecare.clock": s.SetClockMode(value == "analog" ? EyeCareClockMode.Analog : EyeCareClockMode.Digital); break;
-                    case "eyecare.rest": s.SetRestStyle(value == "eyes" ? EyeCareRestStyle.Eyes : EyeCareRestStyle.Notice); break;
+                    case "eyecare.rest": s.SetRestStyle(value == "eyes" ? EyeCareRestStyle.Eyes : value == "notch" ? EyeCareRestStyle.Notch : EyeCareRestStyle.Notice); break;
+                    // La isla termina el aviso: se cumplió (cuenta en el día) o se pospone 5 minutos.
+                    case "eyecare.complete": s.CompleteBreak(m.ContainsKey("kind") && Str(m, "kind") == "active" ? EyeCareBreakType.ActivePause : EyeCareBreakType.MicroBreak); break;
+                    case "eyecare.snooze": s.Snooze(m.ContainsKey("kind") && Str(m, "kind") == "active" ? EyeCareBreakType.ActivePause : EyeCareBreakType.MicroBreak, 300); break;
                     case "eyecare.trigger":
                         if (value == "active") s.TriggerActivePause();
                         else s.TriggerMicroBreak();

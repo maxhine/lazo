@@ -5074,3 +5074,62 @@ html[data-dir="rtl"] #views :is(.bubble, .reply .md-p, .reply .md-h, .reply .md-
   box-shadow: 0 2px 10px rgba(0, 0, 0, 0.5);
   z-index: 2;
 }
+
+/* The eye break and the hourly pause in the island (views/rest.ts): a small card that counts down. */
+.rest-card {
+  --acc: #4ade80;
+  padding: 0;
+}
+
+.rest-body {
+  padding: 8px 18px 8px 96px;
+  gap: 6px;
+  justify-content: center;
+}
+
+.rest-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.rest-text {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.rest-time {
+  font: 600 24px ui-monospace, "Cascadia Mono", Consolas, monospace;
+  color: var(--ink);
+  font-variant-numeric: tabular-nums;
+}
+
+.rest-bar {
+  height: 4px;
+  border-radius: 2px;
+  background: rgba(255, 255, 255, 0.12);
+  overflow: hidden;
+}
+
+.rest-fill {
+  display: block;
+  height: 100%;
+  width: 0;
+  background: linear-gradient(90deg, color-mix(in srgb, var(--acc) 55%, transparent), var(--acc));
+}
+
+.rest-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
+.rest-btn {
+  padding: 3px 12px;
+  font-size: 11px;
+}
+
+.rest-card .btn.primary {
+  background: var(--acc);
+  color: #0b0c0e;
+}

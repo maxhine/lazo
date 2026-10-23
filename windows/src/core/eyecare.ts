@@ -14,15 +14,28 @@ export interface EyeCareState {
   paused: boolean;
   sound: boolean;
   clock: "digital" | "analog";
-  rest: "notice" | "eyes";
+  rest: "notice" | "eyes" | "notch";
   microEvery: number;
   activeEvery: number;
   microFor: number;
   activeFor: number;
 }
 
+/** A break that is due and was handed to the island (the style is "In the notch"). */
+export interface RestAlert {
+  kind: "micro" | "active";
+  seconds: number;
+  sound: boolean;
+  /** When the count started, in the page's clock (Date.now). */
+  startedAt: number;
+}
+
 export class EyeCareModel {
   state: EyeCareState | null = null;
+  alert: RestAlert | null = null;
+  /** The island opens its card for a break handed to it / closes it when the break is over. */
+  onAlert: ((alert: RestAlert) => void) | null = null;
+  onDone: (() => void) | null = null;
   error = "";
   private post: Post;
   private changed: () => void;
@@ -59,7 +72,7 @@ export class EyeCareModel {
     this.send({ cmd: "eyecare.clock", value });
   }
 
-  setRest(value: "notice" | "eyes") {
+  setRest(value: "notice" | "eyes" | "notch") {
     this.send({ cmd: "eyecare.rest", value });
   }
 
@@ -68,7 +81,23 @@ export class EyeCareModel {
     this.send({ cmd: "eyecare.trigger", value: kind });
   }
 
+  /** The break shown in the island is over: done (it counts in the day) or put off five minutes. */
+  finish(how: "complete" | "snooze") {
+    const alert = this.alert;
+    if (!alert) return;
+    this.alert = null;
+    this.send({ cmd: how === "complete" ? "eyecare.complete" : "eyecare.snooze", kind: alert.kind });
+    this.onDone?.();
+    this.changed();
+  }
+
   handle(m: ToolMessage) {
+    if (m.type === "eyecare.alert") {
+      this.alert = { kind: m.kind === "active" ? "active" : "micro", seconds: Number(m.seconds) || 20, sound: !!m.sound, startedAt: Date.now() };
+      this.onAlert?.(this.alert);
+      this.changed();
+      return;
+    }
     if (m.type !== "eyecare.state") return;
     const { type: _type, ...state } = m;
     const before = this.state;
