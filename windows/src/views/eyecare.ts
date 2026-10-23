@@ -94,7 +94,10 @@ export function buildEyeCare(): ViewHost {
       h("div", { class: "ec-group" }, h("span", { class: "ec-dim", text: t("Eye break style") }),
         chip(t("Notice"), s.rest === "notice", () => EyeCare.setRest("notice")),
         chip(t("Animated eyes"), s.rest === "eyes", () => EyeCare.setRest("eyes")),
-        chip(t("In the notch"), s.rest === "notch", () => EyeCare.setRest("notch"))));
+        chip(t("In the notch"), s.rest === "notch", () => EyeCare.setRest("notch"))),
+      h("div", { class: "ec-group" }, h("span", { class: "ec-dim", text: t("Try the style") }),
+        chip(t("Eye break"), false, () => EyeCare.test("micro")),
+        chip(t("Active pause"), false, () => EyeCare.test("active"))));
   }
 
   return {

@@ -89,6 +89,18 @@ test("a break handed to the island opens its card, counts from when it came and 
   assert.deepEqual(sent.at(-1), { cmd: "eyecare.snooze", kind: "active" });
 });
 
+test("a test of the style shows the notice but counts nothing and tells the program nothing when it ends", () => {
+  const { m, sent } = model(() => true);
+  m.test("micro");
+  assert.deepEqual(sent.at(-1), { cmd: "eyecare.test", value: "micro" });
+  m.handle({ type: "eyecare.alert", kind: "micro", seconds: 20, sound: false, test: true });
+  assert.equal(m.alert.test, true);
+  const before = sent.length;
+  m.finish("complete");
+  assert.equal(sent.length, before, "a test is not a break");
+  assert.equal(m.alert, null);
+});
+
 test("the style 'in the notch' is one of the choices", () => {
   const { m, sent } = model(() => true);
   m.setRest("notch");

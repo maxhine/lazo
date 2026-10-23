@@ -371,3 +371,31 @@ test("descanso visual en el notch: el aviso va a la isla en vez de abrir una ven
   send({ cmd: "eyecare.rest", value: before.rest });
   await next((m) => m.type === "eyecare.state" && m.rest === before.rest);
 });
+
+test("descanso visual: probar el estilo no cuenta ni mueve los temporizadores", async () => {
+  send({ cmd: "eyecare.state" });
+  await next((m) => m.type === "eyecare.state");
+  const before = [...log].reverse().find((m) => m.type === "eyecare.state");
+  log.length = 0;
+  send({ cmd: "eyecare.rest", value: "notch" });
+  await next((m) => m.type === "eyecare.state" && m.rest === "notch");
+  log.length = 0;
+  send({ cmd: "eyecare.test", value: "micro" });
+  const test = await next((m) => m.type === "eyecare.alert");
+  assert.equal(test.test, true);
+  assert.equal(test.kind, "micro");
+  assert.equal(test.seconds, 20);
+  log.length = 0;
+  send({ cmd: "eyecare.test", value: "active" });
+  const active = await next((m) => m.type === "eyecare.alert");
+  assert.equal(active.test, true);
+  assert.equal(active.seconds, 300);
+  // Los contadores del día y los temporizadores siguen donde estaban (el reloj solo avanza).
+  await next((m) => m.type === "eyecare.state");
+  const after = [...log].reverse().find((m) => m.type === "eyecare.state");
+  assert.equal(after.micro, before.micro);
+  assert.equal(after.active, before.active);
+  assert.ok(after.microLeft <= before.microLeft && after.microLeft > before.microLeft - 30, `${before.microLeft} → ${after.microLeft}`);
+  send({ cmd: "eyecare.rest", value: before.rest });
+  await next((m) => m.type === "eyecare.state" && m.rest === before.rest);
+});

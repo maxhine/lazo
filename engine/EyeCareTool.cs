@@ -33,7 +33,7 @@ namespace Lazo
                     service.NotchAlert = (type, seconds, sound) => Broadcast(new Dictionary<string, object>
                     {
                         { "type", "eyecare.alert" }, { "kind", type == EyeCareBreakType.MicroBreak ? "micro" : "active" },
-                        { "seconds", seconds }, { "sound", sound }
+                        { "seconds", seconds }, { "sound", sound }, { "test", false }
                     });
                     service.Ticked += () => { PushEyeCare(); };
                     service.StateChanged += () => { PushEyeCare(); };
@@ -92,6 +92,20 @@ namespace Lazo
                         if (value == "active") s.TriggerActivePause();
                         else s.TriggerMicroBreak();
                         break;
+                    // Probar el estilo elegido: el mismo aviso, sin contarlo ni mover los temporizadores.
+                    case "eyecare.test":
+                    {
+                        EyeCareBreakType kind = value == "active" ? EyeCareBreakType.ActivePause : EyeCareBreakType.MicroBreak;
+                        if (s.RestStyle == EyeCareRestStyle.Notch)
+                            Broadcast(new Dictionary<string, object>
+                            {
+                                { "type", "eyecare.alert" }, { "kind", value == "active" ? "active" : "micro" },
+                                { "seconds", kind == EyeCareBreakType.MicroBreak ? EyeCareService.MicroBreakDuration : EyeCareService.ActivePauseDuration },
+                                { "sound", s.SoundEnabled }, { "test", true }
+                            });
+                        else s.Preview(kind);
+                        break;
+                    }
                     case "eyecare.state": break;
                 }
             }).Task;

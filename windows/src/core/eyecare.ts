@@ -26,6 +26,8 @@ export interface RestAlert {
   kind: "micro" | "active";
   seconds: number;
   sound: boolean;
+  /** A test of the style: nothing is counted and nothing is told to the program when it ends. */
+  test: boolean;
   /** When the count started, in the page's clock (Date.now). */
   startedAt: number;
 }
@@ -81,19 +83,24 @@ export class EyeCareModel {
     this.send({ cmd: "eyecare.trigger", value: kind });
   }
 
+  /** Shows the chosen style as it will look: the same notice, with no count and no change to the timers. */
+  test(kind: "micro" | "active") {
+    this.send({ cmd: "eyecare.test", value: kind });
+  }
+
   /** The break shown in the island is over: done (it counts in the day) or put off five minutes. */
   finish(how: "complete" | "snooze") {
     const alert = this.alert;
     if (!alert) return;
     this.alert = null;
-    this.send({ cmd: how === "complete" ? "eyecare.complete" : "eyecare.snooze", kind: alert.kind });
+    if (!alert.test) this.send({ cmd: how === "complete" ? "eyecare.complete" : "eyecare.snooze", kind: alert.kind });
     this.onDone?.();
     this.changed();
   }
 
   handle(m: ToolMessage) {
     if (m.type === "eyecare.alert") {
-      this.alert = { kind: m.kind === "active" ? "active" : "micro", seconds: Number(m.seconds) || 20, sound: !!m.sound, startedAt: Date.now() };
+      this.alert = { kind: m.kind === "active" ? "active" : "micro", seconds: Number(m.seconds) || 20, sound: !!m.sound, test: !!m.test, startedAt: Date.now() };
       this.onAlert?.(this.alert);
       this.changed();
       return;

@@ -26,6 +26,7 @@ namespace Lazo
 
         private readonly DispatcherTimer _timer;
         private Window _currentAlert;
+        private bool _preview;
         private DateTime _microDueUtc;
         private DateTime _activeDueUtc;
         private string _statsDate;
@@ -122,8 +123,20 @@ namespace Lazo
             if (StateChanged != null) StateChanged();
         }
 
+        /// <summary>
+        /// Muestra el aviso tal como saldría, sin contarlo ni volver a armar los temporizadores: para probar el estilo elegido.
+        /// Terminarlo (Listo, Posponer o la cuenta) solo lo cierra.
+        /// </summary>
+        public void Preview(EyeCareBreakType type)
+        {
+            _preview = true;
+            ShowAlert(type, type == EyeCareBreakType.MicroBreak ? MicroBreakDuration : ActivePauseDuration);
+            if (_currentAlert == null) _preview = false;
+        }
+
         public void Snooze(EyeCareBreakType type, int seconds = 300)
         {
+            if (_preview) { _preview = false; CloseCurrentAlert(); return; }
             Arm(type, seconds);
             CloseCurrentAlert();
             SaveSettings();
@@ -132,6 +145,7 @@ namespace Lazo
 
         public void CompleteBreak(EyeCareBreakType type)
         {
+            if (_preview) { _preview = false; CloseCurrentAlert(); return; }
             if (type == EyeCareBreakType.MicroBreak) MicroBreaksCompleted++;
             else ActivePausesCompleted++;
             Arm(type, type == EyeCareBreakType.MicroBreak ? MicroBreakInterval : ActivePauseInterval);
@@ -263,7 +277,7 @@ namespace Lazo
             _currentAlert = alert;
             alert.Closed += (s, e) =>
             {
-                if (_currentAlert == alert) _currentAlert = null;
+                if (_currentAlert == alert) { _currentAlert = null; _preview = false; }
                 if (!IsPaused) TryShowDue();
             };
             alert.Show();

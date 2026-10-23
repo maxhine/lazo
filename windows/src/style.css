@@ -5133,3 +5133,19 @@ html[data-dir="rtl"] #views :is(.bubble, .reply .md-p, .reply .md-h, .reply .md-
   background: var(--acc);
   color: #0b0c0e;
 }
+
+.rest-title {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.rest-test {
+  padding: 0 7px 1px;
+  border-radius: 999px;
+  background: rgba(245, 158, 11, 0.2);
+  color: #f59e0b;
+  font: 600 9.5px var(--font);
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}

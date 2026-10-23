@@ -7469,6 +7469,32 @@
       "id": "Di notch",
       "de": "Im Notch",
       "tr": "Çentikte"
+    },
+    "Test": {
+      "zh-Hans": "测试",
+      "hi": "परीक्षण",
+      "es": "Prueba",
+      "ar": "تجربة",
+      "fr": "Test",
+      "bn": "পরীক্ষা",
+      "pt-BR": "Teste",
+      "ru": "Тест",
+      "id": "Uji coba",
+      "de": "Test",
+      "tr": "Deneme"
+    },
+    "Try the style": {
+      "zh-Hans": "试用样式",
+      "hi": "शैली आज़माएँ",
+      "es": "Probar el estilo",
+      "ar": "جرّب النمط",
+      "fr": "Essayer le style",
+      "bn": "ধরনটি পরীক্ষা করুন",
+      "pt-BR": "Testar o estilo",
+      "ru": "Проверить вид",
+      "id": "Coba gayanya",
+      "de": "Stil ausprobieren",
+      "tr": "Biçimi dene"
     }
   }
 }
