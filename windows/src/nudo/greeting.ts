@@ -43,6 +43,9 @@ const EAR_X = 40;
 const EAR_HB = 17;
 const CARD = { x: 10, y: 36, w: 620, h: 104 };
 const CARD_R = 20;
+/** Half of Nudo's width on the card, and the space between him and his words. */
+const NUDO_HALF = 46;
+const TEXT_GAP = 16;
 
 /** IslandRestingLayout for the compact island the greeting lands in. */
 const COMPACT = {
@@ -643,6 +646,32 @@ export class Greeting {
     const p = greetingPose(t, this.tc);
     x.clearRect(0, 0, GREETING_W, GREETING_H);
 
+    // The words and Nudo stand side by side, and the two together are what sits in the middle of the card: Nudo steps left by
+    // half of what the words take, so neither side is emptier than the other. (Only while the card is up, not on the way out.)
+    const words = this.line?.() ?? "";
+    const cut = words.indexOf(", ");
+    const hello = cut > 0 ? words.slice(0, cut + 1) : words;
+    const name = cut > 0 ? words.slice(cut + 2) : "";
+    const room = CARD.w - 2 * 16 - 2 * NUDO_HALF - TEXT_GAP;
+    const first = name ? '500 15px "Segoe UI", system-ui, sans-serif' : '600 22px "Segoe UI", system-ui, sans-serif';
+    const second = '600 24px "Segoe UI", system-ui, sans-serif';
+    let textW = 0;
+    if (words) {
+      x.save();
+      x.font = first;
+      textW = x.measureText(hello).width;
+      if (name) {
+        x.font = second;
+        textW = Math.max(textW, x.measureText(name).width);
+      }
+      x.restore();
+      textW = Math.min(textW, room);
+    }
+    const show = Math.min(1, Math.max(0, (t - 3.2) / 0.5));
+    const staying = !Number.isFinite(this.tc) || t < this.tc;
+    const shiftX = words && p.card > 0 && staying ? (-(textW + TEXT_GAP) / 2) * show : 0;
+    p.x += shiftX;
+
     if (p.card > 0) {
       x.save();
       x.globalAlpha = p.card;
@@ -658,25 +687,19 @@ export class Greeting {
       x.restore();
 
       // The hello, to the right of Nudo once he is back in the middle (so they never overlap); it goes with the card.
-      const words = this.line?.() ?? "";
-      const show = Math.min(1, Math.max(0, (t - 3.2) / 0.5));
       if (words && show > 0) {
-        const cut = words.indexOf(", ");
-        const hello = cut > 0 ? words.slice(0, cut + 1) : words;
-        const name = cut > 0 ? words.slice(cut + 2) : "";
-        const left = C0.x + 62;
-        const room = CARD.x + CARD.w - 16 - left;
+        const left = C0.x + shiftX + NUDO_HALF + TEXT_GAP;
         const mid = CARD.y + CARD.h / 2 + (1 - show) * 6;
         x.save();
         x.globalAlpha = p.card * show;
         x.textAlign = "left";
         x.textBaseline = "middle";
         x.fillStyle = name ? "rgba(245,246,248,0.7)" : "#F5F6F8";
-        x.font = name ? '500 15px "Segoe UI", system-ui, sans-serif' : '600 22px "Segoe UI", system-ui, sans-serif';
+        x.font = first;
         x.fillText(hello, left, name ? mid - 14 : mid, room);
         if (name) {
           x.fillStyle = "#F5F6F8";
-          x.font = '600 24px "Segoe UI", system-ui, sans-serif';
+          x.font = second;
           x.fillText(name, left, mid + 11, room);
         }
         x.restore();
