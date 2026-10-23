@@ -7222,6 +7222,32 @@
       "id": "Tidak ada waktu yang sama untuk semua",
       "de": "Keine gemeinsame Zeit für alle",
       "tr": "Hepsinde ortak zaman yok"
+    },
+    "Sending files": {
+      "zh-Hans": "正在发送文件",
+      "hi": "फ़ाइलें भेज रहे हैं",
+      "es": "Enviando archivos",
+      "ar": "جارٍ إرسال الملفات",
+      "fr": "Envoi de fichiers",
+      "bn": "ফাইল পাঠানো হচ্ছে",
+      "pt-BR": "Enviando arquivos",
+      "ru": "Отправка файлов",
+      "id": "Mengirim file",
+      "de": "Dateien werden gesendet",
+      "tr": "Dosyalar gönderiliyor"
+    },
+    "Receiving files": {
+      "zh-Hans": "正在接收文件",
+      "hi": "फ़ाइलें प्राप्त हो रही हैं",
+      "es": "Recibiendo archivos",
+      "ar": "جارٍ استقبال الملفات",
+      "fr": "Réception de fichiers",
+      "bn": "ফাইল গ্রহণ করা হচ্ছে",
+      "pt-BR": "Recebendo arquivos",
+      "ru": "Получение файлов",
+      "id": "Menerima file",
+      "de": "Dateien werden empfangen",
+      "tr": "Dosyalar alınıyor"
     }
   }
 }

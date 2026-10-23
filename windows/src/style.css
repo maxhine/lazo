@@ -4999,3 +4999,36 @@ html[data-dir="rtl"] #views :is(.bubble, .reply .md-p, .reply .md-h, .reply .md-
   padding-top: 6px;
   padding-bottom: 6px;
 }
+
+/* Progress in the notch: a bar along the bottom edge of the compact (or hidden) island, striped while its length is unknown. */
+#island-progress {
+  --acc: #f5f6f8;
+  position: absolute;
+  left: 14px;
+  right: 14px;
+  bottom: 2px;
+  height: 3px;
+  border-radius: 2px;
+  background: rgba(255, 255, 255, 0.14);
+  overflow: hidden;
+  pointer-events: none;
+  opacity: 0;
+  transition: opacity 0.25s ease-in-out;
+}
+
+#island-progress i {
+  display: block;
+  height: 100%;
+  width: 0;
+  border-radius: 2px;
+  background: var(--acc);
+  box-shadow: 0 0 6px color-mix(in srgb, var(--acc) 70%, transparent);
+  transition: width 0.3s ease;
+}
+
+#island-progress.indeterminate i {
+  width: 100%;
+  background: repeating-linear-gradient(115deg, var(--acc) 0 10px, color-mix(in srgb, var(--acc) 40%, transparent) 10px 20px);
+  background-size: 28px 100%;
+  animation: stripes 0.7s linear infinite;
+}

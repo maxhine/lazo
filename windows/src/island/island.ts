@@ -14,7 +14,8 @@ import { Sound } from "../core/sound";
 import { State } from "../core/state";
 import { SPOTIFY_ID, islandDances } from "../core/spotify";
 import { LAZO_ID, Lazo, lazoConnected, lazoPeers } from "../core/lazo";
-import { Cloud, Tps } from "../core/lazo-tools";
+import { Cloud, Tps, Xpace } from "../core/lazo-tools";
+import { activeProgress, progressText } from "../core/progress";
 import { accentFor } from "../core/accent";
 import { isOnline } from "../views/lazo";
 import type { EnginePeer } from "../lazo/engine";
@@ -68,6 +69,9 @@ export class Island {
   private miniGrid!: HTMLElement;
   /** Our own Lazo photo, where Nudo is, while the island is compact and the setting is on. */
   private selfPhoto!: HTMLElement;
+  /** A thin bar along the bottom of the compact island while something is in progress. */
+  private progressEl!: HTMLElement;
+  private progressFill!: HTMLElement;
   private clockEl!: HTMLElement;
   private clockTimer?: number;
   private countdown!: HTMLElement;
@@ -277,6 +281,8 @@ export class Island {
     this.greetingCanvas = h("canvas", { id: "greeting-canvas" });
     this.miniGrid = h("div", { id: "mini-grid" });
     this.selfPhoto = h("div", { id: "self-photo" });
+    this.progressFill = h("i", {});
+    this.progressEl = h("div", { id: "island-progress" }, this.progressFill);
     this.clockEl = h("div", { id: "island-clock" });
     this.countdown = h("div", { id: "countdown" });
 
@@ -314,6 +320,7 @@ export class Island {
       this.selfPhoto,
       this.miniGrid,
       this.clockEl,
+      this.progressEl,
       this.countdown,
     );
 
@@ -1372,6 +1379,29 @@ export class Island {
 
   /** The clock sits in the middle of the compact island, where the notch is on a Mac. */
   private updateClock() {
+    // Something in progress (a conversion, an analysis, files on their way) takes the middle and the bottom edge.
+    const engine = Lazo.engine?.state;
+    const progress = activeProgress({
+      cloud: Cloud,
+      tps: Tps,
+      xpace: Xpace,
+      sending: Object.values(engine?.sending ?? {}),
+      receiving: (engine?.offers ?? []).filter((o) => o.status === "receiving").map((o) => o.progress),
+    });
+    const shown = progress != null && State.mode !== "expanded";
+    this.progressEl.style.opacity = shown ? "1" : "0";
+    if (progress && shown) {
+      this.progressEl.classList.toggle("indeterminate", progress.value == null);
+      this.progressEl.style.setProperty("--acc", progress.color);
+      this.progressFill.style.width = progress.value == null ? "" : `${Math.round(progress.value * 100)}%`;
+      this.progressEl.title = progressText(progress);
+    }
+    if (progress && State.mode === "compact") {
+      this.clockEl.style.opacity = "1";
+      const line = progressText(progress);
+      if (this.clockEl.textContent !== line) this.clockEl.textContent = line;
+      return;
+    }
     const on = State.mode === "compact" && State.settings.showClock;
     this.clockEl.style.opacity = on ? "1" : "0";
     if (!on) return;
