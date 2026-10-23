@@ -7547,6 +7547,19 @@
       "id": "Lazo mengonversi LAS, LAZ dan E57. Yang ini bisa dibagikan.",
       "de": "Lazo wandelt LAS, LAZ und E57 um. Diese kann geteilt werden.",
       "tr": "Lazo LAS, LAZ ve E57 dönüştürür. Bu paylaşılabilir."
+    },
+    "Sending {name} to {person}": {
+      "zh-Hans": "正在向 {person} 发送 {name}",
+      "hi": "{person} को {name} भेज रहे हैं",
+      "es": "Enviando {name} a {person}",
+      "ar": "جارٍ إرسال {name} إلى {person}",
+      "fr": "Envoi de {name} à {person}",
+      "bn": "{person}-কে {name} পাঠানো হচ্ছে",
+      "pt-BR": "Enviando {name} para {person}",
+      "ru": "Отправка {name} — {person}",
+      "id": "Mengirim {name} ke {person}",
+      "de": "{name} wird an {person} gesendet",
+      "tr": "{name}, {person} kişisine gönderiliyor"
     }
   }
 }

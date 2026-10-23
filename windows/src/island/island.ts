@@ -721,6 +721,7 @@ export class Island {
     State.droppedFile = { name, path };
     State.promptContext = null;
     this.lazoSend = { name: peer.name };
+    State.sendingTo = peer.name;
     UploadSeq.performDrop(State.uploadDuration);
     this.uploadTens = 0;
     this.uploadDone = false;
@@ -761,6 +762,7 @@ export class Island {
    * slow disk can never stall the animation — same as FileDropHandler on macOS.
    */
   private swallow(path: string) {
+    State.sendingTo = null;
     const name = path.split(/[\\/]/).pop() || "file";
     State.droppedFile = { name, path };
     State.promptContext = { kind: "file", name, path };
@@ -832,6 +834,7 @@ export class Island {
       if (this.lazoSend) {
         // A file that went to somebody: back to Lazo's card, which tells how the sending went.
         this.lazoSend = null;
+        State.sendingTo = null;
         State.droppedFile = null;
         State.setFocus(LAZO_ID);
         this.setView("overview");

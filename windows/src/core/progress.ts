@@ -35,6 +35,11 @@ export function activeProgress(s: ProgressSources): Progress | null {
   return null;
 }
 
+/** What the progress card says about the file: "Sending X to Ana" when it goes to a person, else "Uploading X" (to the AI). */
+export function transferLabel(name: string, to: string | null): string {
+  return to ? t("Sending {name} to {person}", { name, person: to }) : t("Uploading {name}", { name });
+}
+
 /** "Point clouds 42 %": the line under the bar. */
 export function progressText(p: Progress): string {
   return p.value == null ? p.label : `${p.label} ${Math.round(p.value * 100)} %`;

@@ -11,6 +11,7 @@ import { avatar } from "./lazo";
 import type { ViewActions, ViewHost } from "./views";
 import { N_, t, tl } from "../i18n/i18n";
 import { accentFor } from "../core/accent";
+import { transferLabel } from "../core/progress";
 
 /** Dashed rounded rect drawn as SVG so the dashes can march like on macOS. */
 function dashedFrame(): SVGSVGElement {
@@ -92,7 +93,7 @@ export function buildUploading(): ViewHost {
       const pct = Math.round(State.uploadProgress * 100);
       label.textContent = done
         ? `✓  ${State.droppedFile?.name ?? t("File")}`
-        : t("Uploading {name}", { name: State.droppedFile?.name ?? t("file") });
+        : transferLabel(State.droppedFile?.name ?? t("file"), State.sendingTo);
       label.classList.toggle("done", done);
       percent.textContent = done ? "" : `${pct} %`;
       const w = State.uploadProgress * 526;

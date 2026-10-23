@@ -36,3 +36,9 @@ test("a value outside 0…1 or not a number is kept inside the bar", () => {
   assert.equal(activeProgress({ ...idle(), cloud: { running: true, progress: { value: 1.7 } } }).value, 1);
   assert.equal(activeProgress({ ...idle(), cloud: { running: true, progress: { value: NaN } } }).value, 0);
 });
+
+test("a file going to somebody says Sending, one going to the AI says Uploading", async () => {
+  const { transferLabel } = await import("../src/core/progress.ts");
+  assert.equal(transferLabel("plano.las", "Ana"), "Sending plano.las to Ana");
+  assert.equal(transferLabel("plano.las", null), "Uploading plano.las");
+});

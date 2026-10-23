@@ -238,6 +238,8 @@ class AppState {
   noteMessage: string | null = null;
   /** The files dropped on the notch while the card asks whether to convert or share them (all of them, clouds or not). */
   cloudDrop: string[] | null = null;
+  /** Who the file in the progress card is going to (null: it goes to the AI chat, which "uploads" it). */
+  sendingTo: string | null = null;
   /** Who sent the buzz the card is showing (null: it is the "too many hits" one). */
   buzzFrom: string | null = null;
   searchResult: SearchResult | null = null;

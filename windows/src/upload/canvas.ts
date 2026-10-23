@@ -6,6 +6,7 @@
 // exactly as on macOS, because this canvas draws its own.
 
 import { State } from "../core/state";
+import { transferLabel } from "../core/progress";
 import { SCRIPT_FONTS } from "../core/fonts";
 import { N_, isRtl, t } from "../i18n/i18n";
 import {
@@ -264,7 +265,7 @@ export class UploadCanvas {
     const barLen = (x1 - x0) * f.barReveal;
 
     // Room up to the percentage (or the check mark) at the bar's right end.
-    const uploading = t("Uploading {name}", { name: State.droppedFile?.name ?? t("file") });
+    const uploading = transferLabel(State.droppedFile?.name ?? t("file"), State.sendingTo);
     const label = fitted(ctx, uploading, x1 - x0 - 56, 500, 12.5);
     text(ctx, label.s, x0, by - 30, label.font, "#A9ADB5");
 
